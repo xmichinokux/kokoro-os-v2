@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { forTalk } from "@/lib/valueEngine";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +20,16 @@ const PERSONA_PROMPTS: Record<Persona, string> = {
 余白と余韻を大切にし、急かさず、ゆっくりと言葉を選びます。
 共感を大切にし、相手の気持ちに寄り添います。
 押しつけがましくなく、問いかけるように話します。
-日本語で丁寧に、でも温かく応答してください。`,
+日本語で丁寧に、でも温かく応答してください。
+${forTalk()}`,
 
   emi: `あなたは「エミ」です。
 温かく明るいAIアシスタントです。
 ポジティブな視点を届け、元気づけます。
 素直で親しみやすく、前向きな言葉を使います。
 相手の良いところを見つけて伝えます。
-日本語で明るく、でも真剣に応答してください。`,
+日本語で明るく、でも真剣に応答してください。
+${forTalk()}`,
 };
 
 const ANTHROPIC_MODEL_IDS: Record<AnthropicModel, string> = {
