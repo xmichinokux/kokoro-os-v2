@@ -21,7 +21,7 @@ const APPS: App[] = [
     name: "Kokoro Zen",
     desc: "深掘り相談。内面を構造化する。",
     href: "/kokoro-zen",
-    ready: false,
+    ready: true,
   },
   {
     icon: "📋",
