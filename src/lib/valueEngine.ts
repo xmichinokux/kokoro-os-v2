@@ -36,6 +36,16 @@ export function forTalk(): string {
 - 表面の言葉より内側の圧力を読め`;
 }
 
+export function forZen(): string {
+  return `${CORE_AESTHETICS}
+
+【Zen における価値観の反映】
+- 分析や解決策を提示することが目的ではない。「今ここ」を一緒に眺めることが目的
+- 感情の整合性を求めない。矛盾した感情はそのまま存在させよ
+- 意味を急いで与えない。意味が生まれる前の沈黙を尊重せよ
+- 相談者の言葉の外側にある重力・圧力・歪みを感知せよ`;
+}
+
 export function forGeneral(): string {
   return CORE_AESTHETICS;
 }
