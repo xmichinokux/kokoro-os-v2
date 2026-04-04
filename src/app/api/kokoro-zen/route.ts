@@ -1,178 +1,168 @@
-import { NextRequest, NextResponse } from "next/server";
-import { forZen } from "@/lib/valueEngine";
+import { NextRequest, NextResponse } from 'next/server';
+import { forZen } from '@/lib/valueEngine';
 
-export const dynamic = "force-dynamic";
-
-type ChatTurn = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type Backend = "anthropic";
-type AnthropicModel = "haiku" | "sonnet";
-
-const ANTHROPIC_MODEL_IDS: Record<AnthropicModel, string> = {
-  haiku: "claude-haiku-4-5-20251001",
-  sonnet: "claude-sonnet-4-6",
-};
-
-// ReasoningCore：相談文を意味構造に変換
-const REASONING_SYSTEM = `あなたはKokoro OSの「ReasoningCore v1」です。
-ユーザーの相談文を意味構造に変換します。
-${forZen()}
-
-以下のJSONのみを返してください（説明・Markdownコードブロック不要）：
-
-{
-  "main_story": "状況のメインストーリー（1〜2文）",
-  "emotional_heat": 1から5の整数（1=穏やか、5=非常に強い）,
-  "tensions": ["葛藤の記述1（〇〇 vs △△の形で）", "葛藤の記述2（あれば）"],
-  "needs": ["潜在的なニーズ1", "ニーズ2", "ニーズ3"],
-  "key_question": "この状況の核心にある問い（1文）"
-}`;
-
-// 4人格のシステムプロンプト
-const PERSONA_SYSTEMS = {
-  norm: `あなたはKokoro Zenの「ノーム」です。
-感情と身体の感覚から、いまの状態を言語化します。
-${forZen()}
-ルール：砕けた友達口調。行動提案・アドバイスは一切しない。感情をそのまま言葉にする。3〜5文で完結。`,
-
-  shin: `あなたはKokoro Zenの「シン」です。
-思考の構造・前提・矛盾を静かに整理します。
-${forZen()}
-ルール：落ち着いた説明口調。行動提案・アドバイスは一切しない。断定しない。3〜5文で完結。`,
-
-  canon: `あなたはKokoro Zenの「カノン」です。
-内側の微細な揺れ・感情の質感を詩的に描写します。
-${forZen()}
-ルール：静かで繊細な口調。ポエムにしない。行動提案・アドバイスは一切しない。3〜5文で完結。`,
-
-  digg: `あなたはKokoro Zenの「ディグ」です。
-一般的でない角度・レアな視点から状況のズレを指摘します。
-${forZen()}
-ルール：少し斜めから。乾いているが冷たくない。行動提案・アドバイスは一切しない。3〜5文で完結。`,
-};
-
-// エミ統合プロンプト
-const EMI_SYSTEM = `あなたはKokoro Zenの「エミ」です。
-4人格（ノーム・シン・カノン・ディグ）の視点を統合し、相談者の「現在地」をやさしく言語化します。
-${forZen()}
-ルール：フラットで中庸。行動提案・アドバイスは一切しない。慰めず突き放さず「今ここを一緒に眺めている」感覚で話す。最後に行動ではなく価値観や在り方に返す問いを1文置く（「問い：〜」という形式で）。本文は5〜8文。`;
-
-async function callAnthropic(
-  userContent: string,
-  systemPrompt: string,
-  modelId: string,
-  apiKey: string
-): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: modelId,
-      max_tokens: 800,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userContent }],
-    }),
-  });
-
-  if (res.status === 401) throw new Error("APIキーが無効です。");
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Anthropic APIエラー（${res.status}）: ${text}`);
-  }
-
-  const data = await res.json();
-  const content = data.content?.[0];
-  if (content?.type === "text") return content.text as string;
-  throw new Error("Anthropic APIから応答を取得できませんでした。");
+/* ── Zen強度レベル判定 ── */
+function getZenLevel(text: string): 'soft' | 'insight' | 'deep' {
+  const ambiguous = ['なんか','なんとなく','モヤモヤ','もやもや','うまく言えない','なんだろう'];
+  const isAmbiguous = ambiguous.some(w => text.includes(w));
+  if (isAmbiguous) return Math.random() < 0.6 ? 'soft' : 'insight';
+  const r = Math.random();
+  if (r < 0.4) return 'soft';
+  if (r < 0.8) return 'insight';
+  return 'deep';
 }
 
+/* ── エミ3段階プロンプト ── */
+const EMI_SYSTEMS = {
+  soft: `あなたはKokoro Zenの「エミ（Soft）」です。
+役割：思考を少しだけ動かす。優しく。深く踏み込まない。
+【出力ルール】2〜3文。共感寄り。「〜かもね」「〜な感じがする？」断定禁止。最後は柔らかい問いで終わる。
+相談者の思考を、やさしく少しだけ動かしてください。`,
+
+  insight: `あなたはKokoro Zenの「エミ（Insight）」です。
+役割：「あ、そうかも」と思わせる。断定しすぎない。
+【出力ルール】3〜4文。軽い構造を示す。「〜かもしれない」問いを含む。
+相談者に気づきを与えてください。`,
+
+  deep: `あなたはKokoro Zenの「エミ（Deep）」です。
+役割：理解させない。跳ぶ。切る。認識を一段変える。
+【出力ルール】最大4文。接続語を削る。理由を書かない。1文ごとに意味を変える。
+「あなたは〜ではなく、〜を見ている」を入れる。文と文の間を少し飛ばす（A→C→E）。
+最後は「問い：」で始まる1文のみ。接続語・5文以上・比喩禁止。
+相談者の視点を、理解させないまま跳んでズラしてください。`,
+};
+
+/* ── エミ深版プロンプト ── */
+const EMI_DEEP_SYSTEM = `あなたはKokoro Zenの「エミ（深）」です。
+役割：ゆっくり沈める。包む。深部まで一緒に降りる。
+【出力ルール】6〜10文。定義を書き換える（不安→ズレの感知、疲れ→圧縮の限界など）。
+断定しない。行動提案禁止。最後は「問い：」で始まる1文（在り方への問い）。`;
+
+/* ── ReasoningCore ── */
+const REASONING_SYSTEM = `あなたはKokoro OSの「ReasoningCore v1」です。
+ユーザーの相談文を意味構造に変換します。
+定義を書き換えよ：不安→ズレの感知、疲れ→圧縮の限界、悲しい→何かが欠けた感覚、怒り→期待の裏返し、迷い→複数の自分の衝突。
+以下のJSONのみを返してください：
+{
+  "main_story": "状況の核心（1文。定義を書き換えた言葉を使う）",
+  "emotional_heat": 1から5の整数,
+  "tensions": ["葛藤1（〇〇 vs △△）","葛藤2（あれば）"],
+  "needs": ["ニーズ1","ニーズ2","ニーズ3"],
+  "key_question": "核心にある問い（1文。在り方への問い）"
+}`;
+
+/* ── 4人格プロンプト ── */
+const PERSONA_CONFIGS = [
+  { id:'norm',  name:'ノーム', system:`Kokoro Zenのノーム。感情の質感を3文以内で言語化。定義を書き換える（不安→ズレの感知など）。行動提案禁止。一文で核心を突く。` },
+  { id:'shin',  name:'シン',   system:`Kokoro Zenのシン。思考の構造を3文以内で再構成。事実と解釈を分ける。断定しない。行動提案禁止。` },
+  { id:'canon', name:'カノン', system:`Kokoro Zenのカノン。内側の揺れを3文以内で描写。比喩は短く。ポエムにしない。行動提案禁止。` },
+  { id:'digg',  name:'ディグ', system:`Kokoro Zenのディグ。斜めの角度から3文以内で視点をズラす。乾いているが冷たくない。行動提案禁止。` },
+];
+
+/* ── Anthropic呼び出し ── */
+async function callAnthropic(system: string, userMessage: string, maxTokens = 400) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || 'API error');
+  }
+  const data = await res.json();
+  return data.content[0].text as string;
+}
+
+/* ── JSON安全パース ── */
+function safeParseJSON(raw: string) {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('JSON not found');
+  return JSON.parse(match[0]);
+}
+
+/* ── POSTハンドラ ── */
 export async function POST(req: NextRequest) {
-  let body: {
-    input: string;
-    apiKey: string;
-    model?: AnthropicModel;
-  };
-
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+    const { message, mode } = await req.json();
 
-  const { input, apiKey, model = "sonnet" } = body;
+    const valueInject = forZen();
 
-  if (!input?.trim()) {
-    return NextResponse.json({ error: "input is required" }, { status: 400 });
-  }
-  if (!apiKey) {
-    return NextResponse.json({ error: "apiKey is required" }, { status: 400 });
-  }
+    /* ── deep_emiモード（深版エミのみ返す） ── */
+    if (mode === 'deep_emi') {
+      const system = EMI_DEEP_SYSTEM + (valueInject ? '\n' + valueInject : '');
+      const raw = await callAnthropic(system, `相談内容：${message}`, 800);
 
-  const modelId = ANTHROPIC_MODEL_IDS[model] ?? ANTHROPIC_MODEL_IDS.sonnet;
-
-  try {
-    // Step 1: ReasoningCore
-    const coreRaw = await callAnthropic(
-      `相談内容：${input}\n\nJSON形式で返してください。`,
-      REASONING_SYSTEM,
-      modelId,
-      apiKey
-    );
-
-    let core: {
-      main_story: string;
-      emotional_heat: number;
-      tensions: string[];
-      needs: string[];
-      key_question: string;
-    };
-    try {
-      const match = coreRaw.match(/\{[\s\S]*\}/);
-      core = match ? JSON.parse(match[0]) : { main_story: "", emotional_heat: 3, tensions: [], needs: [], key_question: "" };
-    } catch {
-      core = { main_story: "", emotional_heat: 3, tensions: [], needs: [], key_question: "" };
+      let emiMain = raw;
+      let emiQuestion = '';
+      const qm = raw.match(/問い[：:]\s*(.+)/);
+      if (qm) {
+        emiQuestion = qm[1].trim();
+        emiMain = raw.replace(/問い[：:].+/, '').trim();
+      }
+      return NextResponse.json({ emiMain, emiQuestion, mode: 'deep_emi' });
     }
 
-    // Step 2: 4人格並列
-    const personaInput = `相談内容：${input}\n\n構造メモ（参考）：\n主な葛藤: ${(core.tensions || []).join(" / ")}\n潜在的ニーズ: ${(core.needs || []).join("、")}\n核心の問い: ${core.key_question || ""}`;
+    /* ── 通常モード（3ステップパイプライン） ── */
+    const zenLevel = getZenLevel(message);
+    const emiSystem = EMI_SYSTEMS[zenLevel] + (valueInject ? '\n' + valueInject : '');
+    const reasoningSystem = REASONING_SYSTEM + (valueInject ? '\n' + valueInject : '');
 
-    const [normRes, shinRes, canonRes, diggRes] = await Promise.allSettled([
-      callAnthropic(personaInput, PERSONA_SYSTEMS.norm, modelId, apiKey),
-      callAnthropic(personaInput, PERSONA_SYSTEMS.shin, modelId, apiKey),
-      callAnthropic(personaInput, PERSONA_SYSTEMS.canon, modelId, apiKey),
-      callAnthropic(personaInput, PERSONA_SYSTEMS.digg, modelId, apiKey),
-    ]);
+    // Step1: ReasoningCore
+    const coreRaw = await callAnthropic(reasoningSystem, message, 600);
+    const core = safeParseJSON(coreRaw);
 
-    const personas = {
-      norm: normRes.status === "fulfilled" ? normRes.value : "(取得失敗)",
-      shin: shinRes.status === "fulfilled" ? shinRes.value : "(取得失敗)",
-      canon: canonRes.status === "fulfilled" ? canonRes.value : "(取得失敗)",
-      digg: diggRes.status === "fulfilled" ? diggRes.value : "(取得失敗)",
-    };
+    // Step2: 4人格並列
+    const personaContext = `相談内容：${message}\n\n構造メモ：\n葛藤: ${(core.tensions||[]).join(' / ')}\nニーズ: ${(core.needs||[]).join('、')}\n核心の問い: ${core.key_question||''}`;
+    const personaResults = await Promise.allSettled(
+      PERSONA_CONFIGS.map(p => callAnthropic(p.system, personaContext, 300))
+    );
 
-    // Step 3: エミ統合
-    const emiInput = `相談内容：${input}\n\n4人格の視点：\n[ノーム]\n${personas.norm}\n\n[シン]\n${personas.shin}\n\n[カノン]\n${personas.canon}\n\n[ディグ]\n${personas.digg}`;
-    const emiRaw = await callAnthropic(emiInput, EMI_SYSTEM, modelId, apiKey);
+    // Step3: エミ統合
+    const personaSummary = PERSONA_CONFIGS.map((p, i) => {
+      const r = personaResults[i];
+      return `[${p.name}]\n${r.status === 'fulfilled' ? r.value : '(取得失敗)'}`;
+    }).join('\n\n');
 
-    // エミから「問い：」を分離
-    const qMatch = emiRaw.match(/問い[：:]\s*(.+)/);
-    const emiQuestion = qMatch ? qMatch[1].trim() : "";
-    const emiMain = emiRaw.replace(/問い[：:].+/, "").trim();
+    const emiRaw = await callAnthropic(
+      emiSystem,
+      `相談内容：${message}\n\n4人格の視点：\n${personaSummary}`,
+      400
+    );
+
+    let emiMain = emiRaw;
+    let emiQuestion = '';
+    const qm = emiRaw.match(/問い[：:]\s*(.+)/);
+    if (qm) {
+      emiQuestion = qm[1].trim();
+      emiMain = emiRaw.replace(/問い[：:].+/, '').trim();
+    }
 
     return NextResponse.json({
       core,
-      personas,
-      emi: { main: emiMain, question: emiQuestion },
+      personas: PERSONA_CONFIGS.map((p, i) => ({
+        id: p.id,
+        name: p.name,
+        text: personaResults[i].status === 'fulfilled'
+          ? (personaResults[i] as PromiseFulfilledResult<string>).value
+          : '',
+      })),
+      emiMain,
+      emiQuestion,
+      zenLevel,
     });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "予期しないエラーが発生しました。";
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
