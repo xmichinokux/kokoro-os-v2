@@ -143,18 +143,32 @@ export default function KokoroChat() {
     router.push('/kokoro-animal');
   };
 
-  const openFashion = () => {
-    sessionStorage.setItem('fashionIntent', JSON.stringify({
-      fromTalk: true,
-      profile: getProfile(),
-    }));
-    router.push('/kokoro-fashion');
-  };
-
   const FASHION_WORDS = ['今日の服','コーデ','似合','服どう','これ見て','ファッション','着てる','コーディネート'];
 
   const isFashionIntent = (text: string): boolean =>
     FASHION_WORDS.some(w => text.includes(w));
+
+  const canShowFashionButton = (): boolean => {
+    const profile = getProfile();
+    const explicit = profile.explicit;
+    const hasBase = !!explicit.age_range ||
+      (explicit.style_keywords != null && explicit.style_keywords.length > 0);
+    const hasEnough = profile.meta.completeness_score >= 0.2;
+    return hasBase && hasEnough;
+  };
+
+  const openFashion = () => {
+    // 直近の画像付きメッセージを探す
+    const lastImageMsg = [...messages].reverse().find(m => m.imageBase64);
+    sessionStorage.setItem('fashionIntent', JSON.stringify({
+      fromTalk: true,
+      autoAnalyze: true,
+      profile: getProfile(),
+      imageBase64: lastImageMsg?.imageBase64 ?? null,
+      imageMediaType: lastImageMsg?.imageMediaType ?? null,
+    }));
+    router.push('/kokoro-fashion');
+  };
 
   const getProfileQuestion = (text: string): string | null => {
     const profile = getProfile();
@@ -215,11 +229,24 @@ export default function KokoroChat() {
 
       // プロフィール質問追加
       let replyText = data.text;
-      const questionField = getProfileQuestion(text);
-      if (questionField) {
-        replyText += PROFILE_QUESTIONS[questionField];
-        markQuestionAsked(questionField);
+      let askedProfileQuestion = false;
+      if (fashionDetected) {
+        const questionField = getProfileQuestion(text);
+        if (questionField) {
+          replyText += PROFILE_QUESTIONS[questionField];
+          markQuestionAsked(questionField);
+          askedProfileQuestion = true;
+        }
+      } else {
+        const questionField = getProfileQuestion(text);
+        if (questionField) {
+          replyText += PROFILE_QUESTIONS[questionField];
+          markQuestionAsked(questionField);
+        }
       }
+
+      // Fashionボタン: intent検出 & プロフィール十分 & 質問中でない
+      const showFashionBtn = fashionDetected && !askedProfileQuestion && canShowFashionButton();
 
       const aiMsg: Message = {
         role: 'ai',
@@ -228,7 +255,7 @@ export default function KokoroChat() {
         syncRate: data.syncRate,
         showZen: data.showZen,
         showAnimal: data.showAnimal,
-        showFashion: fashionDetected,
+        showFashion: showFashionBtn,
         imagePreview: savedPreview || undefined,
         imageBase64: savedImage || undefined,
         imageMediaType: savedMediaType || undefined,

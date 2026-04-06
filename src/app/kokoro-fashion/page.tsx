@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { getProfile, updateInferred } from '@/lib/profile';
 import type { KokoroProfile } from '@/lib/profile';
 
@@ -32,20 +32,83 @@ export default function KokoroFashion() {
   const [result, setResult] = useState<FashionResult | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [profile, setProfile] = useState<KokoroProfile | null>(null);
+  const [autoStarted, setAutoStarted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setProfile(getProfile());
-    // Talk経由のFashion intentチェック
-    const intent = sessionStorage.getItem('fashionIntent');
-    if (intent) {
-      sessionStorage.removeItem('fashionIntent');
-      try {
-        const parsed = JSON.parse(intent);
-        if (parsed.profile) setProfile(parsed.profile);
-      } catch { /* ignore */ }
+  const runAnalysis = useCallback(async (opts: {
+    profile?: KokoroProfile;
+    imageBase64?: string | null;
+    imageMediaType?: string | null;
+    textInput?: string;
+  }) => {
+    setIsLoading(true);
+    setError('');
+    setResult(null);
+    setDetailsOpen(false);
+
+    try {
+      const res = await fetch('/api/fashion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: opts.imageBase64 || undefined,
+          imageMediaType: opts.imageMediaType || undefined,
+          textInput: opts.textInput || undefined,
+          profile: opts.profile || getProfile(),
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      setResult(data);
+
+      if (data.inferredUpdate) {
+        if (data.inferredUpdate.fashion_axes) {
+          updateInferred('fashion_axes', data.inferredUpdate.fashion_axes);
+        }
+        if (data.inferredUpdate.taste_clusters) {
+          updateInferred('taste_clusters', data.inferredUpdate.taste_clusters);
+        }
+        if (data.inferredUpdate.emotional_pattern) {
+          updateInferred('emotional_pattern', data.inferredUpdate.emotional_pattern);
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '不明なエラー');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    const currentProfile = getProfile();
+    setProfile(currentProfile);
+
+    const raw = sessionStorage.getItem('fashionIntent');
+    if (raw && !autoStarted) {
+      sessionStorage.removeItem('fashionIntent');
+      setAutoStarted(true);
+      try {
+        const intent = JSON.parse(raw);
+        if (intent.profile) setProfile(intent.profile);
+
+        if (intent.autoAnalyze) {
+          // 画像があればセット
+          if (intent.imageBase64 && intent.imageMediaType) {
+            setImageBase64(intent.imageBase64);
+            setImageMediaType(intent.imageMediaType);
+            setPreview(`data:${intent.imageMediaType};base64,${intent.imageBase64}`);
+          }
+          // 自動診断実行
+          runAnalysis({
+            profile: intent.profile || currentProfile,
+            imageBase64: intent.imageBase64,
+            imageMediaType: intent.imageMediaType,
+          });
+        }
+      } catch { /* ignore */ }
+    }
+  }, [autoStarted, runAnalysis]);
 
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
@@ -91,46 +154,14 @@ export default function KokoroFashion() {
     if (file) handleFile(file);
   };
 
-  const diagnose = async () => {
+  const diagnose = () => {
     if ((!imageBase64 && !textInput.trim()) || isLoading) return;
-    setIsLoading(true);
-    setError('');
-    setResult(null);
-    setDetailsOpen(false);
-
-    try {
-      const res = await fetch('/api/fashion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: imageBase64 || undefined,
-          imageMediaType: imageMediaType || undefined,
-          textInput: textInput.trim() || undefined,
-          profile: profile || getProfile(),
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      setResult(data);
-
-      // プロフィールに推論結果を反映
-      if (data.inferredUpdate) {
-        if (data.inferredUpdate.fashion_axes) {
-          updateInferred('fashion_axes', data.inferredUpdate.fashion_axes);
-        }
-        if (data.inferredUpdate.taste_clusters) {
-          updateInferred('taste_clusters', data.inferredUpdate.taste_clusters);
-        }
-        if (data.inferredUpdate.emotional_pattern) {
-          updateInferred('emotional_pattern', data.inferredUpdate.emotional_pattern);
-        }
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '不明なエラー');
-    } finally {
-      setIsLoading(false);
-    }
+    runAnalysis({
+      profile: profile || getProfile(),
+      imageBase64,
+      imageMediaType,
+      textInput: textInput.trim(),
+    });
   };
 
   const reset = () => {
