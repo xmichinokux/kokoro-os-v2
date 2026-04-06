@@ -143,7 +143,7 @@ export default function KokoroChat() {
     router.push('/kokoro-animal');
   };
 
-  const FASHION_WORDS = ['今日の服','コーデ','似合','服どう','これ見て','ファッション','着てる','コーディネート'];
+  const FASHION_WORDS = ['今日の服','コーデ','似合','服どう','これ見て','ファッション','着てる','コーディネート','どうかな','どうだろう','どう思う','見て','これ'];
 
   const isFashionIntent = (text: string): boolean =>
     FASHION_WORDS.some(w => text.includes(w));
@@ -151,19 +151,25 @@ export default function KokoroChat() {
   const canShowFashionButton = (): boolean => {
     const profile = getProfile();
     const explicit = profile.explicit;
-    const hasBase = !!explicit.age_range ||
-      (explicit.style_keywords != null && explicit.style_keywords.length > 0);
-    const hasEnough = profile.meta.completeness_score >= 0.2;
-    return hasBase && hasEnough;
+    // どれか1つでもプロフィールがあればOK
+    const hasAnyProfile =
+      !!explicit.age_range ||
+      (explicit.style_keywords != null && explicit.style_keywords.length > 0) ||
+      (explicit.favorite_things != null && explicit.favorite_things.length > 0);
+    return hasAnyProfile;
   };
 
   const openFashion = () => {
+    const profile = getProfile();
+    const hasProfile = !!profile.explicit.age_range ||
+      (profile.explicit.style_keywords != null && profile.explicit.style_keywords.length > 0) ||
+      (profile.explicit.favorite_things != null && profile.explicit.favorite_things.length > 0);
     // 直近の画像付きメッセージを探す
     const lastImageMsg = [...messages].reverse().find(m => m.imageBase64);
     sessionStorage.setItem('fashionIntent', JSON.stringify({
       fromTalk: true,
-      autoAnalyze: true,
-      profile: getProfile(),
+      autoAnalyze: hasProfile || !!(lastImageMsg?.imageBase64),
+      profile,
       imageBase64: lastImageMsg?.imageBase64 ?? null,
       imageMediaType: lastImageMsg?.imageMediaType ?? null,
     }));
@@ -290,13 +296,13 @@ export default function KokoroChat() {
       let showAnimalBtn = data.showAnimal;
       let showFashionBtn = false;
 
-      if (hasImage && fashionDetected) {
-        // Fashion intent + 画像 → Animal非表示、Fashion表示（条件付き）
-        showAnimalBtn = false;
-        showFashionBtn = !askedProfileQuestion && canShowFashionButton();
-      } else if (fashionDetected) {
-        // テキストのみのFashion intent
-        showFashionBtn = !askedProfileQuestion && canShowFashionButton();
+      if (fashionDetected) {
+        // プロフィール質問中でなければボタン表示
+        // プロフィールがなくてもFashionページで手動入力可能なのでOK
+        showFashionBtn = !askedProfileQuestion;
+        if (hasImage) {
+          showAnimalBtn = false;
+        }
       }
 
       const aiMsg: Message = {
