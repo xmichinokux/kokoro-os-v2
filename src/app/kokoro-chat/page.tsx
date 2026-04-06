@@ -201,11 +201,12 @@ export default function KokoroChat() {
     favorite_things: '\n\n---\n好きなもの、思いつく範囲で3つ教えて',
   };
 
-  const parseProfileAnswer = (text: string) => {
+  const parseProfileAnswer = (text: string): boolean => {
     // 直前のAIメッセージを取得
     const lastAiMsg = [...messages].reverse().find(m => m.role === 'ai');
-    if (!lastAiMsg) return;
+    if (!lastAiMsg) return false;
     const lastContent = lastAiMsg.content;
+    let saved = false;
 
     // age_range質問への返答
     if (lastContent.includes('年齢') || lastContent.includes('何歳')) {
@@ -216,6 +217,7 @@ export default function KokoroChat() {
       for (const [key, val] of Object.entries(ageMap)) {
         if (text.includes(key)) {
           updateExplicit('age_range', val);
+          saved = true;
           break;
         }
       }
@@ -226,6 +228,7 @@ export default function KokoroChat() {
       const keywords = text.split(/[、,，\s]+/).filter(Boolean);
       if (keywords.length > 0) {
         updateExplicit('style_keywords', keywords);
+        saved = true;
       }
     }
 
@@ -234,8 +237,15 @@ export default function KokoroChat() {
       const things = text.split(/[、,，\s]+/).filter(Boolean);
       if (things.length > 0) {
         updateExplicit('favorite_things', things);
+        saved = true;
       }
     }
+
+    return saved;
+  };
+
+  const hasRecentFashionContext = (msgs: Message[]): boolean => {
+    return msgs.slice(-5).some(m => FASHION_WORDS.some(kw => m.content.includes(kw)));
   };
 
   const sendMessage = async () => {
@@ -243,7 +253,7 @@ export default function KokoroChat() {
     if (!text || isLoading) return;
 
     // プロフィール質問への返答を検出・保存
-    parseProfileAnswer(text);
+    const profileUpdated = parseProfileAnswer(text);
 
     const userMsg: Message = { role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
@@ -301,12 +311,14 @@ export default function KokoroChat() {
       let showFashionBtn = false;
 
       if (fashionDetected) {
-        // プロフィール質問中でなければボタン表示
-        // プロフィールがなくてもFashionページで手動入力可能なのでOK
+        // 直接のFashion intent → プロフィール質問中でなければボタン表示
         showFashionBtn = !askedProfileQuestion;
         if (hasImage) {
           showAnimalBtn = false;
         }
+      } else if (profileUpdated && hasRecentFashionContext(messages)) {
+        // プロフィールが更新され、直近にFashion文脈がある → ボタン表示
+        showFashionBtn = true;
       }
 
       const aiMsg: Message = {
@@ -405,10 +417,16 @@ export default function KokoroChat() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Talk</span>
         </div>
-        <button onClick={() => { localStorage.removeItem('talkMessages'); setMessages([]); }}
-          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-          履歴をクリア
-        </button>
+        <div style={{ display:'flex', gap:6 }}>
+          <button onClick={() => { localStorage.removeItem('talkMessages'); setMessages([]); }}
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
+            履歴をクリア
+          </button>
+          <button onClick={() => { localStorage.removeItem('kokoroProfile'); }}
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
+            プロフィールをクリア
+          </button>
+        </div>
       </header>
 
       {/* チャットエリア */}
