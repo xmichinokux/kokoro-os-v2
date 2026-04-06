@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getProfile, updateInferred } from '@/lib/profile';
 import type { KokoroProfile } from '@/lib/profile';
 
@@ -24,22 +24,16 @@ type FashionResult = {
 
 export default function KokoroFashion() {
   const [preview, setPreview] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState('');
-  const [imageMediaType, setImageMediaType] = useState('');
-  const [textInput, setTextInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [result, setResult] = useState<FashionResult | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [profile, setProfile] = useState<KokoroProfile | null>(null);
-  const [autoStarted, setAutoStarted] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [started, setStarted] = useState(false);
 
   const runAnalysis = useCallback(async (opts: {
     profile?: KokoroProfile;
     imageBase64?: string | null;
     imageMediaType?: string | null;
-    textInput?: string;
   }) => {
     setIsLoading(true);
     setError('');
@@ -53,7 +47,6 @@ export default function KokoroFashion() {
         body: JSON.stringify({
           imageBase64: opts.imageBase64 || undefined,
           imageMediaType: opts.imageMediaType || undefined,
-          textInput: opts.textInput || undefined,
           profile: opts.profile || getProfile(),
         }),
       });
@@ -81,98 +74,35 @@ export default function KokoroFashion() {
   }, []);
 
   useEffect(() => {
+    if (started) return;
+    setStarted(true);
+
     const currentProfile = getProfile();
-    setProfile(currentProfile);
+    let intentProfile = currentProfile;
+    let imgBase64: string | null = null;
+    let imgType: string | null = null;
 
     const raw = sessionStorage.getItem('fashionIntent');
-    if (raw && !autoStarted) {
+    if (raw) {
       sessionStorage.removeItem('fashionIntent');
-      setAutoStarted(true);
       try {
         const intent = JSON.parse(raw);
-        if (intent.profile) setProfile(intent.profile);
-
-        if (intent.autoAnalyze) {
-          // 画像があればセット
-          if (intent.imageBase64 && intent.imageMediaType) {
-            setImageBase64(intent.imageBase64);
-            setImageMediaType(intent.imageMediaType);
-            setPreview(`data:${intent.imageMediaType};base64,${intent.imageBase64}`);
-          }
-          // 自動診断実行
-          runAnalysis({
-            profile: intent.profile || currentProfile,
-            imageBase64: intent.imageBase64,
-            imageMediaType: intent.imageMediaType,
-          });
+        if (intent.profile) intentProfile = intent.profile;
+        if (intent.imageBase64 && intent.imageMediaType) {
+          imgBase64 = intent.imageBase64;
+          imgType = intent.imageMediaType;
+          setPreview(`data:${intent.imageMediaType};base64,${intent.imageBase64}`);
         }
       } catch { /* ignore */ }
     }
-  }, [autoStarted, runAnalysis]);
 
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX = 1024;
-          let w = img.width;
-          let h = img.height;
-          if (w > MAX || h > MAX) {
-            if (w > h) { h = (h / w) * MAX; w = MAX; }
-            else { w = (w / h) * MAX; h = MAX; }
-          }
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const handleFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setError('画像ファイルを選択してください');
-      return;
-    }
-    setError('');
-    setImageMediaType('image/jpeg');
-    const compressed = await compressImage(file);
-    setPreview(compressed);
-    setImageBase64(compressed.split(',')[1]);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  };
-
-  const diagnose = () => {
-    if ((!imageBase64 && !textInput.trim()) || isLoading) return;
+    // 自動診断開始
     runAnalysis({
-      profile: profile || getProfile(),
-      imageBase64,
-      imageMediaType,
-      textInput: textInput.trim(),
+      profile: intentProfile,
+      imageBase64: imgBase64,
+      imageMediaType: imgType,
     });
-  };
-
-  const reset = () => {
-    setPreview(null);
-    setImageBase64('');
-    setImageMediaType('');
-    setTextInput('');
-    setResult(null);
-    setError('');
-    setDetailsOpen(false);
-  };
+  }, [started, runAnalysis]);
 
   const ScoreBar = ({ label, value }: { label: string; value: number }) => (
     <div style={{ marginBottom: 12 }}>
@@ -210,53 +140,6 @@ export default function KokoroFashion() {
           <div style={{ fontSize: 18, fontWeight: 400, marginBottom: 6 }}>Fashion</div>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>内面が装いにどう出ているかを読む</div>
         </div>
-
-        {/* input area - show when no result */}
-        {!result && (
-          <>
-            {/* image upload */}
-            {!preview ? (
-              <div
-                onDrop={handleDrop}
-                onDragOver={e => e.preventDefault()}
-                onClick={() => fileRef.current?.click()}
-                style={{ border: '2px dashed #e5e7eb', borderRadius: 12, padding: '40px 20px', textAlign: 'center', cursor: 'pointer', transition: 'border-color .2s', background: '#f9fafb', marginBottom: 16 }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
-              >
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
-                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>画像をドロップまたはクリック</div>
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>コーデ写真・着画・アイテムなど（任意）</div>
-                <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
-                  onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
-              </div>
-            ) : (
-              <div style={{ position: 'relative', marginBottom: 16 }}>
-                <img src={preview} alt="preview"
-                  style={{ width: '100%', borderRadius: 12, display: 'block', maxHeight: 300, objectFit: 'cover' }} />
-                <button onClick={() => { setPreview(null); setImageBase64(''); setImageMediaType(''); }}
-                  style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.5)', color: '#fff', border: 'none', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>
-                  ✕ 変更
-                </button>
-              </div>
-            )}
-
-            {/* text input */}
-            <textarea
-              value={textInput}
-              onChange={e => setTextInput(e.target.value)}
-              placeholder="今日のコーデの気分、意図、迷いなど（任意）"
-              rows={3}
-              style={{ width: '100%', resize: 'none', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 16px', fontSize: 14, lineHeight: 1.6, outline: 'none', fontFamily: 'inherit', background: '#f9fafb', color: '#1a1a1a', marginBottom: 16, boxSizing: 'border-box' }}
-            />
-
-            {/* diagnose button */}
-            <button onClick={diagnose} disabled={isLoading || (!imageBase64 && !textInput.trim())}
-              style={{ width: '100%', background: (imageBase64 || textInput.trim()) ? '#1a1a1a' : '#e5e7eb', color: (imageBase64 || textInput.trim()) ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, padding: '14px', fontSize: 14, cursor: (imageBase64 || textInput.trim()) ? 'pointer' : 'not-allowed', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em' }}>
-              ▸ 診断する
-            </button>
-          </>
-        )}
 
         {/* loading */}
         {isLoading && (
@@ -335,14 +218,10 @@ export default function KokoroFashion() {
               </div>
             )}
 
-            {/* actions */}
-            <div style={{ marginTop: 24, display: 'flex', gap: 10 }}>
-              <button onClick={reset}
-                style={{ flex: 1, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em' }}>
-                もう一度診断する
-              </button>
+            {/* footer: Talk に戻る only */}
+            <div style={{ marginTop: 24 }}>
               <a href="/kokoro-chat"
-                style={{ flex: 1, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em', textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                style={{ display: 'block', width: '100%', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' }}>
                 Talk に戻る →
               </a>
             </div>
