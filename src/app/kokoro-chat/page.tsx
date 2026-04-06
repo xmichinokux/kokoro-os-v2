@@ -195,9 +195,49 @@ export default function KokoroChat() {
     favorite_things: '\n\n---\n好きなもの、思いつく範囲で3つ教えて',
   };
 
+  const parseProfileAnswer = (text: string) => {
+    // 直前のAIメッセージを取得
+    const lastAiMsg = [...messages].reverse().find(m => m.role === 'ai');
+    if (!lastAiMsg) return;
+    const lastContent = lastAiMsg.content;
+
+    // age_range質問への返答
+    if (lastContent.includes('年齢') || lastContent.includes('何歳')) {
+      const ageMap: Record<string, string> = {
+        '10': 'teens', '20': '20s', '30': '30s',
+        '40': '40s', '50': '50s', '60': '60+',
+      };
+      for (const [key, val] of Object.entries(ageMap)) {
+        if (text.includes(key)) {
+          updateExplicit('age_range', val);
+          break;
+        }
+      }
+    }
+
+    // style_keywords質問への返答
+    if (lastContent.includes('方向の服が好き') || lastContent.includes('3語くらいで教えて')) {
+      const keywords = text.split(/[、,，\s]+/).filter(Boolean);
+      if (keywords.length > 0) {
+        updateExplicit('style_keywords', keywords);
+      }
+    }
+
+    // favorite_things質問への返答
+    if (lastContent.includes('好きなもの') || lastContent.includes('3つ教えて')) {
+      const things = text.split(/[、,，\s]+/).filter(Boolean);
+      if (things.length > 0) {
+        updateExplicit('favorite_things', things);
+      }
+    }
+  };
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
+
+    // プロフィール質問への返答を検出・保存
+    parseProfileAnswer(text);
 
     const userMsg: Message = { role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
