@@ -9,6 +9,8 @@ type Message = {
   personaId?: string;
   syncRate?: number;
   showZen?: boolean;
+  showAnimal?: boolean;
+  imagePreview?: string;
 };
 
 type ApiHistory = { role: string; content: string };
@@ -141,6 +143,8 @@ export default function KokoroChat() {
         personaId: data.personaId,
         syncRate: data.syncRate,
         showZen: data.showZen,
+        showAnimal: data.showAnimal,
+        imagePreview: attachedPreview || undefined,
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch (e) {
