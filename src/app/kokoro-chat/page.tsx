@@ -144,9 +144,13 @@ export default function KokoroChat() {
   };
 
   const FASHION_WORDS = ['今日の服','コーデ','似合','服どう','これ見て','ファッション','着てる','コーディネート','どうかな','どうだろう','どう思う','見て','これ'];
+  const ANIMAL_TALK_WORDS = ['なんて言ってる','何て言ってる','なんて言ってるのかな','何て言ってるのかな','声を聞く','声を聞いて','鳴い','猫','犬','ねこ','いぬ','ペット','動物'];
 
   const isFashionIntent = (text: string): boolean =>
     FASHION_WORDS.some(w => text.includes(w));
+
+  const isAnimalTalkIntent = (text: string, hasImage: boolean): boolean =>
+    ANIMAL_TALK_WORDS.some(w => text.includes(w)) || (hasImage && !isFashionIntent(text));
 
   const canShowFashionButton = (): boolean => {
     const profile = getProfile();
@@ -284,29 +288,30 @@ export default function KokoroChat() {
       const savedPreview = attachedPreview;
       clearAttachment();
 
-      // Fashion intent検出（上で既に判定済み）
+      // Intent検出
       const fashionDetected = fashionCheck;
+      const hasImage = !!(savedImage && savedMediaType);
+      const animalDetected = isAnimalTalkIntent(text, hasImage);
 
-      // プロフィール質問追加
+      // プロフィール質問追加（Animal Talk intentならスキップ）
       let replyText = data.text;
       let askedProfileQuestion = false;
-      if (fashionDetected) {
-        const questionField = getProfileQuestion(text);
-        if (questionField) {
-          replyText += PROFILE_QUESTIONS[questionField];
-          markQuestionAsked(questionField);
-          askedProfileQuestion = true;
-        }
-      } else {
-        const questionField = getProfileQuestion(text);
-        if (questionField) {
-          replyText += PROFILE_QUESTIONS[questionField];
-          markQuestionAsked(questionField);
+      if (!animalDetected) {
+        if (fashionDetected) {
+          const questionField = getProfileQuestion(text);
+          if (questionField) {
+            replyText += PROFILE_QUESTIONS[questionField];
+            markQuestionAsked(questionField);
+            askedProfileQuestion = true;
+          }
+        } else {
+          const questionField = getProfileQuestion(text);
+          if (questionField) {
+            replyText += PROFILE_QUESTIONS[questionField];
+            markQuestionAsked(questionField);
+          }
         }
       }
-
-      // 画像+Fashion intentの場合はAnimalを抑制してFashionを出す
-      const hasImage = !!(savedImage && savedMediaType);
       let showAnimalBtn = data.showAnimal;
       let showFashionBtn = false;
 

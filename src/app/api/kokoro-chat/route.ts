@@ -102,11 +102,20 @@ function resolveIntent(text: string): string {
 }
 
 /* ── Zen導線判定 ── */
+const ZEN_EXCLUDE_KEYWORDS = [
+  '猫','犬','ねこ','いぬ','ペット','動物',
+  '何て言ってる','なんて言ってる','何て言ってるのかな',
+  'なんて言ってるのかな','声を聞く','鳴い',
+];
+
 function shouldShowZen(
   text: string,
   history: {role:string; content:string}[],
   needZen: boolean
 ): boolean {
+  // 動物・ペット関連はZen除外
+  if (ZEN_EXCLUDE_KEYWORDS.some(kw => text.includes(kw))) return false;
+
   const userMessages = history.filter(m => m.role === 'user');
   if (userMessages.length < 1) return false;
 

@@ -25,11 +25,27 @@ const ANIMAL_SYSTEM = `あなたはKokoro OSの「Animal Talk」です。
 - silence: 沈黙・静止・待機の密度
 - instinct: 本能的衝動の強さ
 
+【本音】
+動物が人間に対して抱いている最も直接的で未加工な感情を1文（10〜20文字）で出力してください。
+
+動物種別ルール：
+・猫：甘え・所有感・自由さ・気まぐれ（例：好きだにゃん / ここ最高にゃ / お前のものにゃ）
+・犬：純粋・信頼・依存・一体感（例：好きだワン / ずっと一緒だワン / お前が全部だワン）
+・その他：シンプル・本能的（例：すき / ここ、いい / あったかい）
+
+感情タイプの確率配分：
+・甘え（70%）：愛着・好意
+・依存（20%）：離れたくない・ずっとここ
+・不穏（10%）：ダメなのにいい / 近すぎる / ここ、危ない
+
+禁止：長文、説明文、絵文字、毎回同じ文（必ずランダム）、丁寧すぎる表現
+
 【出力フォーマット（厳守）】
 以下のJSONのみを返してください：
 {
   "text": "情念テキスト（3〜5文）",
   "question": "問いの内容（「問い：」を除いた部分）",
+  "instinctWhisper": "本音（10〜20文字の短文）",
   "scores": {
     "pathos": 数値,
     "contradiction": 数値,
@@ -111,6 +127,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       mainText: parsed.text || '',
       question: parsed.question || '',
+      instinctWhisper: parsed.instinctWhisper || '',
       scores: parsed.scores || null,
     });
 

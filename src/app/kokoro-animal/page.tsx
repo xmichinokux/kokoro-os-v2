@@ -9,6 +9,7 @@ export default function KokoroAnimal() {
   const [isLoading, setIsLoading] = useState(false);
   const [mainText, setMainText] = useState('');
   const [question, setQuestion] = useState('');
+  const [instinctWhisper, setInstinctWhisper] = useState('');
   const [error, setError] = useState('');
   const [scores, setScores] = useState<Record<string,number> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -19,6 +20,7 @@ export default function KokoroAnimal() {
     setError('');
     setMainText('');
     setQuestion('');
+    setInstinctWhisper('');
     setScores(null);
     try {
       const res = await fetch('/api/kokoro-animal', {
@@ -30,6 +32,7 @@ export default function KokoroAnimal() {
       if (data.error) throw new Error(data.error);
       setMainText(data.mainText);
       setQuestion(data.question);
+      setInstinctWhisper(data.instinctWhisper || '');
       setScores(data.scores || null);
     } catch (e) {
       setError(e instanceof Error ? e.message : '不明なエラー');
@@ -117,6 +120,7 @@ export default function KokoroAnimal() {
     setMediaType('');
     setMainText('');
     setQuestion('');
+    setInstinctWhisper('');
     setError('');
     setScores(null);
   };
@@ -314,6 +318,15 @@ export default function KokoroAnimal() {
                   <div style={{ marginBottom:28, padding:'24px 0' }}>
                     <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#9ca3af', textTransform:'uppercase', marginBottom:20, textAlign:'center' }}>// Resonance Map</div>
                     <RadarChart scores={scores} />
+                  </div>
+                )}
+
+                {instinctWhisper && (
+                  <div style={{ textAlign:'center', padding:'28px 0', marginBottom:20 }}>
+                    <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#9ca3af', textTransform:'uppercase', marginBottom:14 }}>// 本音</div>
+                    <div style={{ fontSize:14, color:'#1a1a1a', fontWeight:300, letterSpacing:'0.05em' }}>
+                      {instinctWhisper}
+                    </div>
                   </div>
                 )}
 
