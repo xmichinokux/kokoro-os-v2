@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 export default function KokoroAnimal() {
   const [preview, setPreview] = useState<string | null>(null);
@@ -12,6 +12,48 @@ export default function KokoroAnimal() {
   const [error, setError] = useState('');
   const [scores, setScores] = useState<Record<string,number> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [autoStarted, setAutoStarted] = useState(false);
+
+  const analyzeWithData = useCallback(async (base64: string, type: string) => {
+    setIsLoading(true);
+    setError('');
+    setMainText('');
+    setQuestion('');
+    setScores(null);
+    try {
+      const res = await fetch('/api/kokoro-animal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mediaType: type }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMainText(data.mainText);
+      setQuestion(data.question);
+      setScores(data.scores || null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '不明なエラー');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem('animalTalkImage');
+    if (stored && !autoStarted) {
+      sessionStorage.removeItem('animalTalkImage');
+      setAutoStarted(true);
+      try {
+        const { base64, mediaType: type } = JSON.parse(stored);
+        if (base64 && type) {
+          setImageBase64(base64);
+          setMediaType(type);
+          setPreview(`data:${type};base64,${base64}`);
+          analyzeWithData(base64, type);
+        }
+      } catch { /* ignore */ }
+    }
+  }, [autoStarted, analyzeWithData]);
 
   const handleFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -43,29 +85,9 @@ export default function KokoroAnimal() {
     e.preventDefault();
   };
 
-  const analyze = async () => {
+  const analyze = () => {
     if (!imageBase64 || isLoading) return;
-    setIsLoading(true);
-    setError('');
-    setMainText('');
-    setQuestion('');
-
-    try {
-      const res = await fetch('/api/kokoro-animal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mediaType }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setMainText(data.mainText);
-      setQuestion(data.question);
-      setScores(data.scores || null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '不明なエラー');
-    } finally {
-      setIsLoading(false);
-    }
+    analyzeWithData(imageBase64, mediaType);
   };
 
   const reset = () => {

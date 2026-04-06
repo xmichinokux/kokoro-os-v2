@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 /* ── 型定義 ── */
 type Message = {
@@ -42,6 +43,7 @@ const PERSONA_EMOJIS: Record<string, string> = {
 
 /* ── メインコンポーネント ── */
 export default function KokoroChat() {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -60,8 +62,6 @@ export default function KokoroChat() {
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [attachedMediaType, setAttachedMediaType] = useState('');
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
-  const [animalResult, setAnimalResult] = useState<{text:string; question:string} | null>(null);
-  const [animalLoading, setAnimalLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -91,29 +91,17 @@ export default function KokoroChat() {
     setAttachedImage(null);
     setAttachedMediaType('');
     setAttachedPreview(null);
-    setAnimalResult(null);
   };
 
-  const openAnimalTalk = async (msg?: Message) => {
+  const openAnimalTalk = (msg?: Message) => {
     const imgData = msg?.imageBase64 || attachedImage;
     const imgType = msg?.imageMediaType || attachedMediaType;
-    if (!imgData || !imgType || animalLoading) return;
-    setAnimalLoading(true);
-    setAnimalResult(null);
-    try {
-      const res = await fetch('/api/kokoro-animal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: imgData, mediaType: imgType }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setAnimalResult({ text: data.mainText, question: data.question });
-    } catch (e) {
-      setAnimalResult({ text: `エラー: ${e instanceof Error ? e.message : ''}`, question: '' });
-    } finally {
-      setAnimalLoading(false);
-    }
+    if (!imgData || !imgType) return;
+    sessionStorage.setItem('animalTalkImage', JSON.stringify({
+      base64: imgData,
+      mediaType: imgType,
+    }));
+    router.push('/kokoro-animal');
   };
 
   const sendMessage = async () => {
@@ -294,37 +282,12 @@ export default function KokoroChat() {
                     </div>
                   )}
                   {msg.showAnimal && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'#f9f5ff', border:'1px solid #e9d5ff', borderRadius:8 }}>
-                      <div style={{ fontSize:12, color:'#7c3aed', marginBottom:10 }}>
-                        🐾 この子、何か言ってそう。声を聞いてみる？
-                      </div>
-                      {!animalResult && !animalLoading && (
-                        <button onClick={() => openAnimalTalk(msg)}
-                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                          動物の声を聞く →
-                        </button>
-                      )}
-                      {animalLoading && (
-                        <div style={{ height:1, background:'#e5e7eb', position:'relative', overflow:'hidden' }}>
-                          <div style={{ position:'absolute', left:'-40%', top:0, width:'40%', height:'100%', background:'#7c3aed', animation:'sweep 1.4s ease-in-out infinite' }} />
-                        </div>
-                      )}
-                      {animalResult && (
-                        <div>
-                          <div style={{ borderLeft:'2px solid #7c3aed', paddingLeft:16, marginBottom:12 }}>
-                            <div style={{ fontSize:13, color:'#1a1a1a', lineHeight:2, fontWeight:300 }}>
-                              {animalResult.text.split(/(?<=。)/).map(s => s.trim()).filter(s => s).map((s, i) => (
-                                <p key={i} style={{ margin:'0 0 .6em 0' }}>{s}</p>
-                              ))}
-                            </div>
-                          </div>
-                          {animalResult.question && (
-                            <div style={{ fontSize:12, color:'#7c3aed', fontStyle:'italic' }}>
-                              「{animalResult.question}」
-                            </div>
-                          )}
-                        </div>
-                      )}
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'#f9f5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                      <span style={{ fontSize:12, color:'#7c3aed' }}>🐾 この子、何か言ってそう。声を聞いてみる？</span>
+                      <button onClick={() => openAnimalTalk(msg)}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
+                        動物の声を聞く →
+                      </button>
                     </div>
                   )}
                 </div>
