@@ -322,9 +322,9 @@ export default function KokoroAnimal() {
                 )}
 
                 {instinctWhisper && (
-                  <div style={{ textAlign:'center', padding:'28px 0', marginBottom:20 }}>
-                    <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#9ca3af', textTransform:'uppercase', marginBottom:14 }}>// 本音</div>
-                    <div style={{ fontSize:14, color:'#1a1a1a', fontWeight:300, letterSpacing:'0.05em' }}>
+                  <div style={{ borderLeft:'2px solid #c4b5fd', paddingLeft:20, marginBottom:28 }}>
+                    <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#9ca3af', textTransform:'uppercase', marginBottom:12 }}>// 本音</div>
+                    <div style={{ fontSize:15, lineHeight:2, color:'#374151', fontWeight:300 }}>
                       {instinctWhisper}
                     </div>
                   </div>
