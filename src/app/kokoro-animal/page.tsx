@@ -306,13 +306,9 @@ export default function KokoroAnimal() {
                 )}
 
                 {/* アクション */}
-                <div style={{ display:'flex', gap:10 }}>
-                  <button onClick={reset}
-                    style={{ flex:1, background:'transparent', border:'1px solid #e5e7eb', borderRadius:8, padding:'12px', fontSize:12, cursor:'pointer', color:'#6b7280', fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em' }}>
-                    別の動物を読む
-                  </button>
+                <div>
                   <a href="/kokoro-chat"
-                    style={{ flex:1, background:'#7c3aed', color:'#fff', border:'none', borderRadius:8, padding:'12px', fontSize:12, cursor:'pointer', fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', textAlign:'center', textDecoration:'none', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    style={{ display:'block', width:'100%', background:'#7c3aed', color:'#fff', border:'none', borderRadius:8, padding:'12px', fontSize:12, cursor:'pointer', fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', textAlign:'center', textDecoration:'none', boxSizing:'border-box' }}>
                     Talkに戻る →
                   </a>
                 </div>

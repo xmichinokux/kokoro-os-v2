@@ -438,7 +438,7 @@ export default function KokoroChat() {
             📎
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display:'none' }}
-            onChange={e => { if (e.target.files?.[0]) handleImageAttach(e.target.files[0]); }} />
+            onChange={e => { if (e.target.files?.[0]) handleImageAttach(e.target.files[0]); e.target.value = ''; }} />
           <button onClick={sendMessage} disabled={isLoading}
             style={{ width:46, height:46, flexShrink:0, background:'#7c3aed', border:'none', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#fff', opacity: isLoading ? 0.5 : 1 }}>
             ↑
