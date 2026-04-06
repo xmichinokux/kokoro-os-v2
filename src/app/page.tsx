@@ -24,6 +24,13 @@ const APPS: App[] = [
     ready: true,
   },
   {
+    icon: "👔",
+    name: "Kokoro Fashion",
+    desc: "内面が装いにどう出ているかを読む。",
+    href: "/kokoro-fashion",
+    ready: true,
+  },
+  {
     icon: "📋",
     name: "Kokoro Plan",
     desc: "タスク分解。行動を設計する。",

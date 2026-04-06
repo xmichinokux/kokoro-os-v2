@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@/lib/profile';
 
 /* ── 型定義 ── */
 type Message = {
@@ -11,6 +12,7 @@ type Message = {
   syncRate?: number;
   showZen?: boolean;
   showAnimal?: boolean;
+  showFashion?: boolean;
   imagePreview?: string;
   imageBase64?: string;
   imageMediaType?: string;
@@ -141,6 +143,44 @@ export default function KokoroChat() {
     router.push('/kokoro-animal');
   };
 
+  const openFashion = () => {
+    sessionStorage.setItem('fashionIntent', JSON.stringify({
+      fromTalk: true,
+      profile: getProfile(),
+    }));
+    router.push('/kokoro-fashion');
+  };
+
+  const FASHION_WORDS = ['今日の服','コーデ','似合','服どう','これ見て','ファッション','着てる','コーディネート'];
+
+  const isFashionIntent = (text: string): boolean =>
+    FASHION_WORDS.some(w => text.includes(w));
+
+  const getProfileQuestion = (text: string): string | null => {
+    const profile = getProfile();
+    const isFashion = isFashionIntent(text);
+
+    // 優先順位1: age_range
+    if (!profile.explicit.age_range && canAskQuestion('age_range')) {
+      return 'age_range';
+    }
+    // 優先順位2: style_keywords（Fashion intent時）
+    if (isFashion && !profile.explicit.style_keywords?.length && canAskQuestion('style_keywords')) {
+      return 'style_keywords';
+    }
+    // 優先順位3: favorite_things
+    if (!profile.explicit.favorite_things?.length && canAskQuestion('favorite_things')) {
+      return 'favorite_things';
+    }
+    return null;
+  };
+
+  const PROFILE_QUESTIONS: Record<string, string> = {
+    age_range: '\n\n---\nざっくりでいいんだけど、年齢どのくらい？',
+    style_keywords: '\n\n---\n普段どういう方向の服が好き？3語くらいで教えて',
+    favorite_things: '\n\n---\n好きなもの、思いつく範囲で3つ教えて',
+  };
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -169,13 +209,26 @@ export default function KokoroChat() {
       const savedMediaType = attachedMediaType;
       const savedPreview = attachedPreview;
       clearAttachment();
+
+      // Fashion intent検出
+      const fashionDetected = isFashionIntent(text);
+
+      // プロフィール質問追加
+      let replyText = data.text;
+      const questionField = getProfileQuestion(text);
+      if (questionField) {
+        replyText += PROFILE_QUESTIONS[questionField];
+        markQuestionAsked(questionField);
+      }
+
       const aiMsg: Message = {
         role: 'ai',
-        content: data.text,
+        content: replyText,
         personaId: data.personaId,
         syncRate: data.syncRate,
         showZen: data.showZen,
         showAnimal: data.showAnimal,
+        showFashion: fashionDetected,
         imagePreview: savedPreview || undefined,
         imageBase64: savedImage || undefined,
         imageMediaType: savedMediaType || undefined,
@@ -324,6 +377,15 @@ export default function KokoroChat() {
                       <button onClick={() => openAnimalTalk(msg)}
                         style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
                         動物の声を聞く →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showFashion && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                      <span style={{ fontSize:12, color:'#7c3aed' }}>👔 装いの奥を読んでみる？</span>
+                      <button onClick={openFashion}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
+                        Fashion診断へ →
                       </button>
                     </div>
                   )}

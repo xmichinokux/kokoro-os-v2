@@ -1,0 +1,331 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { getProfile, updateInferred } from '@/lib/profile';
+import type { KokoroProfile } from '@/lib/profile';
+
+type FashionResult = {
+  styleName: string;
+  keywords: string[];
+  summary: string;
+  scores: { styleMatch: number; realityFit: number };
+  details: {
+    goodPoints: string;
+    mismatches: string;
+    impression: string;
+    ageVision: string;
+  };
+  inferredUpdate: {
+    fashion_axes?: Record<string, number>;
+    taste_clusters?: string[];
+    emotional_pattern?: string;
+  };
+};
+
+export default function KokoroFashion() {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState('');
+  const [imageMediaType, setImageMediaType] = useState('');
+  const [textInput, setTextInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<FashionResult | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [profile, setProfile] = useState<KokoroProfile | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setProfile(getProfile());
+    // Talk経由のFashion intentチェック
+    const intent = sessionStorage.getItem('fashionIntent');
+    if (intent) {
+      sessionStorage.removeItem('fashionIntent');
+      try {
+        const parsed = JSON.parse(intent);
+        if (parsed.profile) setProfile(parsed.profile);
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 1024;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = (h / w) * MAX; w = MAX; }
+            else { w = (w / h) * MAX; h = MAX; }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('画像ファイルを選択してください');
+      return;
+    }
+    setError('');
+    setImageMediaType('image/jpeg');
+    const compressed = await compressImage(file);
+    setPreview(compressed);
+    setImageBase64(compressed.split(',')[1]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const diagnose = async () => {
+    if ((!imageBase64 && !textInput.trim()) || isLoading) return;
+    setIsLoading(true);
+    setError('');
+    setResult(null);
+    setDetailsOpen(false);
+
+    try {
+      const res = await fetch('/api/fashion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: imageBase64 || undefined,
+          imageMediaType: imageMediaType || undefined,
+          textInput: textInput.trim() || undefined,
+          profile: profile || getProfile(),
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      setResult(data);
+
+      // プロフィールに推論結果を反映
+      if (data.inferredUpdate) {
+        if (data.inferredUpdate.fashion_axes) {
+          updateInferred('fashion_axes', data.inferredUpdate.fashion_axes);
+        }
+        if (data.inferredUpdate.taste_clusters) {
+          updateInferred('taste_clusters', data.inferredUpdate.taste_clusters);
+        }
+        if (data.inferredUpdate.emotional_pattern) {
+          updateInferred('emotional_pattern', data.inferredUpdate.emotional_pattern);
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '不明なエラー');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setPreview(null);
+    setImageBase64('');
+    setImageMediaType('');
+    setTextInput('');
+    setResult(null);
+    setError('');
+    setDetailsOpen(false);
+  };
+
+  const ScoreBar = ({ label, value }: { label: string; value: number }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.12em', color: '#6b7280', textTransform: 'uppercase' as const }}>{label}</span>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: '#7c3aed', fontWeight: 700 }}>{value}</span>
+      </div>
+      <div style={{ height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${value}%`, background: '#7c3aed', borderRadius: 2, transition: 'width 0.6s ease' }} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#fff', color: '#1a1a1a', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
+
+      {/* header */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 10 }}>
+        <div>
+          <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700 }}>Kokoro</span>
+          <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
+          <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Fashion</span>
+        </div>
+        <a href="/kokoro-chat"
+          style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px' }}>
+          ← Talk に戻る
+        </a>
+      </header>
+
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 20px 80px' }}>
+
+        {/* title */}
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>👔</div>
+          <div style={{ fontSize: 18, fontWeight: 400, marginBottom: 6 }}>Fashion</div>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>内面が装いにどう出ているかを読む</div>
+        </div>
+
+        {/* input area - show when no result */}
+        {!result && (
+          <>
+            {/* image upload */}
+            {!preview ? (
+              <div
+                onDrop={handleDrop}
+                onDragOver={e => e.preventDefault()}
+                onClick={() => fileRef.current?.click()}
+                style={{ border: '2px dashed #e5e7eb', borderRadius: 12, padding: '40px 20px', textAlign: 'center', cursor: 'pointer', transition: 'border-color .2s', background: '#f9fafb', marginBottom: 16 }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+              >
+                <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
+                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>画像をドロップまたはクリック</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>コーデ写真・着画・アイテムなど（任意）</div>
+                <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+              </div>
+            ) : (
+              <div style={{ position: 'relative', marginBottom: 16 }}>
+                <img src={preview} alt="preview"
+                  style={{ width: '100%', borderRadius: 12, display: 'block', maxHeight: 300, objectFit: 'cover' }} />
+                <button onClick={() => { setPreview(null); setImageBase64(''); setImageMediaType(''); }}
+                  style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.5)', color: '#fff', border: 'none', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>
+                  ✕ 変更
+                </button>
+              </div>
+            )}
+
+            {/* text input */}
+            <textarea
+              value={textInput}
+              onChange={e => setTextInput(e.target.value)}
+              placeholder="今日のコーデの気分、意図、迷いなど（任意）"
+              rows={3}
+              style={{ width: '100%', resize: 'none', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 16px', fontSize: 14, lineHeight: 1.6, outline: 'none', fontFamily: 'inherit', background: '#f9fafb', color: '#1a1a1a', marginBottom: 16, boxSizing: 'border-box' }}
+            />
+
+            {/* diagnose button */}
+            <button onClick={diagnose} disabled={isLoading || (!imageBase64 && !textInput.trim())}
+              style={{ width: '100%', background: (imageBase64 || textInput.trim()) ? '#1a1a1a' : '#e5e7eb', color: (imageBase64 || textInput.trim()) ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, padding: '14px', fontSize: 14, cursor: (imageBase64 || textInput.trim()) ? 'pointer' : 'not-allowed', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em' }}>
+              ▸ 診断する
+            </button>
+          </>
+        )}
+
+        {/* loading */}
+        {isLoading && (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <div style={{ height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden', marginBottom: 16 }}>
+              <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: '#7c3aed', animation: 'sweep 1.4s ease-in-out infinite' }} />
+            </div>
+            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', letterSpacing: '0.15em' }}>// 装いを読み取り中...</div>
+          </div>
+        )}
+
+        {/* result */}
+        {result && (
+          <div>
+            {/* image preview in result */}
+            {preview && (
+              <div style={{ marginBottom: 24 }}>
+                <img src={preview} alt="diagnosed"
+                  style={{ width: '100%', borderRadius: 12, display: 'block', maxHeight: 300, objectFit: 'cover' }} />
+              </div>
+            )}
+
+            {/* style name */}
+            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+              <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 12 }}>// Style Name</div>
+              <div style={{ fontSize: 20, fontWeight: 400, color: '#1a1a1a', lineHeight: 1.6 }}>
+                {result.styleName}
+              </div>
+            </div>
+
+            {/* keywords */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 24 }}>
+              {result.keywords.map((kw, i) => (
+                <span key={i} style={{ fontSize: 11, padding: '4px 12px', border: '1px solid #e5e7eb', borderRadius: 20, color: '#6b7280', background: '#f9fafb' }}>
+                  {kw}
+                </span>
+              ))}
+            </div>
+
+            {/* summary */}
+            <div style={{ borderLeft: '2px solid #7c3aed', paddingLeft: 20, marginBottom: 28 }}>
+              <div style={{ fontSize: 15, lineHeight: 2, color: '#374151' }}>
+                {result.summary}
+              </div>
+            </div>
+
+            {/* scores */}
+            <div style={{ marginBottom: 28, padding: '20px', background: '#f9fafb', borderRadius: 12 }}>
+              <ScoreBar label="Style Match" value={result.scores.styleMatch} />
+              <ScoreBar label="Reality Fit" value={result.scores.realityFit} />
+            </div>
+
+            {/* details toggle */}
+            <button onClick={() => setDetailsOpen(v => !v)}
+              style={{ width: '100%', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, color: '#6b7280', fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', padding: '13px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span>{detailsOpen ? '▲ 閉じる' : '▼ 詳しく見る'}</span>
+              <span style={{ fontSize: 8, color: '#9ca3af' }}>// Details</span>
+            </button>
+
+            {/* details content */}
+            {detailsOpen && (
+              <div style={{ marginTop: 16 }}>
+                {[
+                  { label: '良い点', text: result.details.goodPoints, color: '#059669' },
+                  { label: 'ズレ / 提案', text: result.details.mismatches, color: '#d97706' },
+                  { label: '印象', text: result.details.impression, color: '#2563eb' },
+                  { label: '年齢・文脈', text: result.details.ageVision, color: '#7c3aed' },
+                ].map((section, i) => (
+                  <div key={i} style={{ borderLeft: `2px solid ${section.color}`, paddingLeft: 20, marginBottom: 20 }}>
+                    <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em', color: section.color, textTransform: 'uppercase', marginBottom: 10 }}>// {section.label}</div>
+                    <div style={{ fontSize: 14, lineHeight: 2, color: '#374151' }}>
+                      {section.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* actions */}
+            <div style={{ marginTop: 24, display: 'flex', gap: 10 }}>
+              <button onClick={reset}
+                style={{ flex: 1, background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em' }}>
+                もう一度診断する
+              </button>
+              <a href="/kokoro-chat"
+                style={{ flex: 1, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em', textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                Talk に戻る →
+              </a>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ marginTop: 16, color: '#ef4444', fontSize: 12, textAlign: 'center' }}>{error}</div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
+      `}</style>
+    </div>
+  );
+}
