@@ -405,6 +405,10 @@ export default function KokoroChat() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Talk</span>
         </div>
+        <button onClick={() => { localStorage.removeItem('talkMessages'); setMessages([]); }}
+          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
+          履歴をクリア
+        </button>
       </header>
 
       {/* チャットエリア */}
