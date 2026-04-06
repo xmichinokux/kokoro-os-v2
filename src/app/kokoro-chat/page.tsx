@@ -53,6 +53,12 @@ export default function KokoroChat() {
   const [deepLoaded, setDeepLoaded] = useState(false);
   const [zenPersonas, setZenPersonas] = useState<{id:string;name:string;text:string}[]>([]);
   const [personasOpen, setPersonasOpen] = useState(false);
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [attachedMediaType, setAttachedMediaType] = useState('');
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  const [animalResult, setAnimalResult] = useState<{text:string; question:string} | null>(null);
+  const [animalLoading, setAnimalLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,6 +70,45 @@ export default function KokoroChat() {
     role: m.role === 'user' ? 'user' : 'assistant',
     content: m.content,
   }));
+
+  const handleImageAttach = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    setAttachedMediaType(file.type);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setAttachedPreview(result);
+      setAttachedImage(result.split(',')[1]);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearAttachment = () => {
+    setAttachedImage(null);
+    setAttachedMediaType('');
+    setAttachedPreview(null);
+    setAnimalResult(null);
+  };
+
+  const openAnimalTalk = async () => {
+    if (!attachedImage || animalLoading) return;
+    setAnimalLoading(true);
+    setAnimalResult(null);
+    try {
+      const res = await fetch('/api/kokoro-animal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: attachedImage, mediaType: attachedMediaType }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setAnimalResult({ text: data.mainText, question: data.question });
+    } catch (e) {
+      setAnimalResult({ text: `エラー: ${e instanceof Error ? e.message : ''}`, question: '' });
+    } finally {
+      setAnimalLoading(false);
+    }
+  };
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -82,11 +127,14 @@ export default function KokoroChat() {
           message: text,
           history: apiHistory,
           turnCount: messages.filter(m => m.role === 'user').length,
+          imageBase64: attachedImage || undefined,
+          mediaType: attachedMediaType || undefined,
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      clearAttachment();
       const aiMsg: Message = {
         role: 'ai',
         content: data.text,
@@ -346,6 +394,19 @@ export default function KokoroChat() {
 
       {/* 入力エリア */}
       <div style={{ padding:'12px 20px 16px', borderTop:'1px solid #e5e7eb', background:'#fff' }}>
+        {/* 画像プレビュー */}
+        {attachedPreview && (
+          <div style={{ maxWidth:680, margin:'0 auto 8px', padding:'0 20px' }}>
+            <div style={{ position:'relative', display:'inline-block' }}>
+              <img src={attachedPreview} alt="attachment"
+                style={{ height:80, borderRadius:8, display:'block', objectFit:'cover' }} />
+              <button onClick={clearAttachment}
+                style={{ position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:'50%', background:'#1a1a1a', color:'#fff', border:'none', cursor:'pointer', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
         <div style={{ maxWidth:680, margin:'0 auto', display:'flex', gap:10, alignItems:'flex-end' }}>
           <textarea
             ref={textareaRef}
@@ -362,6 +423,12 @@ export default function KokoroChat() {
             rows={1}
             style={{ flex:1, resize:'none', border:'1px solid #e5e7eb', borderRadius:12, padding:'12px 16px', fontSize:14, lineHeight:1.6, outline:'none', fontFamily:'inherit', background:'#f9fafb', color:'#1a1a1a', minHeight:48, maxHeight:160, overflowY:'auto' }}
           />
+          <button onClick={() => fileInputRef.current?.click()}
+            style={{ width:46, height:46, flexShrink:0, background:'#f3f4f6', border:'1px solid #e5e7eb', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>
+            📎
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" style={{ display:'none' }}
+            onChange={e => { if (e.target.files?.[0]) handleImageAttach(e.target.files[0]); }} />
           <button onClick={sendMessage} disabled={isLoading}
             style={{ width:46, height:46, flexShrink:0, background:'#7c3aed', border:'none', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#fff', opacity: isLoading ? 0.5 : 1 }}>
             ↑

@@ -124,21 +124,44 @@ function shouldShowZen(
 }
 
 /* ── Anthropic呼び出し ── */
-async function callAnthropic(system: string, userMessage: string, maxTokens = 200) {
+async function callAnthropic(
+  system: string,
+  userMessage: string,
+  apiKey: string,
+  maxTokens = 200,
+  imageBase64?: string,
+  mediaType?: string
+) {
+  const content: unknown[] = [];
+
+  if (imageBase64 && mediaType) {
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: mediaType,
+        data: imageBase64,
+      },
+    });
+  }
+
+  content.push({ type: 'text', text: userMessage });
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: maxTokens,
       system,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [{ role: 'user', content }],
     }),
   });
+
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error?.message || 'Anthropic API error');
@@ -150,7 +173,7 @@ async function callAnthropic(system: string, userMessage: string, maxTokens = 20
 /* ── POSTハンドラ ── */
 export async function POST(req: NextRequest) {
   try {
-    const { message, history, turnCount } = await req.json();
+    const { message, history, turnCount, imageBase64, mediaType } = await req.json();
 
     const personaId = selectPersona(message);
     const waverInstruction = buildWaverInstruction(turnCount || 0, message);
@@ -171,7 +194,10 @@ export async function POST(req: NextRequest) {
       ? `[会話履歴]\n${history.slice(-10).map((m: {role:string;content:string}) => `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`).join('\n')}\n\n[今回の入力]\n${message}`
       : message;
 
-    const raw = await callAnthropic(system, userMsg, 200);
+    const apiKey = process.env.ANTHROPIC_API_KEY!;
+    const raw = await callAnthropic(system, userMsg, apiKey, 200, imageBase64, mediaType);
+
+    const isAnimalImage = !!(imageBase64 && mediaType);
 
     let replyText = raw;
     let needZen = false;
@@ -196,6 +222,7 @@ export async function POST(req: NextRequest) {
       personaId,
       syncRate,
       showZen,
+      showAnimal: isAnimalImage,
     });
 
   } catch (err) {

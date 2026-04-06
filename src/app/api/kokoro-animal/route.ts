@@ -8,7 +8,7 @@ const ANIMAL_SYSTEM = `あなたはKokoro OSの「Animal Talk」です。
 その動物が「言葉を持つとしたら何を語るか」を出力します。
 
 【出力ルール】
-・3〜5文で完結
+・情念テキスト：3〜5文で完結
 ・動物の一人称（「私は」「俺は」「あたしは」）で語る
 ・情念・本能・野生の感覚を言語化する
 ・かわいい解説や生態説明は禁止
@@ -16,11 +16,29 @@ const ANIMAL_SYSTEM = `あなたはKokoro OSの「Animal Talk」です。
 ・言葉以前の感覚を言葉にする
 ・最後に「問い：」で終わる（動物がこちらに投げかける問い）
 
-【出力例】
-俺はずっとここにいる。
-動くことが目的じゃない。静止が俺の攻撃だ。
-お前は今日、何かを待っているか。
-問い：お前の静止は、何を狙っている？`;
+【スコア出力】
+以下の6軸を0〜100で評価してください：
+- pathos: 情念の強さ
+- contradiction: 矛盾・葛藤の深さ
+- rawness: 生々しさ・野生感
+- love: 愛情・依存・つながりへの渇望
+- silence: 沈黙・静止・待機の密度
+- instinct: 本能的衝動の強さ
+
+【出力フォーマット（厳守）】
+以下のJSONのみを返してください：
+{
+  "text": "情念テキスト（3〜5文）",
+  "question": "問いの内容（「問い：」を除いた部分）",
+  "scores": {
+    "pathos": 数値,
+    "contradiction": 数値,
+    "rawness": 数値,
+    "love": 数値,
+    "silence": 数値,
+    "instinct": 数値
+  }
+}`;
 
 async function callAnthropicVision(
   imageBase64: string,
@@ -36,7 +54,7 @@ async function callAnthropicVision(
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 400,
+      max_tokens: 600,
       system: ANIMAL_SYSTEM,
       messages: [
         {
@@ -52,7 +70,7 @@ async function callAnthropicVision(
             },
             {
               type: 'text',
-              text: 'この動物の情念を読んでください。',
+              text: 'この動物の情念を読んでください。JSONのみで返してください。',
             },
           ],
         },
@@ -68,6 +86,12 @@ async function callAnthropicVision(
   return data.content[0].text as string;
 }
 
+function safeParseJSON(raw: string) {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('JSON not found');
+  return JSON.parse(match[0]);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { imageBase64, mediaType } = await req.json();
@@ -81,17 +105,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '画像データが必要です' }, { status: 400 });
     }
 
-    const text = await callAnthropicVision(imageBase64, mediaType, apiKey);
+    const raw = await callAnthropicVision(imageBase64, mediaType, apiKey);
+    const parsed = safeParseJSON(raw);
 
-    let mainText = text;
-    let question = '';
-    const qm = text.match(/問い[：:]\s*(.+)/);
-    if (qm) {
-      question = qm[1].trim();
-      mainText = text.replace(/問い[：:].+/, '').trim();
-    }
-
-    return NextResponse.json({ mainText, question });
+    return NextResponse.json({
+      mainText: parsed.text || '',
+      question: parsed.question || '',
+      scores: parsed.scores || null,
+    });
 
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

@@ -10,6 +10,7 @@ export default function KokoroAnimal() {
   const [mainText, setMainText] = useState('');
   const [question, setQuestion] = useState('');
   const [error, setError] = useState('');
+  const [scores, setScores] = useState<Record<string,number> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (file: File) => {
@@ -59,6 +60,7 @@ export default function KokoroAnimal() {
       if (data.error) throw new Error(data.error);
       setMainText(data.mainText);
       setQuestion(data.question);
+      setScores(data.scores || null);
     } catch (e) {
       setError(e instanceof Error ? e.message : '不明なエラー');
     } finally {
@@ -73,6 +75,110 @@ export default function KokoroAnimal() {
     setMainText('');
     setQuestion('');
     setError('');
+    setScores(null);
+  };
+
+  const AXES = [
+    { key:'pathos',       label:'Pathos',       sub:'情念' },
+    { key:'contradiction',label:'Contradiction', sub:'矛盾' },
+    { key:'rawness',      label:'Rawness',       sub:'生感' },
+    { key:'love',         label:'Love',          sub:'愛情' },
+    { key:'silence',      label:'Silence',       sub:'沈黙' },
+    { key:'instinct',     label:'Instinct',      sub:'本能' },
+  ];
+
+  const RadarChart = ({ scores }: { scores: Record<string,number> }) => {
+    const size = 260;
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = 90;
+    const n = AXES.length;
+
+    const angleOf = (i: number) => (Math.PI * 2 * i) / n - Math.PI / 2;
+
+    const pointOf = (i: number, ratio: number) => {
+      const a = angleOf(i);
+      return {
+        x: cx + r * ratio * Math.cos(a),
+        y: cy + r * ratio * Math.sin(a),
+      };
+    };
+
+    const labelOf = (i: number) => {
+      const a = angleOf(i);
+      const lr = r + 32;
+      return {
+        x: cx + lr * Math.cos(a),
+        y: cy + lr * Math.sin(a),
+      };
+    };
+
+    // グリッド（3段階）
+    const grids = [0.33, 0.66, 1].map(ratio =>
+      AXES.map((_, i) => pointOf(i, ratio))
+        .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+        .join(' ') + 'Z'
+    );
+
+    // スコアのポリゴン
+    const polygon = AXES.map((ax, i) => {
+      const ratio = (scores[ax.key] || 0) / 100;
+      const p = pointOf(i, ratio);
+      return `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+    }).join(' ') + 'Z';
+
+    // 軸ライン
+    const axisLines = AXES.map((_, i) => {
+      const p = pointOf(i, 1);
+      return `M${cx},${cy} L${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+    });
+
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+        style={{ display:'block', margin:'0 auto' }}>
+
+        {/* グリッド */}
+        {grids.map((d, i) => (
+          <path key={i} d={d} fill="none" stroke="#e5e7eb" strokeWidth={1} />
+        ))}
+
+        {/* 軸ライン */}
+        {axisLines.map((d, i) => (
+          <path key={i} d={d} fill="none" stroke="#e5e7eb" strokeWidth={1} />
+        ))}
+
+        {/* スコアポリゴン */}
+        <path d={polygon} fill="rgba(124,58,237,0.15)" stroke="#7c3aed" strokeWidth={2} />
+
+        {/* 頂点ドット */}
+        {AXES.map((ax, i) => {
+          const ratio = (scores[ax.key] || 0) / 100;
+          const p = pointOf(i, ratio);
+          return <circle key={i} cx={p.x} cy={p.y} r={4} fill="#7c3aed" />;
+        })}
+
+        {/* ラベル */}
+        {AXES.map((ax, i) => {
+          const lp = labelOf(i);
+          return (
+            <g key={i}>
+              <text x={lp.x} y={lp.y - 4}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize={9} fontFamily="'Space Mono', monospace"
+                fill="#1a1a1a" letterSpacing="0.05em">
+                {ax.label}
+              </text>
+              <text x={lp.x} y={lp.y + 10}
+                textAnchor="middle" dominantBaseline="middle"
+                fontSize={8} fontFamily="'Noto Sans JP', sans-serif"
+                fill="#9ca3af">
+                {ax.sub}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    );
   };
 
   const formatText = (text: string) =>
@@ -160,6 +266,13 @@ export default function KokoroAnimal() {
                     {formatText(mainText)}
                   </div>
                 </div>
+
+                {scores && (
+                  <div style={{ marginBottom:28, padding:'24px 0' }}>
+                    <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#9ca3af', textTransform:'uppercase', marginBottom:20, textAlign:'center' }}>// Resonance Map</div>
+                    <RadarChart scores={scores} />
+                  </div>
+                )}
 
                 {question && (
                   <div style={{ borderLeft:'2px solid #7c3aed', paddingLeft:20, marginBottom:28 }}>
