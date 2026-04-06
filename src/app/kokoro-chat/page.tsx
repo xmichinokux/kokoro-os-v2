@@ -285,8 +285,19 @@ export default function KokoroChat() {
         }
       }
 
-      // Fashionボタン: intent検出 & プロフィール十分 & 質問中でない
-      const showFashionBtn = fashionDetected && !askedProfileQuestion && canShowFashionButton();
+      // 画像+Fashion intentの場合はAnimalを抑制してFashionを出す
+      const hasImage = !!(savedImage && savedMediaType);
+      let showAnimalBtn = data.showAnimal;
+      let showFashionBtn = false;
+
+      if (hasImage && fashionDetected) {
+        // Fashion intent + 画像 → Animal非表示、Fashion表示（条件付き）
+        showAnimalBtn = false;
+        showFashionBtn = !askedProfileQuestion && canShowFashionButton();
+      } else if (fashionDetected) {
+        // テキストのみのFashion intent
+        showFashionBtn = !askedProfileQuestion && canShowFashionButton();
+      }
 
       const aiMsg: Message = {
         role: 'ai',
@@ -294,7 +305,7 @@ export default function KokoroChat() {
         personaId: data.personaId,
         syncRate: data.syncRate,
         showZen: data.showZen,
-        showAnimal: data.showAnimal,
+        showAnimal: showAnimalBtn,
         showFashion: showFashionBtn,
         imagePreview: savedPreview || undefined,
         imageBase64: savedImage || undefined,
