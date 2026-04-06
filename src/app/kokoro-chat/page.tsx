@@ -11,6 +11,8 @@ type Message = {
   showZen?: boolean;
   showAnimal?: boolean;
   imagePreview?: string;
+  imageBase64?: string;
+  imageMediaType?: string;
 };
 
 type ApiHistory = { role: string; content: string };
@@ -92,15 +94,17 @@ export default function KokoroChat() {
     setAnimalResult(null);
   };
 
-  const openAnimalTalk = async () => {
-    if (!attachedImage || animalLoading) return;
+  const openAnimalTalk = async (msg?: Message) => {
+    const imgData = msg?.imageBase64 || attachedImage;
+    const imgType = msg?.imageMediaType || attachedMediaType;
+    if (!imgData || !imgType || animalLoading) return;
     setAnimalLoading(true);
     setAnimalResult(null);
     try {
       const res = await fetch('/api/kokoro-animal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: attachedImage, mediaType: attachedMediaType }),
+        body: JSON.stringify({ imageBase64: imgData, mediaType: imgType }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -136,6 +140,9 @@ export default function KokoroChat() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      const savedImage = attachedImage;
+      const savedMediaType = attachedMediaType;
+      const savedPreview = attachedPreview;
       clearAttachment();
       const aiMsg: Message = {
         role: 'ai',
@@ -144,7 +151,9 @@ export default function KokoroChat() {
         syncRate: data.syncRate,
         showZen: data.showZen,
         showAnimal: data.showAnimal,
-        imagePreview: attachedPreview || undefined,
+        imagePreview: savedPreview || undefined,
+        imageBase64: savedImage || undefined,
+        imageMediaType: savedMediaType || undefined,
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch (e) {
@@ -290,7 +299,7 @@ export default function KokoroChat() {
                         🐾 この子、何か言ってそう。声を聞いてみる？
                       </div>
                       {!animalResult && !animalLoading && (
-                        <button onClick={openAnimalTalk}
+                        <button onClick={() => openAnimalTalk(msg)}
                           style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
                           動物の声を聞く →
                         </button>
