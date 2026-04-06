@@ -66,6 +66,21 @@ export default function KokoroChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // sessionStorageからメッセージを復元
+  useEffect(() => {
+    const saved = sessionStorage.getItem('talkMessages');
+    if (saved) {
+      try { setMessages(JSON.parse(saved)); } catch { /* ignore */ }
+    }
+  }, []);
+
+  // メッセージが更新されるたびにsessionStorageに保存
+  useEffect(() => {
+    if (messages.length > 0) {
+      sessionStorage.setItem('talkMessages', JSON.stringify(messages));
+    }
+  }, [messages]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, zenOpen]);
@@ -75,16 +90,38 @@ export default function KokoroChat() {
     content: m.content,
   }));
 
-  const handleImageAttach = (file: File) => {
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 1024;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = (h / w) * MAX; w = MAX; }
+            else { w = (w / h) * MAX; h = MAX; }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageAttach = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    setAttachedMediaType(file.type);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setAttachedPreview(result);
-      setAttachedImage(result.split(',')[1]);
-    };
-    reader.readAsDataURL(file);
+    setAttachedMediaType('image/jpeg');
+    const compressed = await compressImage(file);
+    setAttachedPreview(compressed);
+    setAttachedImage(compressed.split(',')[1]);
   };
 
   const clearAttachment = () => {

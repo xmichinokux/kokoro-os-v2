@@ -55,7 +55,33 @@ export default function KokoroAnimal() {
     }
   }, [autoStarted, analyzeWithData]);
 
-  const handleFile = (file: File) => {
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 1024;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = (h / w) * MAX; w = MAX; }
+            else { w = (w / h) * MAX; h = MAX; }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setError('画像ファイルを選択してください');
       return;
@@ -63,16 +89,11 @@ export default function KokoroAnimal() {
     setError('');
     setMainText('');
     setQuestion('');
-    setMediaType(file.type);
+    setMediaType('image/jpeg');
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setPreview(result);
-      const base64 = result.split(',')[1];
-      setImageBase64(base64);
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImage(file);
+    setPreview(compressed);
+    setImageBase64(compressed.split(',')[1]);
   };
 
   const handleDrop = (e: React.DragEvent) => {
