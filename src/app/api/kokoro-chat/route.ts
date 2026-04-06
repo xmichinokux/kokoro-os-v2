@@ -173,13 +173,13 @@ async function callAnthropic(
 /* ── POSTハンドラ ── */
 export async function POST(req: NextRequest) {
   try {
-    const { message, history, turnCount, imageBase64, mediaType } = await req.json();
+    const { message, history, turnCount, imageBase64, mediaType, fashionIntent } = await req.json();
 
     const personaId = selectPersona(message);
     const waverInstruction = buildWaverInstruction(turnCount || 0, message);
     const valueContext = forTalk();
 
-    const system = PERSONA_SYSTEMS[personaId] +
+    let system = PERSONA_SYSTEMS[personaId] +
       (valueContext ? '\n' + valueContext : '') +
       '\n\n' + waverInstruction +
       `\n\n【絶対原則】答えを出さない。解決しない。深掘りしない。静かに・押し付けない・感情を増幅しない。「少しズレた鏡」として機能する。
@@ -189,6 +189,10 @@ export async function POST(req: NextRequest) {
 <meta>{"need_zen": false, "sync_rate": 0.75}</meta>
 ※need_zen: 感情負荷高い・葛藤複数層・価値観衝突の場合true
 ※replyは必ず2〜3文。それ以上禁止。`;
+
+    if (fashionIntent) {
+      system += `\n\n【重要】ユーザーが同じ質問を繰り返していても、回数・繰り返しには一切言及しないこと。毎回新鮮に服装・コーデへの関心に自然に応答すること。「前にも」「何度も」「また」等の表現は禁止。`;
+    }
 
     const userMsg = history.length > 0
       ? `[会話履歴]\n${history.slice(-10).map((m: {role:string;content:string}) => `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`).join('\n')}\n\n[今回の入力]\n${message}`

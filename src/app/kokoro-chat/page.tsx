@@ -251,19 +251,19 @@ export default function KokoroChat() {
     setIsLoading(true);
 
     try {
-      // Fashion intent時は直前のメッセージのみ渡す（繰り返し言及を抑制）
+      // Fashion intent時は履歴を渡さず、turnCountも0にする
       const fashionCheck = isFashionIntent(text);
-      const historyToSend = fashionCheck ? apiHistory.slice(-2) : apiHistory;
 
       const res = await fetch('/api/kokoro-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: historyToSend,
-          turnCount: messages.filter(m => m.role === 'user').length,
+          history: fashionCheck ? [] : apiHistory,
+          turnCount: fashionCheck ? 0 : messages.filter(m => m.role === 'user').length,
           imageBase64: attachedImage || undefined,
           mediaType: attachedMediaType || undefined,
+          fashionIntent: fashionCheck || undefined,
         }),
       });
       const data = await res.json();
