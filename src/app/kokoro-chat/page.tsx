@@ -66,18 +66,18 @@ export default function KokoroChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // sessionStorageからメッセージを復元
+  // localStorageからメッセージを復元
   useEffect(() => {
-    const saved = sessionStorage.getItem('talkMessages');
+    const saved = localStorage.getItem('talkMessages');
     if (saved) {
       try { setMessages(JSON.parse(saved)); } catch { /* ignore */ }
     }
   }, []);
 
-  // メッセージが更新されるたびにsessionStorageに保存
+  // メッセージが更新されるたびにlocalStorageに保存
   useEffect(() => {
     if (messages.length > 0) {
-      sessionStorage.setItem('talkMessages', JSON.stringify(messages));
+      localStorage.setItem('talkMessages', JSON.stringify(messages));
     }
   }, [messages]);
 
