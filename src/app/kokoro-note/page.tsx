@@ -59,6 +59,21 @@ export default function KokoroNotePage() {
     setNotes(getAllNotes());
   }, []);
 
+  // Talkからのdraft引き継ぎを確認
+  useEffect(() => {
+    const raw = localStorage.getItem('kokoro_note_draft');
+    const params = new URLSearchParams(window.location.search);
+    if (raw && params.get('mode') === 'create') {
+      localStorage.removeItem('kokoro_note_draft');
+      try {
+        const draft = JSON.parse(raw);
+        setEditTitle(draft.title ?? '');
+        setEditBody(draft.body ?? '');
+        setView('edit');
+      } catch { /* ignore */ }
+    }
+  }, []);
+
   // notes再読み込みヘルパー
   const refresh = () => setNotes(getAllNotes());
 

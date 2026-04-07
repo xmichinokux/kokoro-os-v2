@@ -27,6 +27,7 @@ type Message = {
   syncRate?: number;
   showAnimal?: boolean;
   showFashion?: boolean;
+  showNote?: boolean;
   imagePreview?: string;
   imageBase64?: string;
   imageMediaType?: string;
@@ -218,6 +219,15 @@ export default function KokoroChat() {
 
   const FASHION_WORDS = ['今日の服','コーデ','似合','服どう','これ見て','ファッション','着てる','コーディネート','どうかな','どうだろう','どう思う','見て','これ'];
   const ANIMAL_TALK_WORDS = ['なんて言ってる','何て言ってる','なんて言ってるのかな','何て言ってるのかな','声を聞く','声を聞いて','鳴い','猫','犬','ねこ','いぬ','ペット','動物'];
+
+  const NOTE_WORDS = [
+    '書きたい', '書いておきたい', 'メモしたい', '残したい', '記録したい',
+    'まとめたい', '日記', 'ノート', '書き留め', '忘れたくない',
+    'メモ', 'note', '書いておく', '書き残したい',
+  ];
+
+  const isNoteIntent = (text: string): boolean =>
+    NOTE_WORDS.some(w => text.includes(w));
 
   const isFashionIntent = (text: string): boolean =>
     FASHION_WORDS.some(w => text.includes(w));
@@ -454,6 +464,7 @@ export default function KokoroChat() {
 
       let showAnimalBtn = !!(savedImage && savedMediaType) && !emiBlocking;
       let showFashionBtn = false;
+      const showNoteBtn = isNoteIntent(text);
 
       if (!emiBlocking) {
         if (fashionDetected) {
@@ -509,6 +520,7 @@ export default function KokoroChat() {
             responseStrategy,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
+            showNote: showNoteBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -586,6 +598,7 @@ export default function KokoroChat() {
             responseStrategy,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
+            showNote: showNoteBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -627,6 +640,7 @@ export default function KokoroChat() {
             responseStrategy,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
+            showNote: showNoteBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -872,6 +886,21 @@ export default function KokoroChat() {
                       <button onClick={openFashion}
                         style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
                         Fashion診断へ →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showNote && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(52,211,153,0.06)', border:'1px solid rgba(52,211,153,0.25)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#6ee7b7' }}>📝 書き留めておく？</span>
+                      <button onClick={() => {
+                        localStorage.setItem('kokoro_note_draft', JSON.stringify({
+                          title: msg.talkResponse?.slice(0, 20) ?? 'Talk メモ',
+                          body: msg.talkResponse ?? '',
+                        }));
+                        window.location.href = '/kokoro-note?mode=create';
+                      }}
+                        style={{ background:'transparent', border:'1px solid rgba(52,211,153,0.4)', color:'#6ee7b7', padding:'5px 14px', borderRadius:4, cursor:'pointer', fontSize:12, fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', whiteSpace:'nowrap' }}>
+                        Note に書く →
                       </button>
                     </div>
                   )}
