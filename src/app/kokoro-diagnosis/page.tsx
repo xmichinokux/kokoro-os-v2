@@ -203,7 +203,7 @@ export default function KokoroDiagnosis() {
             </Section>
 
             {/* ⑨ 本音ログ抜粋 */}
-            <div ref={logsRef}>
+            <div ref={logsRef} id="featured-logs">
               <Section title="本音ログ抜粋" show={featuredLogs.length > 0}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {featuredLogs.map((log, i) => (

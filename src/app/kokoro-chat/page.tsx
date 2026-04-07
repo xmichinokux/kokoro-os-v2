@@ -282,7 +282,7 @@ export default function KokoroChat() {
   const handleZenClick = (userInput?: string) => {
     // 直近のユーザー入力をsessionStorageに保存
     const lastUserInput = userInput || messages.filter(m => m.role === 'user').map(m => m.content).pop() || '';
-    sessionStorage.setItem('zenFromTalk', lastUserInput);
+    sessionStorage.setItem('zenFromTalk', JSON.stringify({ userInput: lastUserInput }));
     router.push('/kokoro-zen');
   };
 

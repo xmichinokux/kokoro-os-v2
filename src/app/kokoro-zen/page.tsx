@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 type PersonaResult = { id: string; name: string; text: string };
 type Core = {
@@ -24,6 +25,7 @@ const PERSONA_COLORS: Record<string, string> = {
 };
 
 export default function KokoroZen() {
+  const router = useRouter();
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadStep, setLoadStep] = useState(0);
@@ -36,19 +38,8 @@ export default function KokoroZen() {
   const [deepOpen, setDeepOpen] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const fromTalk = sessionStorage.getItem('zenFromTalk');
-    if (fromTalk) { setInput(fromTalk); sessionStorage.removeItem('zenFromTalk'); }
-  }, []);
-
-  const formatEmi = (text: string) =>
-    text.split(/(?<=。)/).map(s => s.trim()).filter(s => s).map((s, i) => (
-      <p key={i} style={{ margin:'0 0 1.1em 0' }}>{s}</p>
-    ));
-
-  const submit = async () => {
-    const text = input.trim();
-    if (!text || isLoading) return;
+  const runZenAnalysis = useCallback(async (text: string) => {
+    if (!text.trim() || isLoading) return;
 
     setError('');
     setResult(null);
@@ -78,6 +69,39 @@ export default function KokoroZen() {
       setIsLoading(false);
       setLoadStep(0);
     }
+  }, [isLoading]);
+
+  // Talk→Zen自動分析
+  const autoRunRef = useRef(false);
+  useEffect(() => {
+    if (autoRunRef.current) return;
+    autoRunRef.current = true;
+
+    const raw = sessionStorage.getItem('zenFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('zenFromTalk');
+
+    try {
+      const { userInput } = JSON.parse(raw);
+      if (userInput) {
+        setInput(userInput);
+        // 少し遅延してから自動分析開始
+        setTimeout(() => runZenAnalysis(userInput), 100);
+      }
+    } catch {
+      // fallback: rawがJSON以外（旧形式）
+      setInput(raw);
+      setTimeout(() => runZenAnalysis(raw), 100);
+    }
+  }, [runZenAnalysis]);
+
+  const formatEmi = (text: string) =>
+    text.split(/(?<=。)/).map(s => s.trim()).filter(s => s).map((s, i) => (
+      <p key={i} style={{ margin:'0 0 1.1em 0' }}>{s}</p>
+    ));
+
+  const submit = () => {
+    runZenAnalysis(input);
   };
 
   const loadDeepEmi = async () => {
@@ -115,6 +139,10 @@ export default function KokoroZen() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Zen</span>
         </div>
+        <button onClick={() => router.push('/kokoro-chat')}
+          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
+          ← Talk に戻る
+        </button>
       </header>
 
       <div style={{ maxWidth:680, margin:'0 auto', padding:'40px 20px 80px' }}>
@@ -133,7 +161,7 @@ export default function KokoroZen() {
           <div style={{ display:'flex', justifyContent:'flex-end', marginTop:10 }}>
             <button onClick={submit} disabled={isLoading}
               style={{ fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', background:'#7c3aed', color:'#fff', border:'none', borderRadius:4, padding:'10px 24px', cursor:'pointer', opacity: isLoading ? 0.5 : 1 }}>
-              {isLoading ? '// 処理中...' : '▸ 深掘りする'}
+              {isLoading ? '// 整理しています...' : '▸ 深掘りする'}
             </button>
           </div>
         </div>
