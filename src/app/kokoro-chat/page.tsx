@@ -7,7 +7,7 @@ import KokoroCoreView from '@/components/kokoro/KokoroCoreView';
 import type { KokoroResponse, Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
-import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
+import { appendHonneLog, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -562,18 +562,6 @@ export default function KokoroChat() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Talk</span>
         </div>
         <div style={{ display:'flex', gap:6 }}>
-          <button onClick={() => { localStorage.removeItem('talkMessages'); setMessages([]); }}
-            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            履歴をクリア
-          </button>
-          <button onClick={() => { localStorage.removeItem('kokoroProfile'); }}
-            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            プロフィールをクリア
-          </button>
-          <button onClick={() => { clearHonneLogs(); }}
-            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            本音ログをクリア
-          </button>
         </div>
       </header>
 
