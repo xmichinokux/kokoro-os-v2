@@ -1,4 +1,7 @@
+'use client';
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 type App = {
   icon: string;
@@ -61,6 +64,18 @@ const APPS: App[] = [
 ];
 
 export default function Home() {
+  const [hasHonneLogs, setHasHonneLogs] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('kokoroHonneLogs');
+      if (raw) {
+        const logs = JSON.parse(raw);
+        setHasHonneLogs(Array.isArray(logs) && logs.length > 0);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   return (
     <div
       className="min-h-screen flex flex-col bg-white"
@@ -101,6 +116,33 @@ export default function Home() {
       {/* App grid */}
       <main className="flex-1 px-8 pb-16">
         <div className="max-w-2xl mx-auto grid grid-cols-2 gap-4">
+          {/* 最近の状態カード */}
+          {hasHonneLogs && (
+            <div
+              className="border rounded-2xl p-5 flex flex-col gap-3 col-span-2"
+              style={{ borderColor: '#bbf7d0', background: '#f0fdf4' }}
+            >
+              <div className="text-2xl">📊</div>
+              <div>
+                <div className="text-sm font-bold mb-1" style={{ color: '#1a1a1a' }}>
+                  最近の状態
+                </div>
+                <div
+                  className="text-xs leading-relaxed"
+                  style={{ color: '#6b7280', fontFamily: 'var(--font-noto-serif-jp), serif' }}
+                >
+                  今の傾向をまとめる
+                </div>
+              </div>
+              <Link
+                href="/kokoro-diagnosis"
+                className="mt-auto text-xs font-bold px-3 py-2 rounded-lg text-center transition-colors"
+                style={{ background: '#dcfce7', color: '#059669' }}
+              >
+                診断を見る →
+              </Link>
+            </div>
+          )}
           {APPS.map((app) => (
             <div
               key={app.href}

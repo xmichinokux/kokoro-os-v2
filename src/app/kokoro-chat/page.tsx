@@ -7,7 +7,7 @@ import KokoroCoreView from '@/components/kokoro/KokoroCoreView';
 import type { KokoroResponse, Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
-import { appendHonneLog, clearHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
+import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -21,6 +21,7 @@ type Message = {
   showZen?: boolean;
   showAnimal?: boolean;
   showFashion?: boolean;
+  showDiagnosis?: boolean;
   imagePreview?: string;
   imageBase64?: string;
   imageMediaType?: string;
@@ -82,6 +83,7 @@ export default function KokoroChat() {
     turnCount: 0,
   });
   const [whisperOpen, setWhisperOpen] = useState<Record<number, boolean>>({});
+  const [diagnosisTriggerShown, setDiagnosisTriggerShown] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -104,6 +106,36 @@ export default function KokoroChat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, zenOpen]);
+
+  // 診断画面からの遷移を受け取る
+  const diagnosisHandledRef = useRef(false);
+  useEffect(() => {
+    if (diagnosisHandledRef.current) return;
+    diagnosisHandledRef.current = true;
+
+    const stayData = sessionStorage.getItem('diagnosisStayIntent');
+    if (stayData) {
+      try {
+        const { stayPersona, prompt } = JSON.parse(stayData);
+        sessionStorage.removeItem('diagnosisStayIntent');
+        setStayState({ active: true, persona: stayPersona, style: 'balanced', turnCount: 0 });
+        if (prompt) {
+          setTimeout(() => { setInput(prompt); }, 300);
+        }
+      } catch { /* ignore */ }
+    }
+
+    const multiData = sessionStorage.getItem('diagnosisMultiIntent');
+    if (multiData) {
+      try {
+        const { prompt } = JSON.parse(multiData);
+        sessionStorage.removeItem('diagnosisMultiIntent');
+        if (prompt) {
+          setTimeout(() => { setInput(prompt); }, 300);
+        }
+      } catch { /* ignore */ }
+    }
+  }, []);
 
   const apiHistory: ApiHistory[] = messages.map(m => ({
     role: m.role === 'user' ? 'user' : 'assistant',
@@ -389,19 +421,6 @@ export default function KokoroChat() {
         showFashionBtn = true;
       }
 
-      const aiMsg: Message = {
-        role: 'ai',
-        content: replyText,
-        kokoroResponse: data.kokoroResponse || undefined,
-        showZen: data.showZen,
-        showAnimal: showAnimalBtn,
-        showFashion: showFashionBtn,
-        imagePreview: savedPreview || undefined,
-        imageBase64: savedImage || undefined,
-        imageMediaType: savedMediaType || undefined,
-      };
-      setMessages(prev => [...prev, aiMsg]);
-
       // 本音ログ保存
       if (data.honneLog) {
         const log = createHonneLog({
@@ -411,6 +430,54 @@ export default function KokoroChat() {
         });
         appendHonneLog(log);
       }
+
+      // 診断トリガー判定
+      let showDiagnosisBtn = false;
+      if (!diagnosisTriggerShown) {
+        const honneLogs = getHonneLogs();
+        if (honneLogs.length >= 5) {
+          // クールダウン確認
+          const triggerRaw = localStorage.getItem('diagnosisTriggerState');
+          const now = Date.now();
+          let canShow = true;
+          if (triggerRaw) {
+            try {
+              const ts = JSON.parse(triggerRaw);
+              if (ts.lastShownAt && now - ts.lastShownAt < 10 * 60 * 1000) canShow = false;
+            } catch { /* ignore */ }
+          }
+          if (canShow) {
+            // deepFeelingが出現 or conflictAxesが3回以上
+            const hasDeep = data.honneLog?.deepFeeling;
+            const conflictCount: Record<string, number> = {};
+            for (const l of honneLogs) {
+              for (const ax of l.conflictAxes || []) {
+                conflictCount[ax] = (conflictCount[ax] || 0) + 1;
+              }
+            }
+            const hasRepeatedConflict = Object.values(conflictCount).some(c => c >= 3);
+            if (hasDeep || hasRepeatedConflict) {
+              showDiagnosisBtn = true;
+              setDiagnosisTriggerShown(true);
+              localStorage.setItem('diagnosisTriggerState', JSON.stringify({ lastShownAt: now }));
+            }
+          }
+        }
+      }
+
+      const aiMsg: Message = {
+        role: 'ai',
+        content: replyText,
+        kokoroResponse: data.kokoroResponse || undefined,
+        showZen: data.showZen,
+        showAnimal: showAnimalBtn,
+        showFashion: showFashionBtn,
+        showDiagnosis: showDiagnosisBtn || undefined,
+        imagePreview: savedPreview || undefined,
+        imageBase64: savedImage || undefined,
+        imageMediaType: savedMediaType || undefined,
+      };
+      setMessages(prev => [...prev, aiMsg]);
     } catch (e) {
       setMessages(prev => [...prev, {
         role: 'ai', content: `エラーが発生しました: ${e instanceof Error ? e.message : '不明なエラー'}`,
@@ -671,6 +738,15 @@ export default function KokoroChat() {
                       </button>
                     </div>
                   )}
+                  {msg.showDiagnosis && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                      <span style={{ fontSize:12, color:'#059669' }}>少し傾向が見えてきています</span>
+                      <button onClick={() => router.push('/kokoro-diagnosis')}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#059669', background:'transparent', border:'1px solid #86efac', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
+                        今の状態を見る →
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -825,8 +901,14 @@ export default function KokoroChat() {
             ↑
           </button>
         </div>
-        <div style={{ maxWidth:680, margin:'4px auto 0', textAlign:'center', fontFamily:"'Space Mono', monospace", fontSize:9, color:'#d1d5db', letterSpacing:'0.1em' }}>
-          Enter で送信 // Shift+Enter で改行
+        <div style={{ maxWidth:680, margin:'4px auto 0', display:'flex', justifyContent:'center', alignItems:'center', gap:12 }}>
+          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#d1d5db', letterSpacing:'0.1em' }}>
+            Enter で送信 // Shift+Enter で改行
+          </span>
+          <button onClick={() => router.push('/kokoro-diagnosis')}
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'2px 8px', cursor:'pointer' }}>
+            今の状態を見る
+          </button>
         </div>
       </div>
 
