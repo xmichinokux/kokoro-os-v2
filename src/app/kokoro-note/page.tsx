@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { KokoroNote } from '@/types/note';
 import { getAllNotes, saveNote, deleteNote, togglePin, createNoteId } from '@/lib/kokoro/noteStorage';
 import { searchNotes } from '@/lib/kokoro/noteSearch';
+import { setNoteForTalk, setNoteForZen } from '@/lib/kokoro/noteLinkage';
 
 /* ── 定数 ── */
 const SOURCE_LABELS: Record<string, string> = {
@@ -37,6 +39,7 @@ function formatDate(iso: string): string {
 
 /* ── メインコンポーネント ── */
 export default function KokoroNotePage() {
+  const router = useRouter();
   const [view, setView] = useState<View>('list');
   const [notes, setNotes] = useState<KokoroNote[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -359,6 +362,30 @@ export default function KokoroNotePage() {
             style={{ background: '#fef2f2', color: '#dc2626' }}
           >
             削除
+          </button>
+        </div>
+
+        {/* 連携ボタン */}
+        <div className="flex gap-3 pt-3">
+          <button
+            onClick={() => {
+              setNoteForTalk(selectedNote);
+              router.push('/kokoro-chat');
+            }}
+            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+            style={{ background: '#ede9fe', color: '#7c3aed' }}
+          >
+            💬 Talkで続ける
+          </button>
+          <button
+            onClick={() => {
+              setNoteForZen(selectedNote);
+              router.push('/kokoro-zen');
+            }}
+            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+            style={{ background: '#dbeafe', color: '#2563eb' }}
+          >
+            🧘 Zenで整理する
           </button>
         </div>
       </>

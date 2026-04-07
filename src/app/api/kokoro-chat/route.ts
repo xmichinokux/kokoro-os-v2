@@ -7,8 +7,16 @@ function buildTalkSystem(params: {
   sessionState?: Record<string, string>;
   effectiveProfileWeight?: number;
   turnCount?: number;
+  noteContext?: {
+    noteId?: string;
+    title?: string;
+    body?: string;
+    topic?: string;
+    insightType?: string;
+    emotionTone?: string;
+  };
 }): string {
-  const { profile, sessionState, effectiveProfileWeight = 0.4, turnCount = 0 } = params;
+  const { profile, sessionState, effectiveProfileWeight = 0.4, turnCount = 0, noteContext } = params;
 
   const profileSection = effectiveProfileWeight > 0.2 && profile
     ? `【プロフィールデータ】\n${JSON.stringify(profile)}`
@@ -130,7 +138,16 @@ needZen = true にする条件：
 honneLogルール：
 - confidenceは軽い雑談なら0.3以下、深い相談なら0.7以上にする
 - 不確かな場合はsubFeeling/deepFeelingを省略する
-- JSONのみ出力。それ以外のテキストは一切禁止`;
+- JSONのみ出力。それ以外のテキストは一切禁止
+
+${noteContext ? `【参照メモ】
+ユーザーが以前書いたメモの情報。この内容を踏まえて返答すること。
+タイトル: ${noteContext.title ?? ''}
+内容: ${noteContext.body ?? ''}
+テーマ: ${noteContext.topic ?? '不明'}
+洞察タイプ: ${noteContext.insightType ?? '不明'}
+感情トーン: ${noteContext.emotionTone ?? '不明'}
+このメモの文脈を自然に会話に取り入れること。` : ''}`;
 }
 
 /* ── Anthropic呼び出し ── */
@@ -192,6 +209,7 @@ export async function POST(req: NextRequest) {
     const {
       message, history, imageBase64, mediaType,
       profile, sessionState, effectiveProfileWeight, turnCount,
+      noteContext,
     } = await req.json();
 
     const system = buildTalkSystem({
@@ -199,6 +217,7 @@ export async function POST(req: NextRequest) {
       sessionState,
       effectiveProfileWeight,
       turnCount,
+      noteContext,
     });
 
     const userMsg = history && history.length > 0

@@ -12,6 +12,8 @@ import { shouldTriggerEmi, buildEmiResponse, buildZenPromptFromEmi, type EmiStat
 import { inferSessionState, calcEffectiveProfileWeight } from '@/lib/kokoro/sessionState';
 import { createNoteFromEmi } from '@/lib/kokoro/createNoteFromTalk';
 import { saveNote } from '@/lib/kokoro/noteStorage';
+import { consumeNoteForTalk, buildTalkPromptFromNote } from '@/lib/kokoro/noteLinkage';
+import type { KokoroNote } from '@/types/note';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -86,6 +88,7 @@ export default function KokoroChat() {
   const [showDiagnosisBanner, setShowDiagnosisBanner] = useState(false);
   const [emiState, setEmiState] = useState<EmiState>({ active: false, turnCount: 0, triggerCount: 0 });
   const [turnCount, setTurnCount] = useState(0);
+  const [linkedNote, setLinkedNote] = useState<Partial<KokoroNote> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -95,6 +98,16 @@ export default function KokoroChat() {
     const saved = localStorage.getItem('talkMessages');
     if (saved) {
       try { setMessages(JSON.parse(saved)); } catch { /* ignore */ }
+    }
+  }, []);
+
+  // Note→Talk連携: メモからの初期メッセージを復元
+  useEffect(() => {
+    const noteData = consumeNoteForTalk();
+    if (noteData) {
+      setLinkedNote(noteData);
+      const prompt = buildTalkPromptFromNote(noteData);
+      setInput(prompt);
     }
   }, []);
 
@@ -370,6 +383,16 @@ export default function KokoroChat() {
       });
       const profile = getProfile();
 
+      // Note連携: linkedNoteがある場合はnoteContextとして送信
+      const noteContext = linkedNote ? {
+        noteId: linkedNote.id,
+        title: linkedNote.title,
+        body: linkedNote.body,
+        topic: linkedNote.topic,
+        insightType: linkedNote.insightType,
+        emotionTone: linkedNote.emotionTone,
+      } : undefined;
+
       const res = await fetch('/api/kokoro-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -382,8 +405,12 @@ export default function KokoroChat() {
           sessionState,
           effectiveProfileWeight,
           turnCount,
+          noteContext,
         }),
       });
+
+      // 初回送信後にlinkedNoteをクリア
+      if (linkedNote) setLinkedNote(null);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 

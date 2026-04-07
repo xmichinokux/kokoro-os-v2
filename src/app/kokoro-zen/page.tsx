@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { consumeNoteForZen, buildZenPromptFromNoteData } from '@/lib/kokoro/noteLinkage';
 
 type PersonaResult = { id: string; name: string; text: string };
 type Core = {
@@ -72,32 +73,41 @@ export default function KokoroZen() {
     }
   }, []);
 
-  // Talk→Zen自動分析
+  // Talk→Zen / Note→Zen 自動分析
   const autoRunRef = useRef(false);
   useEffect(() => {
     if (autoRunRef.current) return;
     autoRunRef.current = true;
 
+    // 1) sessionStorage: Talk→Zen
     const raw = sessionStorage.getItem('zenFromTalk');
-    if (!raw) {
-      setNoInput(true);
+    if (raw) {
+      sessionStorage.removeItem('zenFromTalk');
+      try {
+        const { userInput } = JSON.parse(raw);
+        if (userInput) {
+          setSourceText(userInput);
+          setTimeout(() => runZenAnalysis(userInput), 100);
+          return;
+        }
+      } catch {
+        // fallback: rawがJSON以外（旧形式）
+        setSourceText(raw);
+        setTimeout(() => runZenAnalysis(raw), 100);
+        return;
+      }
+    }
+
+    // 2) localStorage: Note→Zen
+    const noteData = consumeNoteForZen();
+    if (noteData) {
+      const prompt = buildZenPromptFromNoteData(noteData);
+      setSourceText(prompt);
+      setTimeout(() => runZenAnalysis(prompt), 100);
       return;
     }
-    sessionStorage.removeItem('zenFromTalk');
 
-    try {
-      const { userInput } = JSON.parse(raw);
-      if (userInput) {
-        setSourceText(userInput);
-        setTimeout(() => runZenAnalysis(userInput), 100);
-      } else {
-        setNoInput(true);
-      }
-    } catch {
-      // fallback: rawがJSON以外（旧形式）
-      setSourceText(raw);
-      setTimeout(() => runZenAnalysis(raw), 100);
-    }
+    setNoInput(true);
   }, [runZenAnalysis]);
 
   const formatEmi = (text: string) =>
