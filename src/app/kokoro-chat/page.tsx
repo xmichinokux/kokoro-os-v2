@@ -6,6 +6,8 @@ import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@
 import KokoroCoreView from '@/components/kokoro/KokoroCoreView';
 import type { KokoroResponse, Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
+import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
+import { appendHonneLog, clearHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -399,6 +401,16 @@ export default function KokoroChat() {
         imageMediaType: savedMediaType || undefined,
       };
       setMessages(prev => [...prev, aiMsg]);
+
+      // 本音ログ保存
+      if (data.honneLog) {
+        const log = createHonneLog({
+          ...data.honneLog,
+          sourceMode: stayState.active ? 'stay' : 'normal',
+          activePersona: stayState.active ? stayState.persona : undefined,
+        });
+        appendHonneLog(log);
+      }
     } catch (e) {
       setMessages(prev => [...prev, {
         role: 'ai', content: `エラーが発生しました: ${e instanceof Error ? e.message : '不明なエラー'}`,
@@ -490,6 +502,10 @@ export default function KokoroChat() {
           <button onClick={() => { localStorage.removeItem('kokoroProfile'); }}
             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
             プロフィールをクリア
+          </button>
+          <button onClick={() => { clearHonneLogs(); }}
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
+            本音ログをクリア
           </button>
         </div>
       </header>

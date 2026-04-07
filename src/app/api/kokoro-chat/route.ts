@@ -43,7 +43,18 @@ const CORE_SYSTEM = `あなたはKokoro OSのTalkです。
     "action": ["今日できる行動1", "今週できる行動2"],
     "trueFeeling": "本当は…という感覚を1文で"
   },
-  "need_zen": false
+  "need_zen": false,
+  "honneLog": {
+    "topic": "仕事|恋愛|創作|メンタル|人間関係|生活|その他",
+    "surfaceText": "ユーザーが表現していた内容を20字以内で要約",
+    "subFeeling": "うっすら感じていそうな感情（任意・不確かなら省略）",
+    "deepFeeling": "言語化されていない深層の感情（任意・確信がある時のみ）",
+    "emotionTone": ["不安", "焦り", "希望", "倦怠" 等の配列],
+    "conflictAxes": ["安全 vs 変化" 等の価値軸対立（任意）],
+    "detectedNeeds": ["理解", "安心", "変化", "意味" 等（任意）],
+    "riskFlags": ["固着", "回避", "焦燥" 等（任意）],
+    "confidence": 0.0
+  }
 }
 
 ルール：
@@ -54,6 +65,8 @@ const CORE_SYSTEM = `あなたはKokoro OSのTalkです。
 - 争点は人格名ではなく価値軸で表現する
 - 本音は結論の裏にある感情を短く
 - need_zenは感情負荷高い・葛藤複数層・価値観衝突の場合true
+- honneLogのconfidenceは軽い雑談なら0.3以下、深い相談なら0.7以上にする
+- 不確かな場合はsubFeeling/deepFeelingを省略する
 - JSONのみ出力。それ以外のテキストは一切禁止`;
 
 /* ── Intent判定 ── */
@@ -194,7 +207,7 @@ export async function POST(req: NextRequest) {
       : message;
 
     const apiKey = process.env.ANTHROPIC_API_KEY!;
-    const raw = await callAnthropic(system, userMsg, apiKey, 600, imageBase64, mediaType);
+    const raw = await callAnthropic(system, userMsg, apiKey, 900, imageBase64, mediaType);
 
     const isAnimalImage = !!(imageBase64 && mediaType);
 
@@ -202,6 +215,7 @@ export async function POST(req: NextRequest) {
     let kokoroResponse = null;
     let fallbackText = raw;
     let needZen = false;
+    let honneLog = null;
 
     try {
       const parsed = safeParseJSON(raw);
@@ -213,6 +227,9 @@ export async function POST(req: NextRequest) {
         conflict: parsed.conflict || undefined,
         convergence: parsed.convergence || { conclusion: '', action: [] },
       };
+      if (parsed.honneLog) {
+        honneLog = parsed.honneLog;
+      }
     } catch {
       // JSONパース失敗 → フォールバック（従来テキスト形式）
       fallbackText = raw;
@@ -226,6 +243,7 @@ export async function POST(req: NextRequest) {
       showZen,
       showAnimal: isAnimalImage,
       turnCount: turnCount || 0,
+      honneLog,
     });
 
   } catch (err) {
