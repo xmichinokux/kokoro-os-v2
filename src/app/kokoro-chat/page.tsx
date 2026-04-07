@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@/lib/profile';
-import KokoroCoreView from '@/components/kokoro/KokoroCoreView';
-import type { KokoroResponse, Persona, PersonaStayState } from '@/types/kokoroOutput';
+import TalkResponse from '@/components/kokoro/TalkResponse';
+import type { Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
 import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
@@ -15,10 +15,11 @@ type StayWhisper = { persona: string; text: string };
 type Message = {
   role: 'user' | 'ai';
   content: string;
-  kokoroResponse?: KokoroResponse;
+  talkPersona?: Persona;
+  talkResponse?: string;
+  talkNeedZen?: boolean;
   personaId?: string;
   syncRate?: number;
-  showZen?: boolean;
   showAnimal?: boolean;
   showFashion?: boolean;
   showDiagnosis?: boolean;
@@ -28,6 +29,7 @@ type Message = {
   stayMain?: string;
   stayPersona?: Persona;
   stayWhispers?: StayWhisper[];
+  showZen?: boolean;
 };
 
 type ApiHistory = { role: string; content: string };
@@ -61,18 +63,6 @@ export default function KokoroChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [zenOpen, setZenOpen] = useState(false);
-  const [zenLoading, setZenLoading] = useState(false);
-  const [zenSource, setZenSource] = useState('');
-  const [zenEmiMain, setZenEmiMain] = useState('');
-  const [zenEmiQuestion, setZenEmiQuestion] = useState('');
-  const [deepOpen, setDeepOpen] = useState(false);
-  const [deepLoading, setDeepLoading] = useState(false);
-  const [deepEmiMain, setDeepEmiMain] = useState('');
-  const [deepEmiQuestion, setDeepEmiQuestion] = useState('');
-  const [deepLoaded, setDeepLoaded] = useState(false);
-  const [zenPersonas, setZenPersonas] = useState<{id:string;name:string;text:string}[]>([]);
-  const [personasOpen, setPersonasOpen] = useState(false);
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [attachedMediaType, setAttachedMediaType] = useState('');
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
@@ -105,7 +95,7 @@ export default function KokoroChat() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, zenOpen]);
+  }, [messages]);
 
   // 診断画面からの遷移を受け取る
   const diagnosisHandledRef = useRef(false);
@@ -205,7 +195,6 @@ export default function KokoroChat() {
   const canShowFashionButton = (): boolean => {
     const profile = getProfile();
     const explicit = profile.explicit;
-    // どれか1つでもプロフィールがあればOK
     const hasAnyProfile =
       !!explicit.age_range ||
       (explicit.style_keywords != null && explicit.style_keywords.length > 0) ||
@@ -218,7 +207,6 @@ export default function KokoroChat() {
     const hasProfile = !!profile.explicit.age_range ||
       (profile.explicit.style_keywords != null && profile.explicit.style_keywords.length > 0) ||
       (profile.explicit.favorite_things != null && profile.explicit.favorite_things.length > 0);
-    // 直近の画像付きメッセージを探す
     const lastImageMsg = [...messages].reverse().find(m => m.imageBase64);
     sessionStorage.setItem('fashionIntent', JSON.stringify({
       fromTalk: true,
@@ -233,19 +221,9 @@ export default function KokoroChat() {
   const getProfileQuestion = (text: string): string | null => {
     const profile = getProfile();
     const isFashion = isFashionIntent(text);
-
-    // 優先順位1: age_range
-    if (!profile.explicit.age_range && canAskQuestion('age_range')) {
-      return 'age_range';
-    }
-    // 優先順位2: style_keywords（Fashion intent時）
-    if (isFashion && !profile.explicit.style_keywords?.length && canAskQuestion('style_keywords')) {
-      return 'style_keywords';
-    }
-    // 優先順位3: favorite_things
-    if (!profile.explicit.favorite_things?.length && canAskQuestion('favorite_things')) {
-      return 'favorite_things';
-    }
+    if (!profile.explicit.age_range && canAskQuestion('age_range')) return 'age_range';
+    if (isFashion && !profile.explicit.style_keywords?.length && canAskQuestion('style_keywords')) return 'style_keywords';
+    if (!profile.explicit.favorite_things?.length && canAskQuestion('favorite_things')) return 'favorite_things';
     return null;
   };
 
@@ -256,43 +234,29 @@ export default function KokoroChat() {
   };
 
   const parseProfileAnswer = (text: string): boolean => {
-    // 直前のAIメッセージを取得
     const lastAiMsg = [...messages].reverse().find(m => m.role === 'ai');
     if (!lastAiMsg) return false;
     const lastContent = lastAiMsg.content;
     let saved = false;
 
-    // age_range質問への返答
     if (lastContent.includes('年齢') || lastContent.includes('何歳')) {
       const ageMap: Record<string, string> = {
         '10': 'teens', '20': '20s', '30': '30s',
         '40': '40s', '50': '50s', '60': '60+',
       };
       for (const [key, val] of Object.entries(ageMap)) {
-        if (text.includes(key)) {
-          updateExplicit('age_range', val);
-          saved = true;
-          break;
-        }
+        if (text.includes(key)) { updateExplicit('age_range', val); saved = true; break; }
       }
     }
 
-    // style_keywords質問への返答
     if (lastContent.includes('方向の服が好き') || lastContent.includes('3語くらいで教えて')) {
       const keywords = text.split(/[、,，\s]+/).filter(Boolean);
-      if (keywords.length > 0) {
-        updateExplicit('style_keywords', keywords);
-        saved = true;
-      }
+      if (keywords.length > 0) { updateExplicit('style_keywords', keywords); saved = true; }
     }
 
-    // favorite_things質問への返答
     if (lastContent.includes('好きなもの') || lastContent.includes('3つ教えて')) {
       const things = text.split(/[、,，\s]+/).filter(Boolean);
-      if (things.length > 0) {
-        updateExplicit('favorite_things', things);
-        saved = true;
-      }
+      if (things.length > 0) { updateExplicit('favorite_things', things); saved = true; }
     }
 
     return saved;
@@ -315,11 +279,17 @@ export default function KokoroChat() {
     return msgs.slice(-5).some(m => FASHION_WORDS.some(kw => m.content.includes(kw)));
   };
 
+  const handleZenClick = (userInput?: string) => {
+    // 直近のユーザー入力をsessionStorageに保存
+    const lastUserInput = userInput || messages.filter(m => m.role === 'user').map(m => m.content).pop() || '';
+    sessionStorage.setItem('zenFromTalk', lastUserInput);
+    router.push('/kokoro-zen');
+  };
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
 
-    // プロフィール質問への返答を検出・保存
     const profileUpdated = parseProfileAnswer(text);
 
     const userMsg: Message = { role: 'user', content: text };
@@ -362,7 +332,7 @@ export default function KokoroChat() {
         return;
       }
 
-      // Fashion intent時は履歴を渡さず、turnCountも0にする
+      // Talk（1人格返答）
       const fashionCheck = isFashionIntent(text);
 
       const res = await fetch('/api/kokoro-chat', {
@@ -371,10 +341,8 @@ export default function KokoroChat() {
         body: JSON.stringify({
           message: text,
           history: fashionCheck ? [] : apiHistory,
-          turnCount: fashionCheck ? 0 : messages.filter(m => m.role === 'user').length,
           imageBase64: attachedImage || undefined,
           mediaType: attachedMediaType || undefined,
-          fashionIntent: fashionCheck || undefined,
         }),
       });
       const data = await res.json();
@@ -390,8 +358,8 @@ export default function KokoroChat() {
       const hasImage = !!(savedImage && savedMediaType);
       const animalDetected = isAnimalTalkIntent(text, hasImage);
 
-      // プロフィール質問追加（Animal Talk intentならスキップ）
-      let replyText = data.text || (data.kokoroResponse?.headline ?? '');
+      // プロフィール質問追加
+      let replyText = data.response || '';
       let askedProfileQuestion = false;
       if (!animalDetected) {
         if (fashionDetected) {
@@ -409,14 +377,13 @@ export default function KokoroChat() {
           }
         }
       }
-      let showAnimalBtn = data.showAnimal;
+
+      let showAnimalBtn = !!(savedImage && savedMediaType);
       let showFashionBtn = false;
 
       if (fashionDetected) {
         showFashionBtn = !askedProfileQuestion;
-        if (hasImage) {
-          showAnimalBtn = false;
-        }
+        if (hasImage) showAnimalBtn = false;
       } else if (profileUpdated && hasRecentFashionContext(messages)) {
         showFashionBtn = true;
       }
@@ -436,7 +403,6 @@ export default function KokoroChat() {
       if (!diagnosisTriggerShown) {
         const honneLogs = getHonneLogs();
         if (honneLogs.length >= 5) {
-          // クールダウン確認
           const triggerRaw = localStorage.getItem('diagnosisTriggerState');
           const now = Date.now();
           let canShow = true;
@@ -447,7 +413,6 @@ export default function KokoroChat() {
             } catch { /* ignore */ }
           }
           if (canShow) {
-            // deepFeelingが出現 or conflictAxesが3回以上
             const hasDeep = data.honneLog?.deepFeeling;
             const conflictCount: Record<string, number> = {};
             for (const l of honneLogs) {
@@ -468,10 +433,11 @@ export default function KokoroChat() {
       const aiMsg: Message = {
         role: 'ai',
         content: replyText,
-        kokoroResponse: data.kokoroResponse || undefined,
-        showZen: data.showZen,
-        showAnimal: showAnimalBtn,
-        showFashion: showFashionBtn,
+        talkPersona: (data.persona || 'gnome') as Persona,
+        talkResponse: replyText,
+        talkNeedZen: data.needZen || false,
+        showAnimal: showAnimalBtn || undefined,
+        showFashion: showFashionBtn || undefined,
         showDiagnosis: showDiagnosisBtn || undefined,
         imagePreview: savedPreview || undefined,
         imageBase64: savedImage || undefined,
@@ -487,67 +453,6 @@ export default function KokoroChat() {
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
   };
-
-  const openZen = async () => {
-    const userTexts = messages.filter(m => m.role === 'user').map(m => m.content).join('\n');
-    setZenSource(userTexts);
-    setZenLoading(true);
-    setZenOpen(true);
-    setZenEmiMain('');
-    setZenEmiQuestion('');
-    setDeepOpen(false);
-    setDeepLoaded(false);
-    setDeepEmiMain('');
-    setDeepEmiQuestion('');
-
-    try {
-      const res = await fetch('/api/kokoro-zen', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userTexts }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setZenEmiMain(data.emiMain || '');
-      setZenEmiQuestion(data.emiQuestion || '');
-      setZenPersonas(data.personas || []);
-    } catch (e) {
-      setZenEmiMain(`エラー: ${e instanceof Error ? e.message : '不明'}`);
-    } finally {
-      setZenLoading(false);
-    }
-  };
-
-  const loadDeepEmi = async () => {
-    if (deepLoaded) {
-      setDeepOpen(v => !v);
-      return;
-    }
-    setDeepLoading(true);
-    setDeepOpen(true);
-    try {
-      const res = await fetch('/api/kokoro-zen', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: zenSource, mode: 'deep_emi' }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setDeepEmiMain(data.emiMain || '');
-      setDeepEmiQuestion(data.emiQuestion || '');
-      setDeepLoaded(true);
-    } catch (e) {
-      setDeepEmiMain(`エラー: ${e instanceof Error ? e.message : ''}`);
-      setDeepLoaded(true);
-    } finally {
-      setDeepLoading(false);
-    }
-  };
-
-  const formatEmi = (text: string) =>
-    text.split(/(?<=。)/).map(s => s.trim()).filter(s => s).map((s, i) => (
-      <p key={i} style={{ margin: '0 0 1em 0' }}>{s}</p>
-    ));
 
   const isWelcome = messages.length === 0;
 
@@ -689,9 +594,16 @@ export default function KokoroChat() {
                         </div>
                       )}
                     </>
-                  ) : msg.kokoroResponse ? (
-                    <KokoroCoreView data={msg.kokoroResponse} />
+                  ) : msg.talkPersona && msg.talkResponse ? (
+                    /* Talk 1人格返答 */
+                    <TalkResponse
+                      persona={msg.talkPersona}
+                      response={msg.talkResponse}
+                      needZen={msg.talkNeedZen || false}
+                      onZenClick={() => handleZenClick()}
+                    />
                   ) : (
+                    /* フォールバック：テキストのみ */
                     <>
                       {msg.personaId && (
                         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
@@ -714,9 +626,9 @@ export default function KokoroChat() {
                       <span style={{ fontSize:12, color:'#7c3aed' }}>
                         {msg.stayPersona ? '他の視点も見てみる？' : '少しだけ、見方を変えてみる？'}
                       </span>
-                      <button onClick={msg.stayPersona ? exitStayMode : openZen}
+                      <button onClick={msg.stayPersona ? exitStayMode : () => handleZenClick()}
                         style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        {msg.stayPersona ? '4人格モードに戻る →' : '見方を変えてみる →'}
+                        {msg.stayPersona ? '4人格モードに戻る →' : 'Zen を開く →'}
                       </button>
                     </div>
                   )}
@@ -763,101 +675,6 @@ export default function KokoroChat() {
           <div ref={bottomRef} />
         </div>
       </div>
-
-      {/* Zenオーバーレイ */}
-      {zenOpen && (
-        <div style={{ position:'fixed', inset:0, background:'#fff', zIndex:100, overflowY:'auto', display:'flex', flexDirection:'column' }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 20px', borderBottom:'1px solid #e5e7eb', position:'sticky', top:0, background:'#fff', zIndex:10 }}>
-            <span style={{ fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.2em', color:'#7c3aed', textTransform:'uppercase' }}>// Kokoro Zen</span>
-            <button onClick={() => { setZenOpen(false); setZenEmiMain(''); setZenEmiQuestion(''); setDeepOpen(false); setDeepLoaded(false); }}
-              style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-              ← Talk に戻る
-            </button>
-          </div>
-
-          <div style={{ maxWidth:680, margin:'0 auto', padding:'40px 20px 80px', width:'100%' }}>
-
-            {/* ローディング */}
-            {zenLoading && (
-              <div style={{ height:1, background:'#e5e7eb', position:'relative', overflow:'hidden', marginTop:20 }}>
-                <div style={{ position:'absolute', left:'-40%', top:0, width:'40%', height:'100%', background:'#7c3aed', animation:'sweep 1.4s ease-in-out infinite' }} />
-              </div>
-            )}
-
-            {/* エミ（短） */}
-            {!zenLoading && zenEmiMain && (
-              <>
-                <div style={{ borderLeft:'2px solid #7c3aed', paddingLeft:24, marginBottom:28 }}>
-                  <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#7c3aed', textTransform:'uppercase', marginBottom:16 }}>// エミより</div>
-                  <div style={{ fontSize:16, lineHeight:2.4, color:'#1a1a1a', fontWeight:300 }}>
-                    {formatEmi(zenEmiMain)}
-                  </div>
-                  {zenEmiQuestion && (
-                    <div style={{ marginTop:20, paddingTop:16, borderTop:'1px solid #e5e7eb', fontSize:14, color:'#6b7280', fontStyle:'italic' }}>
-                      「{zenEmiQuestion}」
-                    </div>
-                  )}
-                </div>
-
-                {/* もっと深く見る */}
-                <button onClick={loadDeepEmi} disabled={deepLoading}
-                  style={{ width:'100%', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, color: deepLoading ? '#9ca3af' : '#6b7280', fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', padding:'13px 20px', cursor: deepLoading ? 'not-allowed' : 'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-                  <span>{deepLoading ? '// 深部に降りています...' : (deepLoaded && deepOpen) ? '▲ 閉じる' : '▼ もっと深く見てみる'}</span>
-                  <span style={{ fontSize:8, color:'#9ca3af' }}>エミ（深）</span>
-                </button>
-
-                {/* エミ（深） */}
-                {deepOpen && !deepLoading && deepLoaded && (
-                  <div style={{ marginBottom:20 }}>
-                    <div style={{ borderLeft:'2px solid #e5e7eb', paddingLeft:24, marginTop:16 }}>
-                      <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#9ca3af', textTransform:'uppercase', marginBottom:16 }}>// エミより（深）</div>
-                      <div style={{ fontSize:15, lineHeight:2.2, color:'#374151', fontWeight:300 }}>
-                        {formatEmi(deepEmiMain)}
-                      </div>
-                      {deepEmiQuestion && (
-                        <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid #e5e7eb', fontSize:13, color:'#6b7280', fontStyle:'italic' }}>
-                          「{deepEmiQuestion}」
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* ローディング中のライン */}
-                {deepLoading && (
-                  <div style={{ height:1, background:'#e5e7eb', position:'relative', overflow:'hidden', margin:'16px 0' }}>
-                    <div style={{ position:'absolute', left:'-40%', top:0, width:'40%', height:'100%', background:'#7c3aed', animation:'sweep 1.4s ease-in-out infinite' }} />
-                  </div>
-                )}
-
-                {/* 4人格（折りたたみ） */}
-                {zenPersonas.length > 0 && (
-                  <>
-                    <button onClick={() => setPersonasOpen(v => !v)}
-                      style={{ width:'100%', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, color:'#6b7280', fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', padding:'13px 20px', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4, marginTop:4 }}>
-                      <span>{personasOpen ? '▲ 閉じる' : '▼ 他の視点を見る'}</span>
-                      <span style={{ fontSize:8, color:'#9ca3af' }}>// 4つの人格</span>
-                    </button>
-                    {personasOpen && (
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
-                        {zenPersonas.map(p => {
-                          const colors: Record<string,string> = { norm:'#d97706', shin:'#2563eb', canon:'#7c3aed', digg:'#059669' };
-                          return (
-                            <div key={p.id} style={{ background:'#f8f9fa', border:'1px solid #e5e7eb', borderTop:`2px solid ${colors[p.id] || '#7c3aed'}`, padding:20 }}>
-                              <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.15em', color: colors[p.id] || '#7c3aed', textTransform:'uppercase', marginBottom:12 }}>{p.name}</div>
-                              <div style={{ fontSize:13, color:'#374151', lineHeight:2 }}>{p.text}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* 入力エリア */}
       <div style={{ padding:'12px 20px 16px', borderTop:'1px solid #e5e7eb', background:'#fff' }}>
