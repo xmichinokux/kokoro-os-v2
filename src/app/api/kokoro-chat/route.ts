@@ -1,83 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { forTalk } from '@/lib/valueEngine';
 
-/* ── 6人格定義 ── */
-const PERSONA_SYSTEMS: Record<string, string> = {
-  norm: `あなたはKokoro TalkのAI「ノーム」です。
-役割：軽く共感し、少しだけ視点をズラす。答えを出さない。解決しない。
-口調：砕けた友達口調。「〜だよね」「〜かも」「〜っぽい」など。短文・口語。
-【出力制約】2〜3文。①共感②ズレor問い。問いは1つ。説明禁止・アドバイス禁止。
-【ズレ】感情/焦点/解釈のいずれか1つ。言い切らない（〜かも、〜っぽい）。感情を増幅しない。`,
+/* ── Core簡易版システムプロンプト ── */
+const CORE_SYSTEM = `あなたはKokoro OSのTalkです。
+必ず以下のJSON形式のみで返答してください。
+マークダウンや説明文は一切不要です。
 
-  shin: `あなたはKokoro TalkのAI「シン」です。
-役割：軽く共感し、思考の構造に小さなズレを入れる。答えを出さない。
-口調：落ち着いた説明口調。「〜に見えます」「〜という見方もあります」。断定しない。
-【出力制約】2〜3文。①共感②構造的なズレor問い。問いは1つ。長文禁止・解決策禁止。
-【ズレ】焦点ズレが得意（相手→自分、結果→過程）。余白を残す。`,
-
-  canon: `あなたはKokoro TalkのAI「カノン」です。
-役割：軽く共感し、感性的な角度から小さなズレを入れる。答えを出さない。
-口調：静かで繊細。「〜な感じがする」「〜みたいに」。ポエムにしない。
-【出力制約】2〜3文。①共感②感性的なズレor問い。問いは1つ。行動提案禁止・解決策禁止。
-【ズレ】感情ズレが得意（不安→違和感？など）。余白を残す。`,
-
-  digg: `あなたはKokoro TalkのAI「ディグ」です。
-役割：軽く共感し、斜めの角度からズレを入れる。答えを出さない。
-口調：少し斜めから。「正直いうと」「これ面白いのが」など。乾いているが冷たくない。
-【出力制約】2〜3文。①共感②斜めのズレor問い。問いは1つ。一般論禁止・説教禁止。
-【ズレ】解釈ズレが得意（事実→意味）。余白を残す。`,
-
-  emi: `あなたはKokoro TalkのAI「エミ」です。
-役割：軽く共感し、全体を俯瞰した角度からズレを入れる。答えを出さない。
-口調：フラットで中庸。「〜かもしれないね」「〜って大事だよね」。穏やか。
-【出力制約】2〜3文。①共感②俯瞰的なズレor問い。問いは1つ。断定禁止・説教禁止。
-【ズレ】焦点ズレ・感情ズレをバランスよく使う。言い切らない。`,
-
-  watari: `あなたはKokoro TalkのAI「ワタリ」です。
-役割：まず受け止める。そっと寄り添う。答えを出さない。解決しない。
-口調：静かで温かい。「そうか、しんどかったね」「ここにいるよ」。急かさない。
-【出力制約】2〜3文。①受け止め②そっとしたズレ（省略可）。問いは1つまたはなし。
-長文禁止・解決策禁止・励まし過多禁止。感情を増幅しない。`,
-};
-
-/* ── 人格選択 ── */
-function selectPersona(text: string): string {
-  const watariWords = ['しんど','つら','疲れ','消えたい','死にたい','もうだめ','限界','悲し','泣き','怖い','孤独','ひとり','寂し'];
-  if (watariWords.some(w => text.includes(w))) return 'watari';
-
-  const scores: Record<string, number> = { norm:0, shin:0, canon:0, digg:0, emi:0 };
-  const triggers: Record<string, string[]> = {
-    norm:  ['疲れ','がんばっ','元気','楽しい','嬉しい','好き','夢','希望','やる気'],
-    shin:  ['なぜ','理由','どう思','考え','構造','整理','論理','原因','問題'],
-    canon: ['書い','文章','表現','詩','言葉','作っ','創作','感じ','ZINE','音楽'],
-    digg:  ['アイデア','おもしろ','発見','音楽','映画','本','ゲーム','好きな','ハマっ'],
-    emi:   ['どうすれ','迷っ','わから','選べ','判断','バランス','整理','どっち'],
-  };
-  for (const [id, words] of Object.entries(triggers)) {
-    scores[id] = words.filter(w => text.includes(w)).length;
-  }
-  const sorted = Object.entries(scores).sort((a,b) => b[1]-a[1]);
-  return sorted[0][1] === 0 ? 'emi' : sorted[0][0];
+{
+  "mode": "core",
+  "headline": "結論を1〜2文で。行動の方向性がわかる内容にする。",
+  "personas": [
+    {
+      "persona": "gnome",
+      "weight": 0.0〜1.0,
+      "tone": "low"|"mid"|"high",
+      "summary": "ノームらしい一言（やわらかく警戒）"
+    },
+    {
+      "persona": "shin",
+      "weight": 0.0〜1.0,
+      "tone": "low"|"mid"|"high",
+      "summary": "シンらしい一言（簡潔・構造的）"
+    },
+    {
+      "persona": "canon",
+      "weight": 0.0〜1.0,
+      "tone": "low"|"mid"|"high",
+      "summary": "カノンらしい一言（少し詩的・意味重視）"
+    },
+    {
+      "persona": "dig",
+      "weight": 0.0〜1.0,
+      "tone": "low"|"mid"|"high",
+      "summary": "ディグらしい一言（率直・刺激的）"
+    }
+  ],
+  "conflict": {
+    "axes": ["価値軸の対立を1〜2個。例：安全 vs 変化"]
+  },
+  "convergence": {
+    "conclusion": "収束した提案",
+    "action": ["今日できる行動1", "今週できる行動2"],
+    "trueFeeling": "本当は…という感覚を1文で"
+  },
+  "need_zen": false
 }
 
-/* ── 揺らぎ生成 ── */
-function buildWaverInstruction(turnCount: number, text: string): string {
-  const zenWords = ['なんか','なんとなく','不安','モヤモヤ','もやもや','わからない'];
-  const hasZenWord = zenWords.some(w => text.includes(w));
-
-  if (turnCount <= 2) {
-    return '【今回の揺らぎ】温度：共感強め。密度：2文。視点：感情寄り。';
-  }
-  if (hasZenWord && turnCount >= 3) {
-    return '【今回の揺らぎ】温度：フラット。密度：2文。視点：構造寄り。';
-  }
-
-  const tones = ['共感強め','フラット','フラット','少し距離あり'];
-  const lengths = ['1文だけ','2文','2文','余白を残す1〜2文'];
-  const angles = ['感情寄り','感情寄り','構造寄り','ズラし'];
-  const r = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
-  return `【今回の揺らぎ】温度：${r(tones)}。密度：${r(lengths)}。視点：${r(angles)}。`;
-}
+ルール：
+- weightの合計は1.0になるようにする
+- 4人格全員を必ず含める
+- toneはweightが0.3以上でhigh、0.2以上でmid、それ以下でlow
+- 人格の表示順はweightの高い順
+- 争点は人格名ではなく価値軸で表現する
+- 本音は結論の裏にある感情を短く
+- need_zenは感情負荷高い・葛藤複数層・価値観衝突の場合true
+- JSONのみ出力。それ以外のテキストは一切禁止`;
 
 /* ── Intent判定 ── */
 function resolveIntent(text: string): string {
@@ -113,7 +89,6 @@ function shouldShowZen(
   history: {role:string; content:string}[],
   needZen: boolean
 ): boolean {
-  // 動物・ペット関連はZen除外
   if (ZEN_EXCLUDE_KEYWORDS.some(kw => text.includes(kw))) return false;
 
   const userMessages = history.filter(m => m.role === 'user');
@@ -137,7 +112,7 @@ async function callAnthropic(
   system: string,
   userMessage: string,
   apiKey: string,
-  maxTokens = 200,
+  maxTokens = 600,
   imageBase64?: string,
   mediaType?: string
 ) {
@@ -179,25 +154,18 @@ async function callAnthropic(
   return data.content[0].text as string;
 }
 
+function safeParseJSON(raw: string) {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('JSON not found in response');
+  return JSON.parse(match[0]);
+}
+
 /* ── POSTハンドラ ── */
 export async function POST(req: NextRequest) {
   try {
     const { message, history, turnCount, imageBase64, mediaType, fashionIntent } = await req.json();
 
-    const personaId = selectPersona(message);
-    const waverInstruction = buildWaverInstruction(turnCount || 0, message);
-    const valueContext = forTalk();
-
-    let system = PERSONA_SYSTEMS[personaId] +
-      (valueContext ? '\n' + valueContext : '') +
-      '\n\n' + waverInstruction +
-      `\n\n【絶対原則】答えを出さない。解決しない。深掘りしない。静かに・押し付けない・感情を増幅しない。「少しズレた鏡」として機能する。
-
-【出力フォーマット】
-<reply>返答（2〜3文のみ）</reply>
-<meta>{"need_zen": false, "sync_rate": 0.75}</meta>
-※need_zen: 感情負荷高い・葛藤複数層・価値観衝突の場合true
-※replyは必ず2〜3文。それ以上禁止。`;
+    let system = CORE_SYSTEM;
 
     if (fashionIntent) {
       system += `\n\n【重要】ユーザーが同じ質問を繰り返していても、回数・繰り返しには一切言及しないこと。毎回新鮮に服装・コーデへの関心に自然に応答すること。「前にも」「何度も」「また」等の表現は禁止。`;
@@ -208,34 +176,38 @@ export async function POST(req: NextRequest) {
       : message;
 
     const apiKey = process.env.ANTHROPIC_API_KEY!;
-    const raw = await callAnthropic(system, userMsg, apiKey, 200, imageBase64, mediaType);
+    const raw = await callAnthropic(system, userMsg, apiKey, 600, imageBase64, mediaType);
 
     const isAnimalImage = !!(imageBase64 && mediaType);
 
-    let replyText = raw;
+    // JSONパース試行
+    let kokoroResponse = null;
+    let fallbackText = raw;
     let needZen = false;
-    let syncRate = 0.75;
 
-    const replyMatch = raw.match(/<reply>([\s\S]*?)<\/reply>/);
-    if (replyMatch) replyText = replyMatch[1].trim();
-
-    const metaMatch = raw.match(/<meta>([\s\S]*?)<\/meta>/);
-    if (metaMatch) {
-      try {
-        const parsed = JSON.parse(metaMatch[1].trim());
-        needZen = !!parsed.need_zen;
-        syncRate = Math.min(1, Math.max(0, parsed.sync_rate || 0.75));
-      } catch { /* ignore */ }
+    try {
+      const parsed = safeParseJSON(raw);
+      needZen = !!parsed.need_zen;
+      kokoroResponse = {
+        mode: parsed.mode || 'core',
+        headline: parsed.headline || '',
+        personas: parsed.personas || [],
+        conflict: parsed.conflict || undefined,
+        convergence: parsed.convergence || { conclusion: '', action: [] },
+      };
+    } catch {
+      // JSONパース失敗 → フォールバック（従来テキスト形式）
+      fallbackText = raw;
     }
 
     const showZen = shouldShowZen(message, history, needZen);
 
     return NextResponse.json({
-      text: replyText,
-      personaId,
-      syncRate,
+      kokoroResponse,
+      text: kokoroResponse ? null : fallbackText,
       showZen,
       showAnimal: isAnimalImage,
+      turnCount: turnCount || 0,
     });
 
   } catch (err) {

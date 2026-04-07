@@ -3,11 +3,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@/lib/profile';
+import KokoroCoreView from '@/components/kokoro/KokoroCoreView';
+import type { KokoroResponse } from '@/types/kokoroOutput';
 
 /* ── 型定義 ── */
 type Message = {
   role: 'user' | 'ai';
   content: string;
+  kokoroResponse?: KokoroResponse;
   personaId?: string;
   syncRate?: number;
   showZen?: boolean;
@@ -294,7 +297,7 @@ export default function KokoroChat() {
       const animalDetected = isAnimalTalkIntent(text, hasImage);
 
       // プロフィール質問追加（Animal Talk intentならスキップ）
-      let replyText = data.text;
+      let replyText = data.text || (data.kokoroResponse?.headline ?? '');
       let askedProfileQuestion = false;
       if (!animalDetected) {
         if (fashionDetected) {
@@ -316,21 +319,18 @@ export default function KokoroChat() {
       let showFashionBtn = false;
 
       if (fashionDetected) {
-        // 直接のFashion intent → プロフィール質問中でなければボタン表示
         showFashionBtn = !askedProfileQuestion;
         if (hasImage) {
           showAnimalBtn = false;
         }
       } else if (profileUpdated && hasRecentFashionContext(messages)) {
-        // プロフィールが更新され、直近にFashion文脈がある → ボタン表示
         showFashionBtn = true;
       }
 
       const aiMsg: Message = {
         role: 'ai',
         content: replyText,
-        personaId: data.personaId,
-        syncRate: data.syncRate,
+        kokoroResponse: data.kokoroResponse || undefined,
         showZen: data.showZen,
         showAnimal: showAnimalBtn,
         showFashion: showFashionBtn,
@@ -463,20 +463,26 @@ export default function KokoroChat() {
                 </div>
               ) : (
                 <div style={{ maxWidth:'85%' }}>
-                  {msg.personaId && (
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                      <div style={{ width:28, height:28, borderRadius:'50%', background: PERSONA_COLORS[msg.personaId] + '22', border:`1.5px solid ${PERSONA_COLORS[msg.personaId] || '#7c3aed'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
-                        {PERSONA_EMOJIS[msg.personaId] || '💬'}
+                  {msg.kokoroResponse ? (
+                    <KokoroCoreView data={msg.kokoroResponse} />
+                  ) : (
+                    <>
+                      {msg.personaId && (
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                          <div style={{ width:28, height:28, borderRadius:'50%', background: PERSONA_COLORS[msg.personaId] + '22', border:`1.5px solid ${PERSONA_COLORS[msg.personaId] || '#7c3aed'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                            {PERSONA_EMOJIS[msg.personaId] || '💬'}
+                          </div>
+                          <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: PERSONA_COLORS[msg.personaId] || '#7c3aed', letterSpacing:'0.15em', textTransform:'uppercase' }}>
+                            {PERSONA_NAMES[msg.personaId] || msg.personaId}
+                            {msg.syncRate !== undefined && <span style={{ color:'#d1d5db', marginLeft:8 }}>sync {Math.round(msg.syncRate * 100)}%</span>}
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ borderLeft:'2px solid #e5e7eb', paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151' }}>
+                        {msg.content}
                       </div>
-                      <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: PERSONA_COLORS[msg.personaId] || '#7c3aed', letterSpacing:'0.15em', textTransform:'uppercase' }}>
-                        {PERSONA_NAMES[msg.personaId] || msg.personaId}
-                        {msg.syncRate !== undefined && <span style={{ color:'#d1d5db', marginLeft:8 }}>sync {Math.round(msg.syncRate * 100)}%</span>}
-                      </div>
-                    </div>
+                    </>
                   )}
-                  <div style={{ borderLeft:'2px solid #e5e7eb', paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151' }}>
-                    {msg.content}
-                  </div>
                   {msg.showZen && (
                     <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
                       <span style={{ fontSize:12, color:'#7c3aed' }}>少しだけ、見方を変えてみる？</span>
