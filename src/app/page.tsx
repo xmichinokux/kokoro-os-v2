@@ -57,9 +57,9 @@ const APPS: App[] = [
   {
     icon: "📓",
     name: "Kokoro Note",
-    desc: "日記から今の自分の状態を読解する。",
+    desc: "気づき・本音・メモを静かに蓄積する。",
     href: "/kokoro-note",
-    ready: false,
+    ready: true,
   },
 ];
 

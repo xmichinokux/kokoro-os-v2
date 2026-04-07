@@ -10,6 +10,8 @@ import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
 import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
 import { shouldTriggerEmi, buildEmiResponse, buildZenPromptFromEmi, type EmiState } from '@/lib/kokoro/emi';
 import { inferSessionState, calcEffectiveProfileWeight } from '@/lib/kokoro/sessionState';
+import { createNoteFromEmi } from '@/lib/kokoro/createNoteFromTalk';
+import { saveNote } from '@/lib/kokoro/noteStorage';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -575,6 +577,16 @@ export default function KokoroChat() {
             lastEmiLine: emiLine,
             sharpUsedAt: detection.level === 'sharp' ? new Date().toISOString() : emiState.sharpUsedAt,
           });
+
+          // エミ発火 + medium/sharp の場合にnoteを自動保存
+          if (detection.level !== 'soft') {
+            const emiNote = createNoteFromEmi(
+              emiLine,
+              detection.type,
+              data.honneLog?.topic
+            );
+            saveNote(emiNote);
+          }
 
         } else {
           // 通常応答（エミなし）
