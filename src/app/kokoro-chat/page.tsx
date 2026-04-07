@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@/lib/profile';
 import TalkResponse from '@/components/kokoro/TalkResponse';
-import type { Persona, PersonaStayState } from '@/types/kokoroOutput';
+import type { Persona, PersonaStayState, IdentityState, ResponseStrategy } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
 import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
@@ -35,6 +35,9 @@ type Message = {
   emiConflict?: string;
   emiDeepFeeling?: string;
   emiShowZenCta?: boolean; // ターン2後のZen CTA表示
+  identityState?: IdentityState;
+  gapIntensity?: number;
+  responseStrategy?: ResponseStrategy;
 };
 
 type ApiHistory = { role: string; content: string };
@@ -382,6 +385,11 @@ export default function KokoroChat() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      // 自己認識ズレ検出結果
+      const identityState: IdentityState = data.identityState ?? 'NO_GAP';
+      const gapIntensity: number = data.gapIntensity ?? 0;
+      const responseStrategy: ResponseStrategy = data.responseStrategy ?? 'normal';
+
       const savedImage = attachedImage;
       const savedMediaType = attachedMediaType;
       const savedPreview = attachedPreview;
@@ -472,6 +480,9 @@ export default function KokoroChat() {
             content: replyText,
             talkPersona: (data.persona || 'gnome') as Persona,
             talkResponse: replyText,
+            identityState,
+            gapIntensity,
+            responseStrategy,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
             imagePreview: savedPreview || undefined,
@@ -545,6 +556,9 @@ export default function KokoroChat() {
             content: replyText,
             talkPersona: (data.persona || 'gnome') as Persona,
             talkResponse: replyText,
+            identityState,
+            gapIntensity,
+            responseStrategy,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
             imagePreview: savedPreview || undefined,
@@ -569,6 +583,9 @@ export default function KokoroChat() {
             content: replyText,
             talkPersona: (data.persona || 'gnome') as Persona,
             talkResponse: replyText,
+            identityState,
+            gapIntensity,
+            responseStrategy,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
             imagePreview: savedPreview || undefined,
@@ -755,6 +772,9 @@ export default function KokoroChat() {
                     <TalkResponse
                       persona={msg.talkPersona}
                       response={msg.talkResponse}
+                      identityState={msg.identityState}
+                      gapIntensity={msg.gapIntensity}
+                      responseStrategy={msg.responseStrategy}
                     />
                   ) : (
                     /* フォールバック：テキストのみ */

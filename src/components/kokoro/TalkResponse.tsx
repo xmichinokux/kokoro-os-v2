@@ -1,14 +1,38 @@
 'use client';
 
-import type { Persona } from '@/types/kokoroOutput';
+import type { Persona, IdentityState, ResponseStrategy } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS, PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
+
+const STATE_LABELS: Partial<Record<IdentityState, string>> = {
+  DEFENSIVE_GAP:   '自己認識のズレ（防衛中）',
+  IDENTITY_SHIFT:  '自己認識のズレ（気づきフェーズ）',
+  COLLAPSE:        '自己像の揺らぎ',
+  RECONSTRUCTION:  '再構築フェーズ',
+};
+
+const STATE_COLORS: Partial<Record<IdentityState, string>> = {
+  DEFENSIVE_GAP:   'border-orange-400 text-orange-300',
+  IDENTITY_SHIFT:  'border-sky-400 text-sky-300',
+  COLLAPSE:        'border-violet-400 text-violet-300',
+  RECONSTRUCTION:  'border-emerald-400 text-emerald-300',
+};
+
+const STRATEGY_HINTS: Partial<Record<ResponseStrategy, string>> = {
+  soften:    'やわらかく揺らす返答をしています',
+  structure: '構造を整理した返答をしています',
+  stabilize: '安定を優先した返答をしています',
+  direct:    '方向性を提示する返答をしています',
+};
 
 type TalkResponseProps = {
   persona: Persona;
   response: string;
+  identityState?: IdentityState;
+  gapIntensity?: number;
+  responseStrategy?: ResponseStrategy;
 };
 
-export default function TalkResponse({ persona, response }: TalkResponseProps) {
+export default function TalkResponse({ persona, response, identityState, gapIntensity, responseStrategy }: TalkResponseProps) {
   const color = PERSONA_COLORS[persona] || '#7c3aed';
   const icon = PERSONA_EMOJIS[persona] || '💬';
   const label = PERSONA_LABELS[persona] || persona;
@@ -40,6 +64,23 @@ export default function TalkResponse({ persona, response }: TalkResponseProps) {
       }}>
         {response}
       </div>
+
+      {/* 自己認識ズレ状態バッジ */}
+      {identityState && identityState !== 'NO_GAP' && (gapIntensity ?? 0) > 0.3 && (
+        <div className={`mt-3 pl-3 border-l-2 text-xs space-y-0.5 ${STATE_COLORS[identityState] ?? ''}`}>
+          <div className="opacity-50 font-mono tracking-widest text-[10px]">
+            // 状態検出
+          </div>
+          <div className="font-medium">
+            {STATE_LABELS[identityState]}
+          </div>
+          {responseStrategy && responseStrategy !== 'normal' && (
+            <div className="opacity-60">
+              {STRATEGY_HINTS[responseStrategy]}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
