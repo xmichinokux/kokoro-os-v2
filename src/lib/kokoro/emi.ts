@@ -1,8 +1,17 @@
+import type { InsightType, InsightLevel, InsightDetectionResult } from '@/types/emi';
+import { detectInsightType } from './detectInsightType';
+import { detectInsightLevel } from './detectInsightLevel';
+import { pickEmiLine } from './emiTemplates';
+
 export type EmiState = {
   active: boolean;
   turnCount: number;       // 0=未発火, 1=1ターン目済, 2=2ターン目済
   lastTriggeredAt?: string;
   triggerCount: number;    // 累計発火回数
+  lastInsightType?: InsightType;
+  lastInsightLevel?: InsightLevel;
+  lastEmiLine?: string;
+  sharpUsedAt?: string;    // sharp レベル最終使用時刻
 };
 
 // トリガー判定
@@ -108,42 +117,38 @@ export function buildEmiLine(context: {
   return lines[Math.floor(Math.random() * lines.length)];
 }
 
-// エミの2ターン応答生成
-export function buildEmiResponse(params: {
-  turn: 1 | 2;
-  text: string;
-  conflictAxes?: string[];
-  deepFeeling?: string;
-}): string {
-  const { turn, text, conflictAxes, deepFeeling } = params;
+// エミの2ターン応答生成（InsightType システム）
+export function buildEmiResponse(
+  text: string,
+  recentTexts: string[],
+  state: EmiState,
+  currentTurn: 1 | 2,
+): { line: string; detection: InsightDetectionResult } {
+  // InsightType 判定
+  const { type, scores } = detectInsightType(text, recentTexts, state.lastInsightType);
 
-  if (turn === 1) {
-    // ターン1: 短い指摘・問いかけ
-    if (deepFeeling) {
-      return "それ、本音？　もう少し聞かせて。";
+  // InsightLevel 判定（sharp クールダウン: 3分以内なら medium に降格）
+  let level = detectInsightLevel(scores);
+  if (level === 'sharp' && state.sharpUsedAt) {
+    const elapsed = Date.now() - new Date(state.sharpUsedAt).getTime();
+    if (elapsed < 180000) {
+      level = 'medium';
     }
-    if (conflictAxes && conflictAxes.length > 0) {
-      return "今ちょっと引っかかった。そこ、もう少し話せる？";
-    }
-    const contradictionPhrases = ["気にしてない", "そんなことない", "大丈夫", "別にいい"];
-    if (contradictionPhrases.some(p => text.includes(p))) {
-      return "なんでそこ否定したの？　聞いてもいい？";
-    }
-    const stuckPhrases = ["どうしたらいい", "わからない", "どうすれば"];
-    if (stuckPhrases.some(p => text.includes(p))) {
-      return "少しズレてる気がする。本当に困ってるのはそこ？";
-    }
-    return "今ちょっと引っかかった。もう少し聞かせて。";
   }
 
-  // ターン2: 深い問いかけ → Zen CTA前の最後の一言
-  if (deepFeeling) {
-    return "その奥にあるもの、言葉にしてみない？";
+  // ターン2 はレベルを1段上げる（soft→medium, medium→sharp）
+  if (currentTurn === 2) {
+    if (level === 'soft') level = 'medium';
+    else if (level === 'medium') level = 'sharp';
   }
-  if (conflictAxes && conflictAxes.length > 0) {
-    return `「${conflictAxes[0]}」のあたり、整理してみない？`;
-  }
-  return "もう少し深く見てみたい気がする。";
+
+  // テンプレートからライン選択
+  const line = pickEmiLine(type, level, state.lastEmiLine);
+
+  return {
+    line,
+    detection: { type, level, scores },
+  };
 }
 
 // Zen用初期プロンプト生成

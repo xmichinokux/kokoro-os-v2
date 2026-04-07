@@ -468,12 +468,7 @@ export default function KokoroChat() {
 
         if (nextTurn === 1) {
           // ターン1: 通常人格 + エミの一言
-          const emiLine = buildEmiResponse({
-            turn: 1,
-            text,
-            conflictAxes: data.honneLog?.conflictAxes,
-            deepFeeling: currentDeepFeeling,
-          });
+          const { line: emiLine, detection } = buildEmiResponse(text, recentUserTexts, emiState, 1);
 
           const aiMsg: Message = {
             role: 'ai',
@@ -493,16 +488,18 @@ export default function KokoroChat() {
             emiDeepFeeling: currentDeepFeeling,
           };
           setMessages(prev => [...prev, aiMsg]);
-          setEmiState(prev => ({ ...prev, turnCount: 1 }));
+          setEmiState(prev => ({
+            ...prev,
+            turnCount: 1,
+            lastInsightType: detection.type,
+            lastInsightLevel: detection.level,
+            lastEmiLine: emiLine,
+            sharpUsedAt: detection.level === 'sharp' ? new Date().toISOString() : prev.sharpUsedAt,
+          }));
 
         } else {
           // ターン2: エミのみ（通常人格なし）+ Zen CTA
-          const emiLine = buildEmiResponse({
-            turn: 2,
-            text,
-            conflictAxes: data.honneLog?.conflictAxes,
-            deepFeeling: currentDeepFeeling,
-          });
+          const { line: emiLine, detection } = buildEmiResponse(text, recentUserTexts, emiState, 2);
 
           const emiMsg: Message = {
             role: 'ai',
@@ -518,6 +515,10 @@ export default function KokoroChat() {
             ...prev,
             active: false,
             turnCount: 0,
+            lastInsightType: detection.type,
+            lastInsightLevel: detection.level,
+            lastEmiLine: emiLine,
+            sharpUsedAt: detection.level === 'sharp' ? new Date().toISOString() : prev.sharpUsedAt,
           }));
         }
 
@@ -544,12 +545,7 @@ export default function KokoroChat() {
 
         if (emiActivated) {
           // ターン1発火: 通常人格 + エミの一言
-          const emiLine = buildEmiResponse({
-            turn: 1,
-            text,
-            conflictAxes: data.honneLog?.conflictAxes,
-            deepFeeling: currentDeepFeeling,
-          });
+          const { line: emiLine, detection } = buildEmiResponse(text, recentUserTexts, emiState, 1);
 
           const aiMsg: Message = {
             role: 'ai',
@@ -574,6 +570,10 @@ export default function KokoroChat() {
             turnCount: 1,
             lastTriggeredAt: new Date().toISOString(),
             triggerCount: emiState.triggerCount + 1,
+            lastInsightType: detection.type,
+            lastInsightLevel: detection.level,
+            lastEmiLine: emiLine,
+            sharpUsedAt: detection.level === 'sharp' ? new Date().toISOString() : emiState.sharpUsedAt,
           });
 
         } else {
