@@ -4,9 +4,12 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@/lib/profile';
 import KokoroCoreView from '@/components/kokoro/KokoroCoreView';
-import type { KokoroResponse } from '@/types/kokoroOutput';
+import type { KokoroResponse, Persona, PersonaStayState } from '@/types/kokoroOutput';
+import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 
 /* ── 型定義 ── */
+type StayWhisper = { persona: string; text: string };
+
 type Message = {
   role: 'user' | 'ai';
   content: string;
@@ -19,6 +22,9 @@ type Message = {
   imagePreview?: string;
   imageBase64?: string;
   imageMediaType?: string;
+  stayMain?: string;
+  stayPersona?: Persona;
+  stayWhispers?: StayWhisper[];
 };
 
 type ApiHistory = { role: string; content: string };
@@ -67,6 +73,13 @@ export default function KokoroChat() {
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [attachedMediaType, setAttachedMediaType] = useState('');
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  const [stayState, setStayState] = useState<PersonaStayState>({
+    active: false,
+    persona: 'gnome',
+    style: 'balanced',
+    turnCount: 0,
+  });
+  const [whisperOpen, setWhisperOpen] = useState<Record<number, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -251,6 +264,19 @@ export default function KokoroChat() {
     return saved;
   };
 
+  const enterStayMode = (persona: Persona) => {
+    setStayState({ active: true, persona, style: 'balanced', turnCount: 0 });
+  };
+
+  const exitStayMode = () => {
+    setStayState({ active: false, persona: 'gnome', style: 'balanced', turnCount: 0 });
+  };
+
+  const DECISION_KEYWORDS = /決断|決め|重要|大事な選択|人生|覚悟/;
+  const shouldSuggestReturn = (text: string, turnCount: number): boolean => {
+    return turnCount >= 5 || DECISION_KEYWORDS.test(text);
+  };
+
   const hasRecentFashionContext = (msgs: Message[]): boolean => {
     return msgs.slice(-5).some(m => FASHION_WORDS.some(kw => m.content.includes(kw)));
   };
@@ -268,6 +294,40 @@ export default function KokoroChat() {
     setIsLoading(true);
 
     try {
+      // Stay mode の場合
+      if (stayState.active) {
+        const res = await fetch('/api/chat-stay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            history: apiHistory,
+            persona: stayState.persona,
+            style: stayState.style,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        const newTurnCount = stayState.turnCount + 1;
+        setStayState(prev => ({ ...prev, turnCount: newTurnCount }));
+
+        const suggestReturn = shouldSuggestReturn(text, newTurnCount);
+
+        const aiMsg: Message = {
+          role: 'ai',
+          content: data.main || '',
+          stayMain: data.main || '',
+          stayPersona: stayState.persona,
+          stayWhispers: data.whispers || [],
+          showZen: suggestReturn,
+        };
+        setMessages(prev => [...prev, aiMsg]);
+        setIsLoading(false);
+        setTimeout(() => textareaRef.current?.focus(), 100);
+        return;
+      }
+
       // Fashion intent時は履歴を渡さず、turnCountも0にする
       const fashionCheck = isFashionIntent(text);
 
@@ -434,6 +494,49 @@ export default function KokoroChat() {
         </div>
       </header>
 
+      {/* 人格選択バー */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'8px 20px', borderBottom:'1px solid #f3f4f6', background:'#fafafa' }}>
+        {stayState.active && (
+          <button onClick={exitStayMode}
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed', background:'#ede9fe', border:'1px solid #c4b5fd', borderRadius:4, padding:'4px 10px', cursor:'pointer', marginRight:8 }}>
+            4人格に戻る
+          </button>
+        )}
+        {(['gnome', 'shin', 'canon', 'dig'] as Persona[]).map(p => {
+          const isActive = stayState.active && stayState.persona === p;
+          const color = CORE_PERSONA_COLORS[p];
+          return (
+            <button key={p} onClick={() => stayState.active && stayState.persona === p ? exitStayMode() : enterStayMode(p)}
+              style={{
+                display:'flex', alignItems:'center', gap:4, padding:'5px 12px',
+                border: isActive ? `2px solid ${color}` : '1px solid #e5e7eb',
+                borderRadius:20, cursor:'pointer', transition:'all .15s',
+                background: isActive ? color + '15' : '#fff',
+              }}>
+              <span style={{ fontSize:14 }}>{CORE_PERSONA_EMOJIS[p]}</span>
+              <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: isActive ? color : '#9ca3af', letterSpacing:'0.1em', fontWeight: isActive ? 600 : 400 }}>
+                {PERSONA_LABELS[p]}
+              </span>
+            </button>
+          );
+        })}
+        {stayState.active && (
+          <button onClick={() => setStayState(prev => ({ ...prev, style: prev.style === 'balanced' ? 'pure' : 'balanced' }))}
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:4, padding:'4px 8px', cursor:'pointer', marginLeft:8 }}>
+            {stayState.style === 'balanced' ? 'balanced' : 'pure'}
+          </button>
+        )}
+      </div>
+
+      {/* Stay mode バナー */}
+      {stayState.active && (
+        <div style={{ textAlign:'center', padding:'6px 20px', background: CORE_PERSONA_COLORS[stayState.persona] + '10', borderBottom: `1px solid ${CORE_PERSONA_COLORS[stayState.persona]}30` }}>
+          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color: CORE_PERSONA_COLORS[stayState.persona], letterSpacing:'0.12em' }}>
+            {CORE_PERSONA_EMOJIS[stayState.persona]} {PERSONA_LABELS[stayState.persona]}と対話中
+          </span>
+        </div>
+      )}
+
       {/* チャットエリア */}
       <div style={{ flex:1, overflowY:'auto', padding:'24px 0' }}>
         <div style={{ maxWidth:680, margin:'0 auto', padding:'0 20px' }}>
@@ -463,7 +566,47 @@ export default function KokoroChat() {
                 </div>
               ) : (
                 <div style={{ maxWidth:'85%' }}>
-                  {msg.kokoroResponse ? (
+                  {msg.stayMain && msg.stayPersona ? (
+                    /* Stay mode メッセージ */
+                    <>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                        <div style={{ width:28, height:28, borderRadius:'50%', background: CORE_PERSONA_COLORS[msg.stayPersona] + '22', border:`1.5px solid ${CORE_PERSONA_COLORS[msg.stayPersona]}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                          {CORE_PERSONA_EMOJIS[msg.stayPersona]}
+                        </div>
+                        <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: CORE_PERSONA_COLORS[msg.stayPersona], letterSpacing:'0.15em', textTransform:'uppercase' }}>
+                          {PERSONA_LABELS[msg.stayPersona]}
+                        </div>
+                      </div>
+                      <div style={{ borderLeft:`2px solid ${CORE_PERSONA_COLORS[msg.stayPersona]}`, paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151' }}>
+                        {msg.stayMain}
+                      </div>
+                      {/* Whispers（balanced mode） */}
+                      {msg.stayWhispers && msg.stayWhispers.length > 0 && (
+                        <div style={{ marginTop:10 }}>
+                          <button onClick={() => setWhisperOpen(prev => ({ ...prev, [i]: !prev[i] }))}
+                            style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'3px 8px', cursor:'pointer' }}>
+                            {whisperOpen[i] ? '▲ 他の声を閉じる' : '▼ 他の声も聞く'}
+                          </button>
+                          {whisperOpen[i] && (
+                            <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
+                              {msg.stayWhispers.map((w, wi) => {
+                                const wPersona = w.persona as Persona;
+                                return (
+                                  <div key={wi} style={{ display:'flex', alignItems:'flex-start', gap:6, paddingLeft:8 }}>
+                                    <span style={{ fontSize:11, flexShrink:0 }}>{CORE_PERSONA_EMOJIS[wPersona] || '💬'}</span>
+                                    <span style={{ fontSize:11, color:'#9ca3af', lineHeight:1.6 }}>
+                                      <span style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color: CORE_PERSONA_COLORS[wPersona] || '#9ca3af', marginRight:4 }}>{PERSONA_LABELS[wPersona] || w.persona}</span>
+                                      {w.text}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : msg.kokoroResponse ? (
                     <KokoroCoreView data={msg.kokoroResponse} />
                   ) : (
                     <>
@@ -485,10 +628,12 @@ export default function KokoroChat() {
                   )}
                   {msg.showZen && (
                     <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                      <span style={{ fontSize:12, color:'#7c3aed' }}>少しだけ、見方を変えてみる？</span>
-                      <button onClick={openZen}
+                      <span style={{ fontSize:12, color:'#7c3aed' }}>
+                        {msg.stayPersona ? '他の視点も見てみる？' : '少しだけ、見方を変えてみる？'}
+                      </span>
+                      <button onClick={msg.stayPersona ? exitStayMode : openZen}
                         style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        見方を変えてみる →
+                        {msg.stayPersona ? '4人格モードに戻る →' : '見方を変えてみる →'}
                       </button>
                     </div>
                   )}

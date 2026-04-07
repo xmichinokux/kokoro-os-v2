@@ -26,3 +26,12 @@ export type KokoroResponse = {
   conflict?: ConflictBlock;
   convergence: ConvergenceBlock;
 };
+
+export type StayModeStyle = "pure" | "balanced";
+
+export type PersonaStayState = {
+  active: boolean;
+  persona: Persona;
+  style: StayModeStyle;
+  turnCount: number;
+};

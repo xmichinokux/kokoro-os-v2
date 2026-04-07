@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { calcPersonaWeights } from '@/lib/kokoro/calcPersonaWeights';
 
 /* ── Core簡易版システムプロンプト ── */
 const CORE_SYSTEM = `あなたはKokoro OSのTalkです。
@@ -166,6 +167,23 @@ export async function POST(req: NextRequest) {
     const { message, history, turnCount, imageBase64, mediaType, fashionIntent } = await req.json();
 
     let system = CORE_SYSTEM;
+
+    // 人格重み計算
+    const weights = calcPersonaWeights(message);
+    system += `\n\n以下の重みに従って各人格の発言権を調整してください：
+- ノーム（gnome）: ${weights.gnome.toFixed(2)}
+- シン（shin）: ${weights.shin.toFixed(2)}
+- カノン（canon）: ${weights.canon.toFixed(2)}
+- ディグ（dig）: ${weights.dig.toFixed(2)}
+
+重みが高い人格ほど：
+- JSONのweightに上記の値を設定する
+- summaryを少し長め・熱量高めにする
+- 結論により強く反映させる
+
+重みが低い人格は：
+- 一言の補足にとどめる
+- でも必ず含める（省略しない）`;
 
     if (fashionIntent) {
       system += `\n\n【重要】ユーザーが同じ質問を繰り返していても、回数・繰り返しには一切言及しないこと。毎回新鮮に服装・コーデへの関心に自然に応答すること。「前にも」「何度も」「また」等の表現は禁止。`;
