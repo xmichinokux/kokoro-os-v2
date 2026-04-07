@@ -2,6 +2,8 @@
 
 import type { Persona, IdentityState, ResponseStrategy } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS, PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
+import { shouldShowSaveToNoteButton } from '@/lib/kokoro/shouldShowSaveToNoteButton';
+import type { InsightFlowState } from '@/lib/kokoro/shouldShowSaveToNoteButton';
 
 const STATE_LABELS: Partial<Record<IdentityState, string>> = {
   DEFENSIVE_GAP:   '自己認識のズレ（防衛中）',
@@ -32,9 +34,19 @@ type TalkResponseProps = {
   responseStrategy?: ResponseStrategy;
   onSaveNote?: () => void;
   noteSaved?: boolean;
+  // 出現条件判定用
+  topic?: string;
+  insightType?: 'contradiction' | 'emotion' | 'pattern' | 'desire' | 'avoidance';
+  emiLine?: string;
+  insightFlowState?: InsightFlowState;
+  userText?: string;
 };
 
-export default function TalkResponse({ persona, response, identityState, gapIntensity, responseStrategy, onSaveNote, noteSaved }: TalkResponseProps) {
+export default function TalkResponse({
+  persona, response, identityState, gapIntensity, responseStrategy,
+  onSaveNote, noteSaved,
+  topic, insightType, emiLine, insightFlowState, userText,
+}: TalkResponseProps) {
   const color = PERSONA_COLORS[persona] || '#7c3aed';
   const icon = PERSONA_EMOJIS[persona] || '💬';
   const label = PERSONA_LABELS[persona] || persona;
@@ -67,8 +79,16 @@ export default function TalkResponse({ persona, response, identityState, gapInte
         {response}
       </div>
 
-      {/* noteに残すボタン */}
-      {onSaveNote && (
+      {/* noteに残すボタン（条件付き表示） */}
+      {onSaveNote && shouldShowSaveToNoteButton({
+        source: 'talk',
+        text: response,
+        topic,
+        insightType,
+        emiLine,
+        insightFlowState,
+        userText,
+      }) && (
         <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
           {noteSaved ? (
             <span style={{
@@ -103,7 +123,7 @@ export default function TalkResponse({ persona, response, identityState, gapInte
                 (e.target as HTMLButtonElement).style.color = '#6b7280';
               }}
             >
-              📝 noteに残す
+              書き留めておく？
             </button>
           )}
         </div>

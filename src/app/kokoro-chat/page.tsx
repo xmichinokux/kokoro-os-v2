@@ -16,6 +16,7 @@ import { consumeNoteForTalk, buildTalkPromptFromNote } from '@/lib/kokoro/noteLi
 import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
 import type { KokoroNote } from '@/types/note';
 import type { KokoroNoteDraft } from '@/types/noteMeta';
+import type { InsightFlowState } from '@/lib/kokoro/shouldShowSaveToNoteButton';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -45,6 +46,10 @@ type Message = {
   identityState?: IdentityState;
   gapIntensity?: number;
   responseStrategy?: ResponseStrategy;
+  topic?: string;
+  insightType?: 'contradiction' | 'emotion' | 'pattern' | 'desire' | 'avoidance';
+  insightFlowState?: InsightFlowState;
+  userTextForNote?: string;
 };
 
 type ApiHistory = { role: string; content: string };
@@ -562,6 +567,8 @@ export default function KokoroChat() {
             emiLine,
             emiConflict: currentConflict,
             emiDeepFeeling: currentDeepFeeling,
+            topic: data.honneLog?.topic,
+            userTextForNote: text,
           };
           setMessages(prev => [...prev, aiMsg]);
           setEmiState(prev => ({
@@ -640,6 +647,8 @@ export default function KokoroChat() {
             emiLine,
             emiConflict: currentConflict,
             emiDeepFeeling: currentDeepFeeling,
+            topic: data.honneLog?.topic,
+            userTextForNote: text,
           };
           setMessages(prev => [...prev, aiMsg]);
           setEmiState({
@@ -679,6 +688,8 @@ export default function KokoroChat() {
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
+            topic: data.honneLog?.topic,
+            userTextForNote: text,
           };
           setMessages(prev => [...prev, aiMsg]);
         }
@@ -869,6 +880,11 @@ export default function KokoroChat() {
                         msg.talkPersona ?? 'gnome',
                       )}
                       noteSaved={savedNoteIds.has(i)}
+                      topic={msg.topic}
+                      insightType={msg.insightType}
+                      emiLine={msg.emiLine}
+                      insightFlowState={msg.insightFlowState}
+                      userText={msg.userTextForNote}
                     />
                   ) : (
                     /* フォールバック：テキストのみ */
@@ -934,14 +950,10 @@ export default function KokoroChat() {
                     <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(52,211,153,0.06)', border:'1px solid rgba(52,211,153,0.25)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
                       <span style={{ fontSize:13, color:'#6ee7b7' }}>📝 書き留めておく？</span>
                       <button onClick={() => {
-                        localStorage.setItem('kokoro_note_draft', JSON.stringify({
-                          title: msg.talkResponse?.slice(0, 20) ?? 'Talk メモ',
-                          body: msg.talkResponse ?? '',
-                        }));
                         window.location.href = '/kokoro-note?mode=create';
                       }}
                         style={{ background:'transparent', border:'1px solid rgba(52,211,153,0.4)', color:'#6ee7b7', padding:'5px 14px', borderRadius:4, cursor:'pointer', fontSize:12, fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', whiteSpace:'nowrap' }}>
-                        Note に書く →
+                        Note を開く →
                       </button>
                     </div>
                   )}

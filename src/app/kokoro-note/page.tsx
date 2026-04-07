@@ -80,19 +80,26 @@ export default function KokoroNotePage() {
     setNotes(getAllNotes());
   }, []);
 
-  // Talkからのdraft引き継ぎを確認
+  // Talkからのdraft引き継ぎ / 空で新規作成
   useEffect(() => {
-    const raw = localStorage.getItem('kokoro_note_draft');
     const params = new URLSearchParams(window.location.search);
-    if (raw && params.get('mode') === 'create') {
+    const mode = params.get('mode');
+
+    if (mode !== 'create') return;
+
+    const raw = localStorage.getItem('kokoro_note_draft');
+
+    if (raw) {
+      // draftがある場合のみ内容をセット（Talk「noteに残す」経由）
       localStorage.removeItem('kokoro_note_draft');
       try {
         const draft = JSON.parse(raw);
         setEditTitle(draft.title ?? '');
         setEditBody(draft.body ?? '');
-        setView('edit');
       } catch { /* ignore */ }
     }
+    // draftがない場合（「書きたい」系ワード経由）は空のまま編集画面を開く
+    setView('edit');
   }, []);
 
   // notes再読み込みヘルパー
