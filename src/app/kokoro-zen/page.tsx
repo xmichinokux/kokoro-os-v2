@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { consumeNoteForZen, buildZenPromptFromNoteData } from '@/lib/kokoro/noteLinkage';
+import { createNoteFromZen } from '@/lib/kokoro/createNoteFromTalk';
+import { saveNote } from '@/lib/kokoro/noteStorage';
 
 type PersonaResult = { id: string; name: string; text: string };
 type Core = {
@@ -38,6 +40,7 @@ export default function KokoroZen() {
   const [deepData, setDeepData] = useState<DeepResult | null>(null);
   const [deepOpen, setDeepOpen] = useState(false);
   const [noInput, setNoInput] = useState(false);
+  const [zenNoteSaved, setZenNoteSaved] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
 
   const runZenAnalysis = useCallback(async (text: string) => {
@@ -49,6 +52,7 @@ export default function KokoroZen() {
     setDeepOpen(false);
     setPersonasOpen(false);
     setCoreOpen(false);
+    setZenNoteSaved(false);
     setIsLoading(true);
     setLoadStep(1);
 
@@ -132,6 +136,13 @@ export default function KokoroZen() {
     } finally {
       setDeepLoading(false);
     }
+  };
+
+  const handleSaveZenNote = () => {
+    if (!result || zenNoteSaved) return;
+    const note = createNoteFromZen(result);
+    saveNote(note);
+    setZenNoteSaved(true);
   };
 
   const stepLabels = [
@@ -299,6 +310,61 @@ export default function KokoroZen() {
                 )}
               </div>
             )}
+
+            {/* Zen → note 保存導線 */}
+            <div style={{
+              marginTop: 32,
+              paddingTop: 20,
+              borderTop: '1px solid rgba(124,58,237,0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+            }}>
+              {zenNoteSaved ? (
+                <span style={{
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 11,
+                  color: '#34d399',
+                  letterSpacing: '0.1em',
+                }}>
+                  ✓ Kokoro note に保存しました
+                </span>
+              ) : (
+                <button
+                  onClick={handleSaveZenNote}
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: 11,
+                    color: '#7c3aed',
+                    background: 'rgba(124,58,237,0.06)',
+                    border: '1px solid rgba(124,58,237,0.3)',
+                    borderRadius: 6,
+                    padding: '8px 18px',
+                    cursor: 'pointer',
+                    letterSpacing: '0.1em',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  📝 この整理をnoteに残す
+                </button>
+              )}
+              <button
+                onClick={() => router.push('/kokoro-chat')}
+                style={{
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 11,
+                  color: '#9ca3af',
+                  background: 'transparent',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 6,
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                Talkで続きを話す →
+              </button>
+            </div>
 
           </div>
         )}

@@ -30,9 +30,11 @@ type TalkResponseProps = {
   identityState?: IdentityState;
   gapIntensity?: number;
   responseStrategy?: ResponseStrategy;
+  onSaveNote?: () => void;
+  noteSaved?: boolean;
 };
 
-export default function TalkResponse({ persona, response, identityState, gapIntensity, responseStrategy }: TalkResponseProps) {
+export default function TalkResponse({ persona, response, identityState, gapIntensity, responseStrategy, onSaveNote, noteSaved }: TalkResponseProps) {
   const color = PERSONA_COLORS[persona] || '#7c3aed';
   const icon = PERSONA_EMOJIS[persona] || '💬';
   const label = PERSONA_LABELS[persona] || persona;
@@ -64,6 +66,48 @@ export default function TalkResponse({ persona, response, identityState, gapInte
       }}>
         {response}
       </div>
+
+      {/* noteに残すボタン */}
+      {onSaveNote && (
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {noteSaved ? (
+            <span style={{
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 10,
+              color: '#34d399',
+              letterSpacing: '0.1em',
+            }}>
+              ✓ noteに保存しました
+            </span>
+          ) : (
+            <button
+              onClick={onSaveNote}
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 10,
+                color: '#6b7280',
+                background: 'transparent',
+                border: '1px solid #e5e7eb',
+                borderRadius: 4,
+                padding: '3px 10px',
+                cursor: 'pointer',
+                letterSpacing: '0.08em',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                (e.target as HTMLButtonElement).style.borderColor = '#7c3aed';
+                (e.target as HTMLButtonElement).style.color = '#7c3aed';
+              }}
+              onMouseLeave={e => {
+                (e.target as HTMLButtonElement).style.borderColor = '#e5e7eb';
+                (e.target as HTMLButtonElement).style.color = '#6b7280';
+              }}
+            >
+              📝 noteに残す
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 自己認識ズレ状態バッジ */}
       {identityState && identityState !== 'NO_GAP' && (gapIntensity ?? 0) > 0.3 && (

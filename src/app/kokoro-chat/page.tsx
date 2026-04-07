@@ -11,9 +11,11 @@ import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagn
 import { shouldTriggerEmi, buildEmiResponse, buildZenPromptFromEmi, type EmiState } from '@/lib/kokoro/emi';
 import { inferSessionState, calcEffectiveProfileWeight } from '@/lib/kokoro/sessionState';
 import { createNoteFromEmi } from '@/lib/kokoro/createNoteFromTalk';
-import { saveNote } from '@/lib/kokoro/noteStorage';
+import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
 import { consumeNoteForTalk, buildTalkPromptFromNote } from '@/lib/kokoro/noteLinkage';
+import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
 import type { KokoroNote } from '@/types/note';
+import type { KokoroNoteDraft } from '@/types/noteMeta';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -90,6 +92,7 @@ export default function KokoroChat() {
   const [emiState, setEmiState] = useState<EmiState>({ active: false, turnCount: 0, triggerCount: 0 });
   const [turnCount, setTurnCount] = useState(0);
   const [linkedNote, setLinkedNote] = useState<Partial<KokoroNote> | null>(null);
+  const [savedNoteIds, setSavedNoteIds] = useState<Set<number>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -320,6 +323,38 @@ export default function KokoroChat() {
 
   const hasRecentFashionContext = (msgs: Message[]): boolean => {
     return msgs.slice(-5).some(m => FASHION_WORDS.some(kw => m.content.includes(kw)));
+  };
+
+  const handleSaveNoteFromTalk = (
+    msgIndex: number,
+    response: string,
+    persona: string,
+  ) => {
+    if (savedNoteIds.has(msgIndex)) return;
+
+    const draft: KokoroNoteDraft = {
+      source: 'talk',
+      body: response,
+      linkedPersona: persona as KokoroNoteDraft['linkedPersona'],
+    };
+    const meta = generateAutoNoteMeta(draft);
+    const now = new Date().toISOString();
+
+    const note: KokoroNote = {
+      id: createNoteId(),
+      createdAt: now,
+      updatedAt: now,
+      source: 'talk',
+      title: meta.title,
+      body: response,
+      tags: meta.tags,
+      topic: meta.topic,
+      linkedPersona: persona,
+      pinned: false,
+    };
+
+    saveNote(note);
+    setSavedNoteIds(prev => new Set(prev).add(msgIndex));
   };
 
   const handleZenClick = (opts?: { conflict?: string; deepFeeling?: string }) => {
@@ -828,6 +863,12 @@ export default function KokoroChat() {
                       identityState={msg.identityState}
                       gapIntensity={msg.gapIntensity}
                       responseStrategy={msg.responseStrategy}
+                      onSaveNote={() => handleSaveNoteFromTalk(
+                        i,
+                        msg.talkResponse ?? '',
+                        msg.talkPersona ?? 'gnome',
+                      )}
+                      noteSaved={savedNoteIds.has(i)}
                     />
                   ) : (
                     /* フォールバック：テキストのみ */
