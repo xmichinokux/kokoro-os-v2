@@ -22,7 +22,6 @@ type Message = {
   syncRate?: number;
   showAnimal?: boolean;
   showFashion?: boolean;
-  showDiagnosis?: boolean;
   imagePreview?: string;
   imageBase64?: string;
   imageMediaType?: string;
@@ -78,7 +77,7 @@ export default function KokoroChat() {
     turnCount: 0,
   });
   const [whisperOpen, setWhisperOpen] = useState<Record<number, boolean>>({});
-  const [diagnosisTriggerShown, setDiagnosisTriggerShown] = useState(false);
+  const [showDiagnosisBanner, setShowDiagnosisBanner] = useState(false);
   const [emiState, setEmiState] = useState<EmiState>({ active: false, turnCount: 0, triggerCount: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -98,6 +97,14 @@ export default function KokoroChat() {
       localStorage.setItem('talkMessages', JSON.stringify(messages));
     }
   }, [messages]);
+
+  // ページ読み込み時に診断バナー表示チェック
+  useEffect(() => {
+    const logs = getHonneLogs();
+    if (logs.length >= 3) {
+      setShowDiagnosisBanner(true);
+    }
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -413,25 +420,11 @@ export default function KokoroChat() {
         appendHonneLog(log);
       }
 
-      // 診断トリガー判定（3件以上で表示）
-      let showDiagnosisBtn = false;
-      if (!diagnosisTriggerShown) {
-        const honneLogs = getHonneLogs();
-        if (honneLogs.length >= 3) {
-          const triggerRaw = localStorage.getItem('diagnosisTriggerState');
-          const now = Date.now();
-          let canShow = true;
-          if (triggerRaw) {
-            try {
-              const ts = JSON.parse(triggerRaw);
-              if (ts.lastShownAt && now - ts.lastShownAt < 10 * 60 * 1000) canShow = false;
-            } catch { /* ignore */ }
-          }
-          if (canShow) {
-            showDiagnosisBtn = true;
-            setDiagnosisTriggerShown(true);
-            localStorage.setItem('diagnosisTriggerState', JSON.stringify({ lastShownAt: now }));
-          }
+      // 診断バナー表示チェック（APIレスポンス後）
+      {
+        const logs = getHonneLogs();
+        if (logs.length >= 3) {
+          setShowDiagnosisBanner(true);
         }
       }
 
@@ -464,7 +457,6 @@ export default function KokoroChat() {
             talkResponse: replyText,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
-            showDiagnosis: showDiagnosisBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -538,7 +530,6 @@ export default function KokoroChat() {
             talkResponse: replyText,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
-            showDiagnosis: showDiagnosisBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -563,7 +554,6 @@ export default function KokoroChat() {
             talkResponse: replyText,
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
-            showDiagnosis: showDiagnosisBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -809,15 +799,6 @@ export default function KokoroChat() {
                       </button>
                     </div>
                   )}
-                  {msg.showDiagnosis && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                      <span style={{ fontSize:12, color:'#059669' }}>少し傾向が見えてきています</span>
-                      <button onClick={() => router.push('/kokoro-diagnosis')}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#059669', background:'transparent', border:'1px solid #86efac', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        今の状態を見る →
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -881,10 +862,17 @@ export default function KokoroChat() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#d1d5db', letterSpacing:'0.1em' }}>
             Enter で送信 // Shift+Enter で改行
           </span>
-          <button onClick={() => router.push('/kokoro-diagnosis')}
-            style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'2px 8px', cursor:'pointer' }}>
-            今の状態を見る
-          </button>
+          {showDiagnosisBanner ? (
+            <button onClick={() => router.push('/kokoro-diagnosis')}
+              style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed', background:'#ede9fe', border:'1px solid #c4b5fd', borderRadius:4, padding:'3px 10px', cursor:'pointer', letterSpacing:'0.05em' }}>
+              💡 今の状態を見る →
+            </button>
+          ) : (
+            <button onClick={() => router.push('/kokoro-diagnosis')}
+              style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'2px 8px', cursor:'pointer' }}>
+              今の状態を見る
+            </button>
+          )}
         </div>
       </div>
 
