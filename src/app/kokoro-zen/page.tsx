@@ -26,7 +26,7 @@ const PERSONA_COLORS: Record<string, string> = {
 
 export default function KokoroZen() {
   const router = useRouter();
-  const [input, setInput] = useState('');
+  const [sourceText, setSourceText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadStep, setLoadStep] = useState(0);
   const [result, setResult] = useState<ZenResult | null>(null);
@@ -36,10 +36,11 @@ export default function KokoroZen() {
   const [deepLoading, setDeepLoading] = useState(false);
   const [deepData, setDeepData] = useState<DeepResult | null>(null);
   const [deepOpen, setDeepOpen] = useState(false);
+  const [noInput, setNoInput] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
 
   const runZenAnalysis = useCallback(async (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if (!text.trim()) return;
 
     setError('');
     setResult(null);
@@ -69,7 +70,7 @@ export default function KokoroZen() {
       setIsLoading(false);
       setLoadStep(0);
     }
-  }, [isLoading]);
+  }, []);
 
   // Talk→Zen自動分析
   const autoRunRef = useRef(false);
@@ -78,19 +79,23 @@ export default function KokoroZen() {
     autoRunRef.current = true;
 
     const raw = sessionStorage.getItem('zenFromTalk');
-    if (!raw) return;
+    if (!raw) {
+      setNoInput(true);
+      return;
+    }
     sessionStorage.removeItem('zenFromTalk');
 
     try {
       const { userInput } = JSON.parse(raw);
       if (userInput) {
-        setInput(userInput);
-        // 少し遅延してから自動分析開始
+        setSourceText(userInput);
         setTimeout(() => runZenAnalysis(userInput), 100);
+      } else {
+        setNoInput(true);
       }
     } catch {
       // fallback: rawがJSON以外（旧形式）
-      setInput(raw);
+      setSourceText(raw);
       setTimeout(() => runZenAnalysis(raw), 100);
     }
   }, [runZenAnalysis]);
@@ -100,10 +105,6 @@ export default function KokoroZen() {
       <p key={i} style={{ margin:'0 0 1.1em 0' }}>{s}</p>
     ));
 
-  const submit = () => {
-    runZenAnalysis(input);
-  };
-
   const loadDeepEmi = async () => {
     if (deepData) { setDeepOpen(v => !v); return; }
     setDeepLoading(true);
@@ -112,7 +113,7 @@ export default function KokoroZen() {
       const res = await fetch('/api/kokoro-zen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, mode: 'deep_emi' }),
+        body: JSON.stringify({ message: sourceText, mode: 'deep_emi' }),
       });
       const data = await res.json();
       setDeepData({ emiMain: data.emiMain, emiQuestion: data.emiQuestion });
@@ -147,24 +148,22 @@ export default function KokoroZen() {
 
       <div style={{ maxWidth:680, margin:'0 auto', padding:'40px 20px 80px' }}>
 
-        {/* 入力エリア */}
-        <div style={{ marginBottom:32 }}>
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
-            placeholder="今、何が引っかかっていますか？断片でも大丈夫です。"
-            rows={4}
-            style={{ width:'100%', resize:'none', border:'1px solid #e5e7eb', borderRadius:8, padding:'16px', fontSize:14, lineHeight:1.8, outline:'none', fontFamily:'inherit', background:'#f9fafb', color:'#1a1a1a', boxSizing:'border-box' }}
-          />
-          {error && <div style={{ color:'#ef4444', fontSize:12, marginTop:6 }}>{error}</div>}
-          <div style={{ display:'flex', justifyContent:'flex-end', marginTop:10 }}>
-            <button onClick={submit} disabled={isLoading}
-              style={{ fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', background:'#7c3aed', color:'#fff', border:'none', borderRadius:4, padding:'10px 24px', cursor:'pointer', opacity: isLoading ? 0.5 : 1 }}>
-              {isLoading ? '// 整理しています...' : '▸ 深掘りする'}
+        {/* sessionStorageにデータがない場合 */}
+        {noInput && !isLoading && !result && (
+          <div style={{ textAlign:'center', padding:'80px 20px' }}>
+            <div style={{ fontSize:18, color:'#6b7280', marginBottom:12 }}>Talkから遷移してください</div>
+            <div style={{ fontSize:13, color:'#9ca3af', marginBottom:24 }}>Talkで会話した内容をもとに分析します</div>
+            <button onClick={() => router.push('/kokoro-chat')}
+              style={{ fontFamily:"'Space Mono', monospace", fontSize:11, color:'#7c3aed', background:'#ede9fe', border:'none', borderRadius:6, padding:'10px 24px', cursor:'pointer' }}>
+              Talk を開く →
             </button>
           </div>
-        </div>
+        )}
+
+        {/* エラー */}
+        {error && (
+          <div style={{ color:'#ef4444', fontSize:12, marginBottom:16 }}>{error}</div>
+        )}
 
         {/* ローディング */}
         {isLoading && (
@@ -234,7 +233,7 @@ export default function KokoroZen() {
             </button>
 
             {personasOpen && (
-              <div style={{ marginBottom:20, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, animation:'fadeUp .35s ease-out' }}>
+              <div className="zen-personas-grid" style={{ marginBottom:20, display:'grid', gap:10, animation:'fadeUp .35s ease-out' }}>
                 {result.personas.map(p => (
                   <div key={p.id} style={{ background:'#f8f9fa', border:'1px solid #e5e7eb', borderTop:`2px solid ${PERSONA_COLORS[p.id] || '#7c3aed'}`, padding:20 }}>
                     <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.15em', color: PERSONA_COLORS[p.id] || '#7c3aed', textTransform:'uppercase', marginBottom:12 }}>{p.name}</div>
@@ -298,7 +297,8 @@ export default function KokoroZen() {
       <style>{`
         @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
-        @media (max-width:600px) { .personas-grid { grid-template-columns: 1fr !important; } }
+        .zen-personas-grid { grid-template-columns: 1fr 1fr; }
+        @media (max-width:768px) { .zen-personas-grid { grid-template-columns: 1fr !important; } }
       `}</style>
     </div>
   );

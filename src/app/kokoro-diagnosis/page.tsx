@@ -12,6 +12,24 @@ import { buildStayPromptFromDiagnosis } from '@/lib/kokoro/diagnosis/buildStayPr
 import { buildMultiPromptFromDiagnosis } from '@/lib/kokoro/diagnosis/buildMultiPromptFromDiagnosis';
 import { PERSONA_LABELS, PERSONA_COLORS, PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 
+type ZenPersona = { id: string; name: string; text: string };
+type ZenInlineResult = {
+  emiMain: string;
+  emiQuestion: string;
+  personas: ZenPersona[];
+  core: {
+    main_story: string;
+    emotional_heat: number;
+    tensions: string[];
+    needs: string[];
+    key_question: string;
+  };
+};
+
+const ZEN_PERSONA_COLORS: Record<string, string> = {
+  norm:'#d97706', shin:'#2563eb', canon:'#7c3aed', digg:'#059669',
+};
+
 export default function KokoroDiagnosis() {
   const router = useRouter();
   const [diagnosis, setDiagnosis] = useState<PersonalDiagnosis | null>(null);
@@ -19,6 +37,12 @@ export default function KokoroDiagnosis() {
   const [actions, setActions] = useState<DiagnosisAction[]>([]);
   const [logCount, setLogCount] = useState(0);
   const logsRef = useRef<HTMLDivElement>(null);
+
+  // インラインZen分析
+  const [zenLoading, setZenLoading] = useState(false);
+  const [zenResult, setZenResult] = useState<ZenInlineResult | null>(null);
+  const [zenPersonasOpen, setZenPersonasOpen] = useState(false);
+  const zenResultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const logs = getHonneLogs();
@@ -33,13 +57,34 @@ export default function KokoroDiagnosis() {
     setActions(acts);
   }, []);
 
+  const handleMultiAction = async () => {
+    if (!diagnosis || zenLoading) return;
+    setZenLoading(true);
+    setZenResult(null);
+
+    try {
+      const prompt = buildMultiPromptFromDiagnosis(diagnosis);
+      const res = await fetch('/api/kokoro-zen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: prompt }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setZenResult(data);
+      setTimeout(() => zenResultRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 200);
+    } catch (e) {
+      setZenResult({ emiMain: `エラー: ${e instanceof Error ? e.message : '不明'}`, emiQuestion: '', personas: [], core: { main_story:'', emotional_heat:0, tensions:[], needs:[], key_question:'' } });
+    } finally {
+      setZenLoading(false);
+    }
+  };
+
   const handleAction = (action: DiagnosisAction) => {
     if (!diagnosis) return;
 
     if (action.type === 'multi') {
-      const prompt = buildMultiPromptFromDiagnosis(diagnosis);
-      sessionStorage.setItem('diagnosisMultiIntent', JSON.stringify({ prompt }));
-      router.push('/kokoro-chat');
+      handleMultiAction();
     } else if (action.type === 'stay') {
       const prompt = buildStayPromptFromDiagnosis(action.persona, diagnosis);
       sessionStorage.setItem('diagnosisStayIntent', JSON.stringify({
@@ -58,6 +103,11 @@ export default function KokoroDiagnosis() {
       return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
     } catch { return ''; }
   };
+
+  const formatEmi = (text: string) =>
+    text.split(/(?<=。)/).map(s => s.trim()).filter(s => s).map((s, i) => (
+      <p key={i} style={{ margin:'0 0 1.1em 0' }}>{s}</p>
+    ));
 
   // タグ表示
   const Tag = ({ children, color }: { children: React.ReactNode; color?: string }) => (
@@ -233,27 +283,90 @@ export default function KokoroDiagnosis() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {actions.map((action, i) => (
                   <button key={i} onClick={() => handleAction(action)}
+                    disabled={action.type === 'multi' && zenLoading}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       width: '100%', padding: '12px 16px', border: '1px solid #e5e7eb', borderRadius: 8,
                       background: action.type === 'multi' ? '#faf5ff' : action.type === 'stay' ? '#f0fdf4' : '#f9fafb',
-                      cursor: 'pointer', textAlign: 'left', fontSize: 13, color: '#374151',
+                      cursor: (action.type === 'multi' && zenLoading) ? 'not-allowed' : 'pointer',
+                      textAlign: 'left', fontSize: 13, color: '#374151',
                       transition: 'all .15s',
+                      opacity: (action.type === 'multi' && zenLoading) ? 0.5 : 1,
                     }}>
                     <span>
                       {action.type === 'multi' && '🔄 '}
                       {action.type === 'stay' && `${PERSONA_EMOJIS[action.persona]} `}
                       {action.type === 'logs' && '📋 '}
-                      {action.label}
+                      {action.type === 'multi' && zenLoading ? '// 整理しています...' : action.label}
                     </span>
                     <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
                   </button>
                 ))}
               </div>
             </Section>
+
+            {/* ⑪ インラインZen分析結果 */}
+            {zenLoading && (
+              <div style={{ marginBottom: 32 }}>
+                <div style={{ height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden', marginBottom: 20 }}>
+                  <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: '#7c3aed', animation: 'sweep 1.4s ease-in-out infinite' }} />
+                </div>
+                <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.14em', color: '#9ca3af' }}>
+                  // 4つの視点で整理しています...
+                </div>
+              </div>
+            )}
+
+            {zenResult && (
+              <div ref={zenResultRef} style={{ marginBottom: 32 }}>
+                <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.15em', color: '#7c3aed', marginBottom: 16 }}>
+                  // 葛藤の分析
+                </div>
+
+                {/* エミの見立て */}
+                <div style={{ borderLeft: '2px solid #7c3aed', paddingLeft: 24, marginBottom: 24 }}>
+                  <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em', color: '#7c3aed', textTransform: 'uppercase', marginBottom: 12 }}>// エミより</div>
+                  <div style={{ fontSize: 15, lineHeight: 2.2, color: '#1a1a1a', fontWeight: 300 }}>
+                    {formatEmi(zenResult.emiMain)}
+                  </div>
+                  {zenResult.emiQuestion && (
+                    <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #e5e7eb', fontSize: 13, color: '#6b7280', fontStyle: 'italic', lineHeight: 2 }}>
+                      「{zenResult.emiQuestion}」
+                    </div>
+                  )}
+                </div>
+
+                {/* 4人格の視点 */}
+                {zenResult.personas && zenResult.personas.length > 0 && (
+                  <>
+                    <button onClick={() => setZenPersonasOpen(v => !v)}
+                      style={{ width: '100%', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, color: '#6b7280', fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', padding: '13px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span>{zenPersonasOpen ? '▲ 閉じる' : '▼ 4人格の視点を見る'}</span>
+                      <span style={{ fontSize: 8, color: '#9ca3af' }}>// 4つの人格</span>
+                    </button>
+                    {zenPersonasOpen && (
+                      <div className="zen-personas-grid" style={{ marginBottom: 20, display: 'grid', gap: 10 }}>
+                        {zenResult.personas.map(p => (
+                          <div key={p.id} style={{ background: '#f8f9fa', border: '1px solid #e5e7eb', borderTop: `2px solid ${ZEN_PERSONA_COLORS[p.id] || '#7c3aed'}`, padding: 20 }}>
+                            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.15em', color: ZEN_PERSONA_COLORS[p.id] || '#7c3aed', textTransform: 'uppercase', marginBottom: 12 }}>{p.name}</div>
+                            <div style={{ fontSize: 13, color: '#374151', lineHeight: 2 }}>{p.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
+
+      <style>{`
+        @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
+        .zen-personas-grid { grid-template-columns: 1fr 1fr; }
+        @media (max-width:768px) { .zen-personas-grid { grid-template-columns: 1fr !important; } }
+      `}</style>
     </div>
   );
 }
