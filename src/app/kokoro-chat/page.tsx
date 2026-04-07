@@ -388,14 +388,19 @@ export default function KokoroChat() {
         }
       }
 
-      let showAnimalBtn = !!(savedImage && savedMediaType);
+      // エミがアクティブまたは発動直後はFashion/Animalボタンを非表示
+      const emiBlocking = emiState.active || emiState.turnCount >= 1;
+
+      let showAnimalBtn = !!(savedImage && savedMediaType) && !emiBlocking;
       let showFashionBtn = false;
 
-      if (fashionDetected) {
-        showFashionBtn = !askedProfileQuestion;
-        if (hasImage) showAnimalBtn = false;
-      } else if (profileUpdated && hasRecentFashionContext(messages)) {
-        showFashionBtn = true;
+      if (!emiBlocking) {
+        if (fashionDetected) {
+          showFashionBtn = !askedProfileQuestion;
+          if (hasImage) showAnimalBtn = false;
+        } else if (profileUpdated && hasRecentFashionContext(messages)) {
+          showFashionBtn = true;
+        }
       }
 
       // 本音ログ保存
@@ -408,11 +413,11 @@ export default function KokoroChat() {
         appendHonneLog(log);
       }
 
-      // 診断トリガー判定
+      // 診断トリガー判定（3件以上で表示）
       let showDiagnosisBtn = false;
       if (!diagnosisTriggerShown) {
         const honneLogs = getHonneLogs();
-        if (honneLogs.length >= 5) {
+        if (honneLogs.length >= 3) {
           const triggerRaw = localStorage.getItem('diagnosisTriggerState');
           const now = Date.now();
           let canShow = true;
@@ -423,19 +428,9 @@ export default function KokoroChat() {
             } catch { /* ignore */ }
           }
           if (canShow) {
-            const hasDeep = data.honneLog?.deepFeeling;
-            const conflictCount: Record<string, number> = {};
-            for (const l of honneLogs) {
-              for (const ax of l.conflictAxes || []) {
-                conflictCount[ax] = (conflictCount[ax] || 0) + 1;
-              }
-            }
-            const hasRepeatedConflict = Object.values(conflictCount).some(c => c >= 3);
-            if (hasDeep || hasRepeatedConflict) {
-              showDiagnosisBtn = true;
-              setDiagnosisTriggerShown(true);
-              localStorage.setItem('diagnosisTriggerState', JSON.stringify({ lastShownAt: now }));
-            }
+            showDiagnosisBtn = true;
+            setDiagnosisTriggerShown(true);
+            localStorage.setItem('diagnosisTriggerState', JSON.stringify({ lastShownAt: now }));
           }
         }
       }
@@ -726,6 +721,28 @@ export default function KokoroChat() {
                         </div>
                       )}
                     </>
+                  ) : msg.isEmi ? (
+                    /* エミ専用メッセージ（ターン2: エミのみ + Zen CTA） */
+                    <>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                        <div style={{ width:28, height:28, borderRadius:'50%', background:'#fef3c720', border:'1.5px solid #eab308', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                          ⚡
+                        </div>
+                        <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#eab308', letterSpacing:'0.15em', textTransform:'uppercase' }}>エミ</span>
+                      </div>
+                      <div style={{ borderLeft:'2px solid #eab308', paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151', fontStyle:'italic' }}>
+                        {msg.emiLine}
+                      </div>
+                      {msg.emiShowZenCta && (
+                        <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                          <span style={{ fontSize:12, color:'#7c3aed' }}>内側を整理してみない？</span>
+                          <button onClick={() => handleZenClick({ conflict: msg.emiConflict, deepFeeling: msg.emiDeepFeeling })}
+                            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
+                            Zen を開く →
+                          </button>
+                        </div>
+                      )}
+                    </>
                   ) : msg.talkPersona && msg.talkResponse ? (
                     /* Talk 1人格返答 */
                     <TalkResponse
@@ -761,29 +778,6 @@ export default function KokoroChat() {
                       <div style={{ borderLeft:'2px solid #eab308', paddingLeft:14, fontSize:13, lineHeight:1.9, color:'#6b7280', fontStyle:'italic' }}>
                         {msg.emiLine}
                       </div>
-                    </div>
-                  )}
-                  {/* エミ専用メッセージ（ターン2: エミのみ + Zen CTA） */}
-                  {msg.isEmi && (
-                    <div>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                        <div style={{ width:28, height:28, borderRadius:'50%', background:'#fef3c720', border:'1.5px solid #eab308', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
-                          ⚡
-                        </div>
-                        <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#eab308', letterSpacing:'0.15em', textTransform:'uppercase' }}>エミ</span>
-                      </div>
-                      <div style={{ borderLeft:'2px solid #eab308', paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151', fontStyle:'italic' }}>
-                        {msg.emiLine}
-                      </div>
-                      {msg.emiShowZenCta && (
-                        <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                          <span style={{ fontSize:12, color:'#7c3aed' }}>内側を整理してみない？</span>
-                          <button onClick={() => handleZenClick({ conflict: msg.emiConflict, deepFeeling: msg.emiDeepFeeling })}
-                            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                            Zen を開く →
-                          </button>
-                        </div>
-                      )}
                     </div>
                   )}
                   {msg.showZen && !msg.emiLine && (
