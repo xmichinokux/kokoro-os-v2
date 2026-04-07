@@ -1,12 +1,17 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { KokoroNote } from '@/types/note';
+import type { KokoroNoteDraft } from '@/types/noteMeta';
 import { getAllNotes, saveNote, deleteNote, togglePin, createNoteId } from '@/lib/kokoro/noteStorage';
 import { searchNotes } from '@/lib/kokoro/noteSearch';
 import { setNoteForTalk, setNoteForZen } from '@/lib/kokoro/noteLinkage';
+import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
+import { buildTagCloud }    from '@/lib/kokoro-note/buildTagCloud';
+import { findRelatedTags }  from '@/lib/kokoro-note/findRelatedTags';
+import { filterNotesByTag } from '@/lib/kokoro-note/filterNotesByTag';
 
 /* ── 定数 ── */
 const SOURCE_LABELS: Record<string, string> = {
@@ -51,8 +56,24 @@ export default function KokoroNotePage() {
   const [editTags, setEditTags] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null); // null = 新規
   const [aiLoading, setAiLoading] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const tagCloud = useMemo(
+    () => buildTagCloud(notes, { maxItems: 20 }),
+    [notes]
+  );
+
+  const relatedTags = useMemo(
+    () => selectedTag ? findRelatedTags({ notes, selectedTag, limit: 6 }) : [],
+    [notes, selectedTag]
+  );
+
+  const filteredNotes = useMemo(
+    () => selectedTag ? filterNotesByTag(notes, selectedTag) : notes,
+    [notes, selectedTag]
+  );
 
   // マウント時にnotes読み込み
   useEffect(() => {
@@ -80,11 +101,16 @@ export default function KokoroNotePage() {
   // 選択中のnote
   const selectedNote = notes.find(n => n.id === selectedId) ?? null;
 
-  // 一覧: 検索 + ピン上位ソート
-  const displayNotes = (() => {
-    let list = searchQuery.trim()
-      ? searchNotes(searchQuery).map(h => notes.find(n => n.id === h.noteId)!).filter(Boolean)
-      : [...notes];
+  // 一覧: タグフィルタ + 検索 + ピン上位ソート
+  const displayNotes = useMemo(() => {
+    let list: KokoroNote[];
+    if (searchQuery.trim()) {
+      const hits = searchNotes(searchQuery).map(h => h.noteId);
+      const hitSet = new Set(hits);
+      list = filteredNotes.filter(n => hitSet.has(n.id));
+    } else {
+      list = [...filteredNotes];
+    }
     // ピン留めを上に
     list.sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
@@ -92,7 +118,7 @@ export default function KokoroNotePage() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
     return list;
-  })();
+  }, [filteredNotes, searchQuery]);
 
   /* ── アクション ── */
   const openDetail = (id: string) => {
@@ -166,19 +192,31 @@ export default function KokoroNotePage() {
     if (!editBody.trim()) return;
     setAiLoading(true);
     try {
-      const apiKey = typeof window !== 'undefined'
-        ? localStorage.getItem('anthropicApiKey') ?? ''
-        : '';
+      // まずローカルルールで即時生成
+      const draft: KokoroNoteDraft = {
+        source: 'manual',
+        body: editBody,
+      };
+      const localMeta = generateAutoNoteMeta(draft);
+      if (!editTitle.trim()) setEditTitle(localMeta.title);
+      if (!editTags.trim()) setEditTags(localMeta.tags.join(', '));
+
+      // 次にAPIでさらに精度の高いタイトル・タグを取得
       const res = await fetch('/api/kokoro-note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: editBody, apiKey }),
+        body: JSON.stringify({ body: editBody }),
       });
-      const data = await res.json();
-      if (data.title) setEditTitle(data.title);
-      if (data.tags?.length) setEditTags(data.tags.join(', '));
-    } catch { /* ignore */ }
-    setAiLoading(false);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title) setEditTitle(data.title);
+        if (data.tags?.length) setEditTags(data.tags.join(', '));
+      }
+    } catch {
+      // ローカル生成結果をそのまま使う（エラー時のフォールバック済み）
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const addSuggestedTag = (tag: string) => {
@@ -206,6 +244,72 @@ export default function KokoroNotePage() {
           }}
         />
       </div>
+
+      {/* タグクラウド */}
+      {tagCloud.length > 0 && (
+        <div className="mb-4 p-4 rounded-xl" style={{ background: 'rgba(124,58,237,0.04)', border: '1px solid rgba(124,58,237,0.1)' }}>
+          <div className="text-xs font-mono tracking-widest mb-3" style={{ color: '#9ca3af' }}>
+            // タグで探す
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {tagCloud.map(item => (
+              <button
+                key={item.tag}
+                onClick={() => setSelectedTag(selectedTag === item.tag ? null : item.tag)}
+                className="rounded-full transition-all"
+                style={{
+                  padding: item.size === 'xl' ? '4px 14px' : item.size === 'lg' ? '3px 12px' : '2px 10px',
+                  fontSize: item.size === 'xl' ? 15 : item.size === 'lg' ? 13 : item.size === 'md' ? 12 : 11,
+                  background: selectedTag === item.tag ? '#7c3aed' : 'rgba(124,58,237,0.08)',
+                  color: selectedTag === item.tag ? '#ffffff' : '#7c3aed',
+                  border: `1px solid ${selectedTag === item.tag ? '#7c3aed' : 'rgba(124,58,237,0.2)'}`,
+                  fontWeight: item.size === 'xl' || item.size === 'lg' ? 600 : 400,
+                }}
+              >
+                {item.tag}
+                <span className="ml-1 opacity-60" style={{ fontSize: 10 }}>{item.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* 関連タグ */}
+          {selectedTag && relatedTags.length > 0 && (
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(124,58,237,0.1)' }}>
+              <span className="text-xs mr-2" style={{ color: '#9ca3af' }}>関連：</span>
+              {relatedTags.map(r => (
+                <button
+                  key={r.tag}
+                  onClick={() => setSelectedTag(r.tag)}
+                  className="mr-2 mb-1 text-xs px-2.5 py-1 rounded-full transition-all"
+                  style={{
+                    background: 'rgba(124,58,237,0.05)',
+                    color: '#9ca3af',
+                    border: '1px solid rgba(124,58,237,0.15)',
+                  }}
+                >
+                  {r.tag}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 選択中タグのヘッダ */}
+          {selectedTag && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs" style={{ color: '#7c3aed' }}>
+                「{selectedTag}」 — {filterNotesByTag(notes, selectedTag).length}件
+              </span>
+              <button
+                onClick={() => setSelectedTag(null)}
+                className="text-xs px-2 py-0.5 rounded"
+                style={{ color: '#9ca3af', background: 'rgba(0,0,0,0.05)' }}
+              >
+                ✕ 解除
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ノート一覧 */}
       {displayNotes.length === 0 ? (
@@ -536,11 +640,11 @@ export default function KokoroNotePage() {
       >
         <div className="flex items-center gap-3">
           <Link
-            href="/"
+            href="/kokoro-chat"
             className="text-xs transition-colors"
             style={{ color: '#9ca3af' }}
           >
-            ← HOME
+            ← Talkへ戻る
           </Link>
           <span
             className="text-xs font-bold tracking-widest"
