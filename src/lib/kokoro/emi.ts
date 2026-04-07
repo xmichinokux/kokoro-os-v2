@@ -1,6 +1,8 @@
 export type EmiState = {
+  active: boolean;
+  turnCount: number;       // 0=未発火, 1=1ターン目済, 2=2ターン目済
   lastTriggeredAt?: string;
-  triggerCount: number;
+  triggerCount: number;    // 累計発火回数
 };
 
 // トリガー判定
@@ -104,6 +106,44 @@ export function buildEmiLine(context: {
     "本当は別のこと考えてない？",
   ];
   return lines[Math.floor(Math.random() * lines.length)];
+}
+
+// エミの2ターン応答生成
+export function buildEmiResponse(params: {
+  turn: 1 | 2;
+  text: string;
+  conflictAxes?: string[];
+  deepFeeling?: string;
+}): string {
+  const { turn, text, conflictAxes, deepFeeling } = params;
+
+  if (turn === 1) {
+    // ターン1: 短い指摘・問いかけ
+    if (deepFeeling) {
+      return "それ、本音？　もう少し聞かせて。";
+    }
+    if (conflictAxes && conflictAxes.length > 0) {
+      return "今ちょっと引っかかった。そこ、もう少し話せる？";
+    }
+    const contradictionPhrases = ["気にしてない", "そんなことない", "大丈夫", "別にいい"];
+    if (contradictionPhrases.some(p => text.includes(p))) {
+      return "なんでそこ否定したの？　聞いてもいい？";
+    }
+    const stuckPhrases = ["どうしたらいい", "わからない", "どうすれば"];
+    if (stuckPhrases.some(p => text.includes(p))) {
+      return "少しズレてる気がする。本当に困ってるのはそこ？";
+    }
+    return "今ちょっと引っかかった。もう少し聞かせて。";
+  }
+
+  // ターン2: 深い問いかけ → Zen CTA前の最後の一言
+  if (deepFeeling) {
+    return "その奥にあるもの、言葉にしてみない？";
+  }
+  if (conflictAxes && conflictAxes.length > 0) {
+    return `「${conflictAxes[0]}」のあたり、整理してみない？`;
+  }
+  return "もう少し深く見てみたい気がする。";
 }
 
 // Zen用初期プロンプト生成

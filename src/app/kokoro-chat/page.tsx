@@ -8,7 +8,7 @@ import type { Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
 import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
-import { shouldTriggerEmi, buildEmiLine, buildZenPromptFromEmi, type EmiState } from '@/lib/kokoro/emi';
+import { shouldTriggerEmi, buildEmiResponse, buildZenPromptFromEmi, type EmiState } from '@/lib/kokoro/emi';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -18,7 +18,6 @@ type Message = {
   content: string;
   talkPersona?: Persona;
   talkResponse?: string;
-  talkNeedZen?: boolean;
   personaId?: string;
   syncRate?: number;
   showAnimal?: boolean;
@@ -31,9 +30,11 @@ type Message = {
   stayPersona?: Persona;
   stayWhispers?: StayWhisper[];
   showZen?: boolean;
-  emiLine?: string;
+  isEmi?: boolean;        // エミの発言メッセージ
+  emiLine?: string;       // エミの発言内容
   emiConflict?: string;
   emiDeepFeeling?: string;
+  emiShowZenCta?: boolean; // ターン2後のZen CTA表示
 };
 
 type ApiHistory = { role: string; content: string };
@@ -78,7 +79,7 @@ export default function KokoroChat() {
   });
   const [whisperOpen, setWhisperOpen] = useState<Record<number, boolean>>({});
   const [diagnosisTriggerShown, setDiagnosisTriggerShown] = useState(false);
-  const [emiState, setEmiState] = useState<EmiState>({ triggerCount: 0 });
+  const [emiState, setEmiState] = useState<EmiState>({ active: false, turnCount: 0, triggerCount: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -439,62 +440,142 @@ export default function KokoroChat() {
         }
       }
 
-      // エミ割り込み判定
-      let currentEmiLine: string | undefined;
-      let currentEmiConflict: string | undefined;
-      let currentEmiDeepFeeling: string | undefined;
-
+      // エミ2ターン半人格モード
       const recentUserTexts = messages
         .filter(m => m.role === 'user')
         .slice(-3)
         .map(m => m.content);
 
-      const emiTriggered = shouldTriggerEmi({
-        text,
-        recentUserTexts,
-        conflictAxes: data.honneLog?.conflictAxes,
-        deepFeeling: data.honneLog?.deepFeeling,
-      });
+      const currentConflict = data.honneLog?.conflictAxes?.[0];
+      const currentDeepFeeling = data.honneLog?.deepFeeling;
 
-      if (emiTriggered) {
-        const now = Date.now();
-        const lastTriggered = emiState.lastTriggeredAt
-          ? new Date(emiState.lastTriggeredAt).getTime()
-          : 0;
-        const cooldownOk = now - lastTriggered > 60000;
+      if (emiState.active) {
+        // エミがアクティブ中
+        const nextTurn = (emiState.turnCount + 1) as 1 | 2;
 
-        if (cooldownOk) {
-          currentEmiLine = buildEmiLine({
+        if (nextTurn === 1) {
+          // ターン1: 通常人格 + エミの一言
+          const emiLine = buildEmiResponse({
+            turn: 1,
             text,
             conflictAxes: data.honneLog?.conflictAxes,
-            deepFeeling: data.honneLog?.deepFeeling,
+            deepFeeling: currentDeepFeeling,
           });
-          currentEmiConflict = data.honneLog?.conflictAxes?.[0];
-          currentEmiDeepFeeling = data.honneLog?.deepFeeling;
+
+          const aiMsg: Message = {
+            role: 'ai',
+            content: replyText,
+            talkPersona: (data.persona || 'gnome') as Persona,
+            talkResponse: replyText,
+            showAnimal: showAnimalBtn || undefined,
+            showFashion: showFashionBtn || undefined,
+            showDiagnosis: showDiagnosisBtn || undefined,
+            imagePreview: savedPreview || undefined,
+            imageBase64: savedImage || undefined,
+            imageMediaType: savedMediaType || undefined,
+            emiLine,
+            emiConflict: currentConflict,
+            emiDeepFeeling: currentDeepFeeling,
+          };
+          setMessages(prev => [...prev, aiMsg]);
+          setEmiState(prev => ({ ...prev, turnCount: 1 }));
+
+        } else {
+          // ターン2: エミのみ（通常人格なし）+ Zen CTA
+          const emiLine = buildEmiResponse({
+            turn: 2,
+            text,
+            conflictAxes: data.honneLog?.conflictAxes,
+            deepFeeling: currentDeepFeeling,
+          });
+
+          const emiMsg: Message = {
+            role: 'ai',
+            content: emiLine,
+            isEmi: true,
+            emiLine,
+            emiConflict: currentConflict,
+            emiDeepFeeling: currentDeepFeeling,
+            emiShowZenCta: true,
+          };
+          setMessages(prev => [...prev, emiMsg]);
+          setEmiState(prev => ({
+            ...prev,
+            active: false,
+            turnCount: 0,
+          }));
+        }
+
+      } else {
+        // エミ非アクティブ: 新規トリガー判定
+        const emiTriggered = shouldTriggerEmi({
+          text,
+          recentUserTexts,
+          conflictAxes: data.honneLog?.conflictAxes,
+          deepFeeling: currentDeepFeeling,
+        });
+
+        let emiActivated = false;
+        if (emiTriggered) {
+          const now = Date.now();
+          const lastTriggered = emiState.lastTriggeredAt
+            ? new Date(emiState.lastTriggeredAt).getTime()
+            : 0;
+          const cooldownOk = now - lastTriggered > 60000;
+          if (cooldownOk) {
+            emiActivated = true;
+          }
+        }
+
+        if (emiActivated) {
+          // ターン1発火: 通常人格 + エミの一言
+          const emiLine = buildEmiResponse({
+            turn: 1,
+            text,
+            conflictAxes: data.honneLog?.conflictAxes,
+            deepFeeling: currentDeepFeeling,
+          });
+
+          const aiMsg: Message = {
+            role: 'ai',
+            content: replyText,
+            talkPersona: (data.persona || 'gnome') as Persona,
+            talkResponse: replyText,
+            showAnimal: showAnimalBtn || undefined,
+            showFashion: showFashionBtn || undefined,
+            showDiagnosis: showDiagnosisBtn || undefined,
+            imagePreview: savedPreview || undefined,
+            imageBase64: savedImage || undefined,
+            imageMediaType: savedMediaType || undefined,
+            emiLine,
+            emiConflict: currentConflict,
+            emiDeepFeeling: currentDeepFeeling,
+          };
+          setMessages(prev => [...prev, aiMsg]);
           setEmiState({
+            active: true,
+            turnCount: 1,
             lastTriggeredAt: new Date().toISOString(),
             triggerCount: emiState.triggerCount + 1,
           });
+
+        } else {
+          // 通常応答（エミなし）
+          const aiMsg: Message = {
+            role: 'ai',
+            content: replyText,
+            talkPersona: (data.persona || 'gnome') as Persona,
+            talkResponse: replyText,
+            showAnimal: showAnimalBtn || undefined,
+            showFashion: showFashionBtn || undefined,
+            showDiagnosis: showDiagnosisBtn || undefined,
+            imagePreview: savedPreview || undefined,
+            imageBase64: savedImage || undefined,
+            imageMediaType: savedMediaType || undefined,
+          };
+          setMessages(prev => [...prev, aiMsg]);
         }
       }
-
-      const aiMsg: Message = {
-        role: 'ai',
-        content: replyText,
-        talkPersona: (data.persona || 'gnome') as Persona,
-        talkResponse: replyText,
-        talkNeedZen: data.needZen || false,
-        showAnimal: showAnimalBtn || undefined,
-        showFashion: showFashionBtn || undefined,
-        showDiagnosis: showDiagnosisBtn || undefined,
-        imagePreview: savedPreview || undefined,
-        imageBase64: savedImage || undefined,
-        imageMediaType: savedMediaType || undefined,
-        emiLine: currentEmiLine,
-        emiConflict: currentEmiConflict,
-        emiDeepFeeling: currentEmiDeepFeeling,
-      };
-      setMessages(prev => [...prev, aiMsg]);
     } catch (e) {
       setMessages(prev => [...prev, {
         role: 'ai', content: `エラーが発生しました: ${e instanceof Error ? e.message : '不明なエラー'}`,
@@ -650,8 +731,6 @@ export default function KokoroChat() {
                     <TalkResponse
                       persona={msg.talkPersona}
                       response={msg.talkResponse}
-                      needZen={msg.talkNeedZen || false}
-                      onZenClick={() => handleZenClick()}
                     />
                   ) : (
                     /* フォールバック：テキストのみ */
@@ -672,21 +751,39 @@ export default function KokoroChat() {
                       </div>
                     </>
                   )}
-                  {/* エミの割り込み */}
-                  {msg.emiLine && (
-                    <div style={{ marginTop:10 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                  {/* エミの割り込み（ターン1: 通常人格の下に表示） */}
+                  {msg.emiLine && !msg.isEmi && (
+                    <div style={{ marginTop:12, paddingLeft:4 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
                         <span style={{ fontSize:12, color:'#eab308' }}>⚡</span>
                         <span style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#eab308', letterSpacing:'0.12em', textTransform:'uppercase' }}>エミ</span>
-                        <span style={{ fontSize:12, color:'#6b7280', fontStyle:'italic' }}>{msg.emiLine}</span>
                       </div>
-                      <div style={{ marginTop:6, padding:'8px 12px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                        <span style={{ fontSize:11, color:'#9ca3af' }}>少し深く見れそう</span>
-                        <button onClick={() => handleZenClick({ conflict: msg.emiConflict, deepFeeling: msg.emiDeepFeeling })}
-                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'5px 10px', cursor:'pointer' }}>
-                          内側を整理する →
-                        </button>
+                      <div style={{ borderLeft:'2px solid #eab308', paddingLeft:14, fontSize:13, lineHeight:1.9, color:'#6b7280', fontStyle:'italic' }}>
+                        {msg.emiLine}
                       </div>
+                    </div>
+                  )}
+                  {/* エミ専用メッセージ（ターン2: エミのみ + Zen CTA） */}
+                  {msg.isEmi && (
+                    <div>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                        <div style={{ width:28, height:28, borderRadius:'50%', background:'#fef3c720', border:'1.5px solid #eab308', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                          ⚡
+                        </div>
+                        <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#eab308', letterSpacing:'0.15em', textTransform:'uppercase' }}>エミ</span>
+                      </div>
+                      <div style={{ borderLeft:'2px solid #eab308', paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151', fontStyle:'italic' }}>
+                        {msg.emiLine}
+                      </div>
+                      {msg.emiShowZenCta && (
+                        <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                          <span style={{ fontSize:12, color:'#7c3aed' }}>内側を整理してみない？</span>
+                          <button onClick={() => handleZenClick({ conflict: msg.emiConflict, deepFeeling: msg.emiDeepFeeling })}
+                            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
+                            Zen を開く →
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {msg.showZen && !msg.emiLine && (
