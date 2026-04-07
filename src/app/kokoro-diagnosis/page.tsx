@@ -36,7 +36,6 @@ export default function KokoroDiagnosis() {
   const [featuredLogs, setFeaturedLogs] = useState<HonneLog[]>([]);
   const [actions, setActions] = useState<DiagnosisAction[]>([]);
   const [logCount, setLogCount] = useState(0);
-  const logsRef = useRef<HTMLDivElement>(null);
 
   // インラインZen分析
   const [zenLoading, setZenLoading] = useState(false);
@@ -93,7 +92,12 @@ export default function KokoroDiagnosis() {
       }));
       router.push('/kokoro-chat');
     } else if (action.type === 'logs') {
-      logsRef.current?.scrollIntoView({ behavior: 'smooth' });
+      const el = document.getElementById('featured-logs');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
     }
   };
 
@@ -252,33 +256,7 @@ export default function KokoroDiagnosis() {
               </div>
             </Section>
 
-            {/* ⑨ 本音ログ抜粋 */}
-            <div ref={logsRef} id="featured-logs">
-              <Section title="本音ログ抜粋" show={featuredLogs.length > 0}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {featuredLogs.map((log, i) => (
-                    <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <Tag>{log.topic}</Tag>
-                        {log.activePersona && (
-                          <span style={{ fontSize: 10, color: PERSONA_COLORS[log.activePersona] }}>
-                            {PERSONA_EMOJIS[log.activePersona]} {PERSONA_LABELS[log.activePersona]}固定
-                          </span>
-                        )}
-                        <span style={{ fontSize: 9, color: '#d1d5db', marginLeft: 'auto', fontFamily: "'Space Mono', monospace" }}>
-                          {formatDate(log.createdAt)}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>
-                        {log.deepFeeling || log.subFeeling || log.surfaceText}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            </div>
-
-            {/* ⑩ 次のアクション */}
+            {/* ⑨ 次のアクション */}
             <Section title="次のアクション" show={actions.length > 0}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {actions.map((action, i) => (
@@ -304,6 +282,38 @@ export default function KokoroDiagnosis() {
                 ))}
               </div>
             </Section>
+
+            {/* ⑩ 本音ログ抜粋 */}
+            <div id="featured-logs">
+              <Section title="本音ログ抜粋" show={true}>
+                {featuredLogs.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {featuredLogs.map((log, i) => (
+                      <div key={i} style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <Tag>{log.topic}</Tag>
+                          {log.activePersona && (
+                            <span style={{ fontSize: 10, color: PERSONA_COLORS[log.activePersona] }}>
+                              {PERSONA_EMOJIS[log.activePersona]} {PERSONA_LABELS[log.activePersona]}固定
+                            </span>
+                          )}
+                          <span style={{ fontSize: 9, color: '#d1d5db', marginLeft: 'auto', fontFamily: "'Space Mono', monospace" }}>
+                            {formatDate(log.createdAt)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>
+                          {log.deepFeeling || log.subFeeling || log.surfaceText}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, color: '#9ca3af', padding: '12px 0' }}>
+                    Talkで会話を続けると、ここに本音ログが表示されます
+                  </div>
+                )}
+              </Section>
+            </div>
 
             {/* ⑪ インラインZen分析結果 */}
             {zenLoading && (
