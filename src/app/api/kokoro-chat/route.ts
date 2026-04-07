@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { IdentityState, ResponseStrategy } from '@/types/kokoroOutput';
 
 /* ── Talk用システムプロンプト構築 ── */
 function buildTalkSystem(params: {
@@ -39,8 +40,43 @@ function buildTalkSystem(params: {
     "detectedNeeds": ["理解", "安心", "変化", "意味" 等（任意）],
     "riskFlags": ["固着", "回避", "焦燥" 等（任意）],
     "confidence": 0.0
-  }
+  },
+  "identityState": "NO_GAP" | "DEFENSIVE_GAP" | "IDENTITY_SHIFT" | "COLLAPSE" | "RECONSTRUCTION",
+  "gapIntensity": 0.0,
+  "responseStrategy": "normal" | "soften" | "structure" | "stabilize" | "direct"
 }
+
+- identityState: 自己認識ズレの5状態のいずれか（文字列）
+- gapIntensity: ズレの強度（数値 0.0〜1.0）
+- responseStrategy: 応答戦略の5種のいずれか（文字列）
+
+【自己認識ズレ分析】
+会話履歴全体を踏まえ、以下の5レイヤーを内部で分析すること：
+
+欲求：ユーザーが本当に求めているもの（理解・承認・安心など）
+自己認識：「自分は○○だ」という信念・自己像
+現実：実際に起きている結果・他者の反応・状況
+メタ認知：「どうしたらいい？」「自覚できていないだけ？」などの自問
+防衛反応：否定・正当化・話題逸らし・過剰な言い訳
+
+これらから identityState を以下の基準で判定する：
+
+DEFENSIVE_GAP   : 自己認識と現実にズレがあり、否認・反論が強い
+IDENTITY_SHIFT  : ズレに気づき始め、疑問や迷いが出ている（今回最も多い状態）
+COLLAPSE        : 自己像が崩れており、混乱・絶望・無力感が強い
+RECONSTRUCTION  : 仮説や試行を出し始めており、前向きな変化がある
+NO_GAP          : 上記のズレが検出されない通常の会話
+
+gapIntensity はズレの深刻度を 0.0〜1.0 で評価する（NO_GAP時は0.0）。
+responseStrategy は identityState に基づき以下を選択する：
+
+DEFENSIVE_GAP   → "soften"    （正面から指摘せず、やわらかく揺らす）
+IDENTITY_SHIFT  → "structure" （ズレの構造を整理して提示する）
+COLLAPSE        → "stabilize" （安定・安心を最優先にした返答）
+RECONSTRUCTION  → "direct"    （具体的な方向性・次の一手を提示）
+NO_GAP          → "normal"
+
+重要：responseStrategy に従って実際の返答トーン・内容を調整すること。
 
 【最重要：優先順位】
 1. current_message（今この瞬間の発話）を最優先する
@@ -177,6 +213,9 @@ export async function POST(req: NextRequest) {
     let response = '';
     let needZen = false;
     let honneLog = null;
+    let identityState: IdentityState = 'NO_GAP';
+    let gapIntensity = 0;
+    let responseStrategy: ResponseStrategy = 'normal';
 
     try {
       const parsed = safeParseJSON(raw);
@@ -186,6 +225,9 @@ export async function POST(req: NextRequest) {
       if (parsed.honneLog) {
         honneLog = parsed.honneLog;
       }
+      identityState = parsed.identityState ?? 'NO_GAP';
+      gapIntensity = Math.min(1, Math.max(0, parsed.gapIntensity ?? 0));
+      responseStrategy = parsed.responseStrategy ?? 'normal';
     } catch {
       // JSONパース失敗 → フォールバック
       response = raw;
@@ -196,6 +238,9 @@ export async function POST(req: NextRequest) {
       response,
       needZen,
       honneLog,
+      identityState,
+      gapIntensity,
+      responseStrategy,
     });
 
   } catch (err) {
