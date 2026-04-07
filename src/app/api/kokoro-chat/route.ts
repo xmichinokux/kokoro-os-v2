@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-/* ── Talk用システムプロンプト（1人格返答） ── */
-const TALK_SYSTEM = `あなたはKokoro OSのTalkです。
+/* ── Talk用システムプロンプト構築 ── */
+function buildTalkSystem(params: {
+  profile?: Record<string, unknown>;
+  sessionState?: Record<string, string>;
+  effectiveProfileWeight?: number;
+  turnCount?: number;
+}): string {
+  const { profile, sessionState, effectiveProfileWeight = 0.4, turnCount = 0 } = params;
+
+  const profileSection = effectiveProfileWeight > 0.2 && profile
+    ? `【プロフィールデータ】\n${JSON.stringify(profile)}`
+    : '【プロフィールデータ】\n（今は参照しない）';
+
+  const sessionSection = sessionState
+    ? `【session_state】\n現在の状態：${JSON.stringify(sessionState)}\nこの状態を返答のトーンに反映する。`
+    : '';
+
+  const turnNote = turnCount < 3
+    ? '最初の3ターンなのでプロフィール質問は絶対にしない。'
+    : '';
+
+  return `あなたはKokoro OSのTalkです。
 内部で4人格（gnome, shin, canon, dig）が処理しますが、表示するのは最適な1人格のみです。
 以下のJSONのみで返答してください。マークダウンや説明文は一切不要です。
 
@@ -21,6 +41,31 @@ const TALK_SYSTEM = `あなたはKokoro OSのTalkです。
     "confidence": 0.0
   }
 }
+
+【最重要：優先順位】
+1. current_message（今この瞬間の発話）を最優先する
+2. session_state（直近の会話の流れ）を次に参照する
+3. profile_data（長期傾向）は補助的にのみ使う
+
+【profileWeight: ${effectiveProfileWeight}】
+この値が低いほどプロフィールを参照しない。
+0.1〜0.2 → 今の発話だけを見る
+0.3〜0.5 → 通常参照
+0.6以上 → 長期傾向を強めに参照
+
+【プロフィール参照ルール】
+- ユーザーが「今日は」「今は」「たまには」等を言ったらプロフィールの傾向と違っても今の希望を優先する
+- プロフィールは「決めつけ」に使わず「補助」に使う
+- 「決めつけられている」と感じさせない
+
+${sessionSection}
+
+${profileSection}
+
+【プロフィール質問について】
+turnCount: ${turnCount}
+${turnNote}
+プロフィール質問は必要な時だけ1問のみ。
 
 人格選択ルール：
 - 不安・しんどい・弱さ → gnome
@@ -50,6 +95,7 @@ honneLogルール：
 - confidenceは軽い雑談なら0.3以下、深い相談なら0.7以上にする
 - 不確かな場合はsubFeeling/deepFeelingを省略する
 - JSONのみ出力。それ以外のテキストは一切禁止`;
+}
 
 /* ── Anthropic呼び出し ── */
 async function callAnthropic(
@@ -107,9 +153,17 @@ function safeParseJSON(raw: string) {
 /* ── POSTハンドラ ── */
 export async function POST(req: NextRequest) {
   try {
-    const { message, history, imageBase64, mediaType } = await req.json();
+    const {
+      message, history, imageBase64, mediaType,
+      profile, sessionState, effectiveProfileWeight, turnCount,
+    } = await req.json();
 
-    const system = TALK_SYSTEM;
+    const system = buildTalkSystem({
+      profile,
+      sessionState,
+      effectiveProfileWeight,
+      turnCount,
+    });
 
     const userMsg = history && history.length > 0
       ? `[会話履歴]\n${history.slice(-10).map((m: {role:string;content:string}) => `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`).join('\n')}\n\n[今回の入力]\n${message}`

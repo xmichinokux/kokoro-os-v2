@@ -9,6 +9,7 @@ import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS a
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
 import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
 import { shouldTriggerEmi, buildEmiResponse, buildZenPromptFromEmi, type EmiState } from '@/lib/kokoro/emi';
+import { inferSessionState, calcEffectiveProfileWeight } from '@/lib/kokoro/sessionState';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -79,6 +80,7 @@ export default function KokoroChat() {
   const [whisperOpen, setWhisperOpen] = useState<Record<number, boolean>>({});
   const [showDiagnosisBanner, setShowDiagnosisBanner] = useState(false);
   const [emiState, setEmiState] = useState<EmiState>({ active: false, turnCount: 0, triggerCount: 0 });
+  const [turnCount, setTurnCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -313,6 +315,7 @@ export default function KokoroChat() {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
+    setTurnCount(prev => prev + 1);
 
     try {
       // Stay mode の場合
@@ -352,6 +355,16 @@ export default function KokoroChat() {
       // Talk（1人格返答）
       const fashionCheck = isFashionIntent(text);
 
+      // session_state推定とprofileWeight計算
+      const recentTexts = messages.filter(m => m.role === 'user').slice(-5).map(m => m.content);
+      const sessionState = inferSessionState(recentTexts);
+      const effectiveProfileWeight = calcEffectiveProfileWeight({
+        currentMessage: text,
+        turnCount,
+        sessionState,
+      });
+      const profile = getProfile();
+
       const res = await fetch('/api/kokoro-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -360,6 +373,10 @@ export default function KokoroChat() {
           history: fashionCheck ? [] : apiHistory,
           imageBase64: attachedImage || undefined,
           mediaType: attachedMediaType || undefined,
+          profile,
+          sessionState,
+          effectiveProfileWeight,
+          turnCount,
         }),
       });
       const data = await res.json();
@@ -375,10 +392,10 @@ export default function KokoroChat() {
       const hasImage = !!(savedImage && savedMediaType);
       const animalDetected = isAnimalTalkIntent(text, hasImage);
 
-      // プロフィール質問追加
+      // プロフィール質問追加（最初の3ターンは質問しない）
       let replyText = data.response || '';
       let askedProfileQuestion = false;
-      if (!animalDetected) {
+      if (!animalDetected && turnCount >= 3) {
         if (fashionDetected) {
           const questionField = getProfileQuestion(text);
           if (questionField) {
