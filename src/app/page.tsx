@@ -52,13 +52,20 @@ const APPS: App[] = [
     name: "Kokoro Insight",
     desc: "レビューから作品の影響を逆算する。",
     href: "/kokoro-insight",
-    ready: false,
+    ready: true,
   },
   {
     icon: "📓",
     name: "Kokoro Note",
     desc: "気づき・本音・メモを静かに蓄積する。",
     href: "/kokoro-note",
+    ready: true,
+  },
+  {
+    icon: "📚",
+    name: "Kokoro Browser",
+    desc: "公開Noteをゲーセンノート視点で静かに眺める。",
+    href: "/kokoro-browser",
     ready: true,
   },
 ];
