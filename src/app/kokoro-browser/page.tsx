@@ -100,40 +100,61 @@ export default function KokoroBrowserPage() {
           scrollbarWidth: 'none',
         }}>
           <style>{`.browser-tabs::-webkit-scrollbar { display: none }`}</style>
-          {GAMESEN_NOTES.map(g => (
-            <button
-              key={g.id}
-              onClick={() => setSelectedId(g.id)}
-              style={{
-                flexShrink: 0,
-                padding: '10px 16px',
-                background: selectedId === g.id ? '#f8f8f7' : 'transparent',
-                border: 'none',
-                borderBottom: selectedId === g.id
-                  ? `2px solid ${g.color}`
-                  : '2px solid transparent',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              {/* カラードット */}
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: selectedId === g.id ? g.color : '#d1d5db',
-                flexShrink: 0, display: 'inline-block',
-                transition: 'background 0.15s',
-              }} />
-              <span style={{
-                ...mono, fontSize: 10,
-                color: selectedId === g.id ? '#1a1a1a' : '#9ca3af',
-                fontWeight: selectedId === g.id ? 600 : 400,
-                whiteSpace: 'nowrap',
-              }}>
-                {g.title}
-              </span>
-            </button>
-          ))}
+          {GAMESEN_NOTES.map(g => {
+            const count = matchNotesToGamesen(allPublicNotes, g).length;
+            return (
+              <button
+                key={g.id}
+                onClick={() => setSelectedId(g.id)}
+                style={{
+                  flexShrink: 0,
+                  padding: '10px 16px',
+                  background: selectedId === g.id ? '#f8f8f7' : 'transparent',
+                  border: 'none',
+                  borderBottom: selectedId === g.id
+                    ? `2px solid ${g.color}`
+                    : '2px solid transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {/* カラードット */}
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: selectedId === g.id ? g.color : '#d1d5db',
+                  flexShrink: 0, display: 'inline-block',
+                  transition: 'background 0.15s',
+                }} />
+
+                {/* タブ名 */}
+                <span style={{
+                  ...mono, fontSize: 10,
+                  color: selectedId === g.id ? '#1a1a1a' : '#9ca3af',
+                  fontWeight: selectedId === g.id ? 600 : 400,
+                  whiteSpace: 'nowrap',
+                }}>
+                  {g.title}
+                </span>
+
+                {/* 件数バッジ */}
+                {count > 0 && (
+                  <span style={{
+                    ...mono, fontSize: 8,
+                    color: selectedId === g.id ? g.color : '#9ca3af',
+                    background: selectedId === g.id ? `${g.color}18` : '#f3f4f6',
+                    border: `1px solid ${selectedId === g.id ? `${g.color}44` : '#e5e7eb'}`,
+                    padding: '0px 5px',
+                    borderRadius: 8,
+                    lineHeight: '16px',
+                    transition: 'all 0.15s',
+                  }}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </header>
 
