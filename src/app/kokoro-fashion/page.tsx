@@ -249,16 +249,24 @@ export default function KokoroFashion() {
             {/* footer */}
             <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {noteSaved ? (
-                <div style={{
-                  fontFamily: "'Space Mono', monospace",
-                  fontSize: 10,
-                  color: '#34d399',
-                  letterSpacing: '0.1em',
-                  textAlign: 'center',
-                  padding: '10px 0',
-                }}>
-                  ✓ noteに保存しました
-                </div>
+                <a
+                  href="/kokoro-note"
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: 11,
+                    color: '#34d399',
+                    border: '1px solid rgba(52,211,153,0.4)',
+                    borderRadius: 6,
+                    padding: '8px 18px',
+                    cursor: 'pointer',
+                    letterSpacing: '0.1em',
+                    textDecoration: 'none',
+                    display: 'block',
+                    textAlign: 'center',
+                  }}
+                >
+                  ✓ noteに保存しました　→ 確認する
+                </a>
               ) : (
                 <button
                   onClick={handleSaveToNote}

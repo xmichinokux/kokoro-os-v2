@@ -321,14 +321,22 @@ export default function KokoroZen() {
               gap: 12,
             }}>
               {zenNoteSaved ? (
-                <span style={{
-                  fontFamily: "'Space Mono', monospace",
-                  fontSize: 11,
-                  color: '#34d399',
-                  letterSpacing: '0.1em',
-                }}>
-                  ✓ Kokoro note に保存しました
-                </span>
+                <button
+                  onClick={() => router.push('/kokoro-note')}
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: 11,
+                    color: '#34d399',
+                    background: 'transparent',
+                    border: '1px solid rgba(52,211,153,0.4)',
+                    borderRadius: 6,
+                    padding: '8px 18px',
+                    cursor: 'pointer',
+                    letterSpacing: '0.1em',
+                  }}
+                >
+                  ✓ noteに保存しました　→ 確認する
+                </button>
               ) : (
                 <button
                   onClick={handleSaveZenNote}
