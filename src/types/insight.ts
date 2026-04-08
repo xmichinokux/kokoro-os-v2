@@ -20,7 +20,9 @@ export type InsightAxisScores = {
   contradiction: number;
   selfImpact: number;
   rawness: number;
+  rawnessDesc?: string;
   pathos: number;
+  pathosDesc?: string;
   trueScore: number;
 };
 
