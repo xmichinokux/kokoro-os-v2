@@ -40,12 +40,16 @@ type TalkResponseProps = {
   emiLine?: string;
   insightFlowState?: InsightFlowState;
   userText?: string;
+  // Recipe導線
+  onSaveRecipe?: () => void;
+  showRecipe?: boolean;
 };
 
 export default function TalkResponse({
   persona, response, identityState, gapIntensity, responseStrategy,
   onSaveNote, noteSaved,
   topic, insightType, emiLine, insightFlowState, userText,
+  onSaveRecipe, showRecipe,
 }: TalkResponseProps) {
   const color = PERSONA_COLORS[persona] || '#7c3aed';
   const icon = PERSONA_EMOJIS[persona] || '💬';
@@ -126,6 +130,25 @@ export default function TalkResponse({
               書き留めておく？
             </button>
           )}
+        </div>
+      )}
+
+      {/* Recipe導線 */}
+      {showRecipe && onSaveRecipe && (
+        <div style={{ marginTop: 6 }}>
+          <button
+            onClick={onSaveRecipe}
+            style={{
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 10, color: '#f97316',
+              background: 'transparent',
+              border: '1px solid rgba(249,115,22,0.3)',
+              borderRadius: 4, padding: '3px 10px',
+              cursor: 'pointer', letterSpacing: '0.08em',
+            }}
+          >
+            🍳 今週のRecipeにしてみる？
+          </button>
         </div>
       )}
 

@@ -17,6 +17,7 @@ import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
 import type { KokoroNote } from '@/types/note';
 import type { KokoroNoteDraft } from '@/types/noteMeta';
 import type { InsightFlowState } from '@/lib/kokoro/shouldShowSaveToNoteButton';
+import { createRecipeInputFromTalk, setRecipeInput } from '@/lib/kokoro/recipeInput';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -50,6 +51,7 @@ type Message = {
   insightType?: 'contradiction' | 'emotion' | 'pattern' | 'desire' | 'avoidance';
   insightFlowState?: InsightFlowState;
   userTextForNote?: string;
+  showRecipe?: boolean;
 };
 
 type ApiHistory = { role: string; content: string };
@@ -234,8 +236,16 @@ export default function KokoroChat() {
     'メモ', 'note', '書いておく', '書き残したい',
   ];
 
+  const RECIPE_WORDS = [
+    '献立', '料理', '食事', 'レシピ', '生活', '今週',
+    '停滞', '整えたい', '処方箋', '変えたい', 'しんどい',
+  ];
+
   const isNoteIntent = (text: string): boolean =>
     NOTE_WORDS.some(w => text.includes(w));
+
+  const isRecipeIntent = (text: string): boolean =>
+    RECIPE_WORDS.some(w => text.includes(w));
 
   const isFashionIntent = (text: string): boolean =>
     FASHION_WORDS.some(w => text.includes(w));
@@ -505,6 +515,7 @@ export default function KokoroChat() {
       let showAnimalBtn = !!(savedImage && savedMediaType) && !emiBlocking;
       let showFashionBtn = false;
       const showNoteBtn = isNoteIntent(text);
+      const showRecipeBtn = isRecipeIntent(text);
 
       if (!emiBlocking) {
         if (fashionDetected) {
@@ -561,6 +572,7 @@ export default function KokoroChat() {
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
             showNote: showNoteBtn || undefined,
+            showRecipe: showRecipeBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -641,6 +653,7 @@ export default function KokoroChat() {
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
             showNote: showNoteBtn || undefined,
+            showRecipe: showRecipeBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -685,6 +698,7 @@ export default function KokoroChat() {
             showAnimal: showAnimalBtn || undefined,
             showFashion: showFashionBtn || undefined,
             showNote: showNoteBtn || undefined,
+            showRecipe: showRecipeBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -885,6 +899,17 @@ export default function KokoroChat() {
                       emiLine={msg.emiLine}
                       insightFlowState={msg.insightFlowState}
                       userText={msg.userTextForNote}
+                      showRecipe={msg.showRecipe}
+                      onSaveRecipe={() => {
+                        const recipeInput = createRecipeInputFromTalk({
+                          summary: msg.talkResponse ?? '',
+                          emotionTone: undefined,
+                          topic: msg.topic,
+                          insightType: msg.insightType,
+                        });
+                        setRecipeInput(recipeInput);
+                        router.push('/kokoro-recipe');
+                      }}
                     />
                   ) : (
                     /* フォールバック：テキストのみ */

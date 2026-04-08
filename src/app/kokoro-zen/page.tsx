@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { consumeNoteForZen, buildZenPromptFromNoteData } from '@/lib/kokoro/noteLinkage';
 import { createNoteFromZen } from '@/lib/kokoro/createNoteFromTalk';
 import { saveNote } from '@/lib/kokoro/noteStorage';
+import { createRecipeInputFromZen, setRecipeInput } from '@/lib/kokoro/recipeInput';
 
 type PersonaResult = { id: string; name: string; text: string };
 type Core = {
@@ -356,6 +357,27 @@ export default function KokoroZen() {
                   📝 この整理をnoteに残す
                 </button>
               )}
+              <button
+                onClick={() => {
+                  const recipeInput = createRecipeInputFromZen({
+                    headline: result.emiMain ?? '',
+                    emotionTone: result.core.tensions.length > 0
+                      ? [result.core.tensions[0]] : undefined,
+                  });
+                  setRecipeInput(recipeInput);
+                  router.push('/kokoro-recipe');
+                }}
+                style={{
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 11, color: '#f97316',
+                  background: 'rgba(249,115,22,0.06)',
+                  border: '1px solid rgba(249,115,22,0.3)',
+                  borderRadius: 6, padding: '8px 16px',
+                  cursor: 'pointer', letterSpacing: '0.1em',
+                }}
+              >
+                🍳 生活に落とす →
+              </button>
               <button
                 onClick={() => router.push('/kokoro-chat')}
                 style={{

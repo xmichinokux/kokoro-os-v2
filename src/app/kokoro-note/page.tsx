@@ -17,6 +17,7 @@ import {
   getAllImageNotes, deleteImageNote,
   addPersonaInterpretation, setSelectedPersona,
 } from '@/lib/kokoro-note/imageNoteStorage';
+import { createRecipeInputFromNote, setRecipeInput } from '@/lib/kokoro/recipeInput';
 
 /* ── 定数 ── */
 const SOURCE_LABELS: Record<string, string> = {
@@ -924,6 +925,23 @@ export default function KokoroNotePage() {
             style={{ background: '#dbeafe', color: '#2563eb' }}
           >
             🧘 Zenで整理する
+          </button>
+          <button
+            onClick={() => {
+              if (!selectedNote) return;
+              const recipeInput = createRecipeInputFromNote({
+                title: selectedNote.title,
+                body: selectedNote.body,
+                topic: selectedNote.topic,
+                emotionTone: selectedNote.emotionTone ? [selectedNote.emotionTone] : undefined,
+              });
+              setRecipeInput(recipeInput);
+              router.push('/kokoro-recipe');
+            }}
+            className="text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+            style={{ background: '#fff7ed', color: '#f97316' }}
+          >
+            🍳 このnoteからRecipeを作る
           </button>
         </div>
       </>
