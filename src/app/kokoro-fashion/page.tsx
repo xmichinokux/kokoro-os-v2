@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getProfile, updateInferred } from '@/lib/profile';
 import type { KokoroProfile } from '@/lib/profile';
+import { saveImageNote, createImageNoteId } from '@/lib/kokoro-note/imageNoteStorage';
+import type { FashionNoteEntry } from '@/types/noteImage';
 
 type FashionResult = {
   styleName: string;
@@ -29,6 +31,7 @@ export default function KokoroFashion() {
   const [result, setResult] = useState<FashionResult | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [started, setStarted] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
 
   const runAnalysis = useCallback(async (opts: {
     profile?: KokoroProfile;
@@ -103,6 +106,31 @@ export default function KokoroFashion() {
       imageMediaType: imgType,
     });
   }, [started, runAnalysis]);
+
+  const handleSaveToNote = () => {
+    if (!result || noteSaved) return;
+    const now = new Date().toISOString();
+    const entry: FashionNoteEntry = {
+      id: createImageNoteId(),
+      sourceType: 'fashion',
+      createdAt: now,
+      updatedAt: now,
+      imageUrl: preview || '',
+      autoTitle: result.styleName || result.summary.slice(0, 24),
+      result: {
+        styleName: result.styleName,
+        tags: result.keywords,
+        summary: result.summary,
+        scores: result.scores,
+        strengths: result.details.goodPoints,
+        gapAndSuggestion: result.details.mismatches,
+        impression: result.details.impression,
+        ageContext: result.details.ageVision,
+      },
+    };
+    saveImageNote(entry);
+    setNoteSaved(true);
+  };
 
   const ScoreBar = ({ label, value }: { label: string; value: number }) => (
     <div style={{ marginBottom: 12 }}>
@@ -218,8 +246,47 @@ export default function KokoroFashion() {
               </div>
             )}
 
-            {/* footer: Talk に戻る only */}
-            <div style={{ marginTop: 24 }}>
+            {/* footer */}
+            <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {noteSaved ? (
+                <div style={{
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 10,
+                  color: '#34d399',
+                  letterSpacing: '0.1em',
+                  textAlign: 'center',
+                  padding: '10px 0',
+                }}>
+                  ✓ noteに保存しました
+                </div>
+              ) : (
+                <button
+                  onClick={handleSaveToNote}
+                  style={{
+                    width: '100%',
+                    background: 'transparent',
+                    color: '#6b7280',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 8,
+                    padding: '12px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    fontFamily: "'Space Mono', monospace",
+                    letterSpacing: '0.1em',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    (e.target as HTMLButtonElement).style.borderColor = '#7c3aed';
+                    (e.target as HTMLButtonElement).style.color = '#7c3aed';
+                  }}
+                  onMouseLeave={e => {
+                    (e.target as HTMLButtonElement).style.borderColor = '#e5e7eb';
+                    (e.target as HTMLButtonElement).style.color = '#6b7280';
+                  }}
+                >
+                  noteに残す
+                </button>
+              )}
               <a href="/kokoro-chat"
                 style={{ display: 'block', width: '100%', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' }}>
                 Talk に戻る →

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { KokoroNote } from '@/types/note';
 import type { KokoroNoteDraft } from '@/types/noteMeta';
+import type { NoteImageEntry, PersonaKey, PersonaInterpretation } from '@/types/noteImage';
 import { getAllNotes, saveNote, deleteNote, togglePin, createNoteId } from '@/lib/kokoro/noteStorage';
 import { searchNotes } from '@/lib/kokoro/noteSearch';
 import { setNoteForTalk, setNoteForZen } from '@/lib/kokoro/noteLinkage';
@@ -12,6 +13,10 @@ import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
 import { buildTagCloud }    from '@/lib/kokoro-note/buildTagCloud';
 import { findRelatedTags }  from '@/lib/kokoro-note/findRelatedTags';
 import { filterNotesByTag } from '@/lib/kokoro-note/filterNotesByTag';
+import {
+  getAllImageNotes, deleteImageNote,
+  addPersonaInterpretation, setSelectedPersona,
+} from '@/lib/kokoro-note/imageNoteStorage';
 
 /* ── 定数 ── */
 const SOURCE_LABELS: Record<string, string> = {
@@ -27,6 +32,22 @@ const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
   emi:    { bg: '#fce7f3', text: '#db2777' },
 };
 
+const IMAGE_SOURCE_LABELS: Record<string, string> = {
+  'animal-talk': 'Animal Talk',
+  fashion: 'Fashion',
+};
+const IMAGE_SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
+  'animal-talk': { bg: '#fef3c7', text: '#92400e' },
+  fashion: { bg: '#fce7f3', text: '#9d174d' },
+};
+
+const PERSONA_INFO: Record<PersonaKey, { label: string; emoji: string; color: string }> = {
+  gnome: { label: 'ノーム', emoji: '🌿', color: '#059669' },
+  shin:  { label: 'シン',   emoji: '🔍', color: '#2563eb' },
+  canon: { label: 'カノン', emoji: '🎵', color: '#7c3aed' },
+  dig:   { label: 'ディグ', emoji: '⚡', color: '#dc2626' },
+};
+
 const SUGGESTED_TAGS = [
   'メンタル', '恋愛', '仕事', '生活', '創作',
   '矛盾', '感情', '反復', '欲求', '回避',
@@ -34,7 +55,7 @@ const SUGGESTED_TAGS = [
 ];
 
 /* ── 型定義 ── */
-type View = 'list' | 'detail' | 'edit';
+type View = 'list' | 'detail' | 'edit' | 'imageDetail';
 
 /* ── ヘルパー ── */
 function formatDate(iso: string): string {
@@ -58,6 +79,12 @@ export default function KokoroNotePage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
+  // 画像note関連
+  const [imageNotes, setImageNotes] = useState<NoteImageEntry[]>([]);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [personaLoading, setPersonaLoading] = useState<PersonaKey | null>(null);
+  const [noteTab, setNoteTab] = useState<'text' | 'image'>('text');
+
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const tagCloud = useMemo(
@@ -78,6 +105,7 @@ export default function KokoroNotePage() {
   // マウント時にnotes読み込み
   useEffect(() => {
     setNotes(getAllNotes());
+    setImageNotes(getAllImageNotes());
   }, []);
 
   // Talkからのdraft引き継ぎ / 空で新規作成
@@ -103,7 +131,10 @@ export default function KokoroNotePage() {
   }, []);
 
   // notes再読み込みヘルパー
-  const refresh = () => setNotes(getAllNotes());
+  const refresh = () => {
+    setNotes(getAllNotes());
+    setImageNotes(getAllImageNotes());
+  };
 
   // 選択中のnote
   const selectedNote = notes.find(n => n.id === selectedId) ?? null;
@@ -233,9 +264,166 @@ export default function KokoroNotePage() {
     }
   };
 
+  // 選択中の画像note
+  const selectedImageNote = imageNotes.find(n => n.id === selectedImageId) ?? null;
+
+  const openImageDetail = (id: string) => {
+    setSelectedImageId(id);
+    setView('imageDetail');
+  };
+
+  const handleDeleteImageNote = (id: string) => {
+    deleteImageNote(id);
+    refresh();
+    setView('list');
+  };
+
+  const handleRequestPersona = async (persona: PersonaKey) => {
+    if (!selectedImageNote || personaLoading) return;
+    setPersonaLoading(persona);
+    try {
+      const res = await fetch('/api/kokoro-note-persona', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          persona,
+          sourceType: selectedImageNote.sourceType,
+          resultData: selectedImageNote.result,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      const interp: PersonaInterpretation = {
+        id: `pi_${Date.now()}`,
+        persona,
+        createdAt: new Date().toISOString(),
+        focus: data.focus || [],
+        interpretation: data.interpretation || '',
+        highlights: data.highlights || [],
+        mood: data.mood || '',
+      };
+      addPersonaInterpretation(selectedImageNote.id, interp);
+      refresh();
+      // refresh後にselectedImageIdをキープ
+      setSelectedImageId(selectedImageNote.id);
+    } catch {
+      // silent fail
+    } finally {
+      setPersonaLoading(null);
+    }
+  };
+
+  const handleSelectPersona = (persona: PersonaKey) => {
+    if (!selectedImageNote) return;
+    setSelectedPersona(selectedImageNote.id, persona);
+    refresh();
+    setSelectedImageId(selectedImageNote.id);
+  };
+
   /* ── 一覧画面 ── */
   const renderList = () => (
     <>
+      {/* タブ切り替え */}
+      <div className="flex gap-0 mb-6" style={{ borderBottom: '1px solid #e5e7eb' }}>
+        <button
+          onClick={() => setNoteTab('text')}
+          className="px-4 py-2 text-xs font-bold transition-colors"
+          style={{
+            color: noteTab === 'text' ? '#7c3aed' : '#9ca3af',
+            borderBottom: noteTab === 'text' ? '2px solid #7c3aed' : '2px solid transparent',
+            background: 'transparent',
+          }}
+        >
+          テキストNote ({notes.length})
+        </button>
+        <button
+          onClick={() => setNoteTab('image')}
+          className="px-4 py-2 text-xs font-bold transition-colors"
+          style={{
+            color: noteTab === 'image' ? '#7c3aed' : '#9ca3af',
+            borderBottom: noteTab === 'image' ? '2px solid #7c3aed' : '2px solid transparent',
+            background: 'transparent',
+          }}
+        >
+          画像Note ({imageNotes.length})
+        </button>
+      </div>
+
+      {noteTab === 'image' ? (
+        /* 画像ノート一覧 */
+        imageNotes.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="text-4xl mb-4 opacity-30">🖼️</div>
+            <p className="text-sm" style={{ color: '#9ca3af' }}>
+              画像noteはまだありません
+            </p>
+            <p className="text-xs mt-2" style={{ color: '#d1d5db' }}>
+              Animal Talk や Fashion で結果を保存すると表示されます
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {imageNotes.map(note => (
+              <button
+                key={note.id}
+                onClick={() => openImageDetail(note.id)}
+                className="w-full text-left border rounded-xl p-4 transition-colors hover:border-purple-300"
+                style={{ borderColor: '#e5e7eb', background: '#ffffff' }}
+              >
+                <div className="flex items-start gap-3">
+                  {note.imageUrl && (
+                    <img
+                      src={note.imageUrl}
+                      alt=""
+                      className="rounded-lg flex-shrink-0"
+                      style={{ width: 56, height: 56, objectFit: 'cover' }}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                        style={{
+                          background: IMAGE_SOURCE_COLORS[note.sourceType]?.bg ?? '#f3f4f6',
+                          color: IMAGE_SOURCE_COLORS[note.sourceType]?.text ?? '#6b7280',
+                        }}
+                      >
+                        {IMAGE_SOURCE_LABELS[note.sourceType] ?? note.sourceType}
+                      </span>
+                      <span className="text-[10px]" style={{ color: '#9ca3af' }}>
+                        {formatDate(note.createdAt)}
+                      </span>
+                      {note.selectedPersona && (
+                        <span className="text-[10px]" style={{ color: PERSONA_INFO[note.selectedPersona].color }}>
+                          {PERSONA_INFO[note.selectedPersona].emoji} {PERSONA_INFO[note.selectedPersona].label}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className="text-sm font-bold truncate block"
+                      style={{ color: '#1a1a1a', fontFamily: 'var(--font-noto-serif-jp), serif' }}
+                    >
+                      {note.autoTitle}
+                    </span>
+                    {note.sourceType === 'animal-talk' && (
+                      <p className="text-xs mt-1 line-clamp-1" style={{ color: '#6b7280' }}>
+                        {note.result.emotionText}
+                      </p>
+                    )}
+                    {note.sourceType === 'fashion' && (
+                      <p className="text-xs mt-1 line-clamp-1" style={{ color: '#6b7280' }}>
+                        {note.result.summary}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )
+      ) : (
+      <>
       {/* 検索バー */}
       <div className="mb-6">
         <input
@@ -395,7 +583,231 @@ export default function KokoroNotePage() {
         </div>
       )}
     </>
+    )}
+    </>
   );
+
+  /* ── 画像note詳細画面 ── */
+  const renderImageDetail = () => {
+    if (!selectedImageNote) return null;
+    const isAnimal = selectedImageNote.sourceType === 'animal-talk';
+    const interpretations = selectedImageNote.personaInterpretations || [];
+
+    return (
+      <>
+        <button
+          onClick={() => setView('list')}
+          className="text-xs mb-6 flex items-center gap-1 transition-colors"
+          style={{ color: '#7c3aed' }}
+        >
+          ← 一覧へ戻る
+        </button>
+
+        {/* メタ情報 */}
+        <div className="flex items-center gap-2 mb-4">
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+            style={{
+              background: IMAGE_SOURCE_COLORS[selectedImageNote.sourceType]?.bg ?? '#f3f4f6',
+              color: IMAGE_SOURCE_COLORS[selectedImageNote.sourceType]?.text ?? '#6b7280',
+            }}
+          >
+            {IMAGE_SOURCE_LABELS[selectedImageNote.sourceType]}
+          </span>
+          <span className="text-[10px]" style={{ color: '#9ca3af' }}>
+            {formatDate(selectedImageNote.createdAt)}
+          </span>
+        </div>
+
+        {/* タイトル */}
+        <h2
+          className="text-lg font-bold mb-4"
+          style={{ color: '#1a1a1a', fontFamily: 'var(--font-noto-serif-jp), serif' }}
+        >
+          {selectedImageNote.autoTitle}
+        </h2>
+
+        {/* 画像 */}
+        {selectedImageNote.imageUrl && (
+          <div className="mb-6">
+            <img
+              src={selectedImageNote.imageUrl}
+              alt=""
+              className="w-full rounded-xl"
+              style={{ maxHeight: 300, objectFit: 'cover' }}
+            />
+          </div>
+        )}
+
+        {/* 結果データ */}
+        {isAnimal ? (
+          <div className="mb-6 space-y-4">
+            <div style={{ borderLeft: '2px solid #1a1a1a', paddingLeft: 16 }}>
+              <div className="text-[9px] font-mono tracking-widest mb-2" style={{ color: '#9ca3af' }}>// 情念</div>
+              <div className="text-sm leading-relaxed" style={{ color: '#374151', fontFamily: 'var(--font-noto-serif-jp), serif' }}>
+                {selectedImageNote.result.emotionText}
+              </div>
+            </div>
+            {selectedImageNote.result.trueVoice && (
+              <div style={{ borderLeft: '2px solid #c4b5fd', paddingLeft: 16 }}>
+                <div className="text-[9px] font-mono tracking-widest mb-2" style={{ color: '#9ca3af' }}>// 本音</div>
+                <div className="text-sm leading-relaxed" style={{ color: '#374151', fontFamily: 'var(--font-noto-serif-jp), serif' }}>
+                  {selectedImageNote.result.trueVoice}
+                </div>
+              </div>
+            )}
+            {selectedImageNote.result.question && (
+              <div style={{ borderLeft: '2px solid #7c3aed', paddingLeft: 16 }}>
+                <div className="text-[9px] font-mono tracking-widest mb-2" style={{ color: '#7c3aed' }}>// 問い</div>
+                <div className="text-sm" style={{ color: '#7c3aed', fontStyle: 'italic', fontFamily: 'var(--font-noto-serif-jp), serif' }}>
+                  「{selectedImageNote.result.question}」
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="mb-6 space-y-4">
+            <div className="text-center mb-4">
+              <div className="text-lg font-medium" style={{ color: '#1a1a1a' }}>
+                {selectedImageNote.result.styleName}
+              </div>
+              <div className="flex flex-wrap gap-1.5 justify-center mt-2">
+                {selectedImageNote.result.tags.map((tag, i) => (
+                  <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ border: '1px solid #e5e7eb', color: '#6b7280' }}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderLeft: '2px solid #7c3aed', paddingLeft: 16 }}>
+              <div className="text-sm leading-relaxed" style={{ color: '#374151', fontFamily: 'var(--font-noto-serif-jp), serif' }}>
+                {selectedImageNote.result.summary}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 人格解釈セクション */}
+        <div className="mb-6 p-4 rounded-xl" style={{ background: '#f9fafb', border: '1px solid #e5e7eb' }}>
+          <div className="text-[9px] font-mono tracking-widest mb-4" style={{ color: '#9ca3af' }}>
+            // 人格の視点で読む
+          </div>
+
+          {/* 人格ボタン */}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {(Object.keys(PERSONA_INFO) as PersonaKey[]).map(key => {
+              const info = PERSONA_INFO[key];
+              const hasInterp = interpretations.some(i => i.persona === key);
+              const isLoading = personaLoading === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleRequestPersona(key)}
+                  disabled={isLoading}
+                  className="text-xs px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  style={{
+                    background: hasInterp ? info.color + '15' : 'transparent',
+                    color: hasInterp ? info.color : '#9ca3af',
+                    border: `1px solid ${hasInterp ? info.color + '40' : '#e5e7eb'}`,
+                  }}
+                >
+                  {isLoading ? '...' : `${info.emoji} ${info.label}`}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 解釈結果 */}
+          {interpretations.length > 0 && (
+            <div className="space-y-4">
+              {interpretations.map(interp => {
+                const info = PERSONA_INFO[interp.persona];
+                const isSelected = selectedImageNote.selectedPersona === interp.persona;
+                return (
+                  <div
+                    key={interp.id}
+                    className="rounded-lg p-3 transition-all"
+                    style={{
+                      borderLeft: `3px solid ${info.color}`,
+                      background: isSelected ? info.color + '08' : '#ffffff',
+                      border: isSelected ? `1px solid ${info.color}40` : '1px solid #e5e7eb',
+                      borderLeftWidth: 3,
+                      borderLeftColor: info.color,
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: 14 }}>{info.emoji}</span>
+                        <span className="text-xs font-bold" style={{ color: info.color }}>
+                          {info.label}
+                        </span>
+                        {interp.mood && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: info.color + '10', color: info.color }}>
+                            {interp.mood}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleSelectPersona(interp.persona)}
+                        className="text-[10px] px-2 py-1 rounded transition-all"
+                        style={{
+                          background: isSelected ? info.color : 'transparent',
+                          color: isSelected ? '#fff' : '#9ca3af',
+                          border: isSelected ? 'none' : '1px solid #e5e7eb',
+                        }}
+                      >
+                        {isSelected ? '✓ 刺さった' : '刺さった？'}
+                      </button>
+                    </div>
+
+                    <div
+                      className="text-sm leading-relaxed mb-2"
+                      style={{ color: '#374151', fontFamily: 'var(--font-noto-serif-jp), serif' }}
+                    >
+                      {interp.interpretation}
+                    </div>
+
+                    {interp.focus.length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap mb-1">
+                        {interp.focus.map((f, i) => (
+                          <span key={i} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: '#f3f4f6', color: '#6b7280' }}>
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {interp.highlights.length > 0 && (
+                      <div className="mt-2">
+                        {interp.highlights.map((h, i) => (
+                          <div key={i} className="text-xs" style={{ color: '#9ca3af' }}>
+                            — {h}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* アクションボタン */}
+        <div className="flex gap-3 pt-4 border-t" style={{ borderColor: '#e5e7eb' }}>
+          <button
+            onClick={() => {
+              if (confirm('この画像noteを削除しますか？')) handleDeleteImageNote(selectedImageNote.id);
+            }}
+            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors ml-auto"
+            style={{ background: '#fef2f2', color: '#dc2626' }}
+          >
+            削除
+          </button>
+        </div>
+      </>
+    );
+  };
 
   /* ── 詳細画面 ── */
   const renderDetail = () => {
@@ -675,6 +1087,7 @@ export default function KokoroNotePage() {
       <main className="flex-1 px-6 py-6 max-w-2xl mx-auto w-full">
         {view === 'list' && renderList()}
         {view === 'detail' && renderDetail()}
+        {view === 'imageDetail' && renderImageDetail()}
         {view === 'edit' && renderEdit()}
       </main>
 
@@ -684,7 +1097,7 @@ export default function KokoroNotePage() {
         style={{ borderColor: '#e5e7eb' }}
       >
         <span className="text-[10px]" style={{ color: '#9ca3af' }}>
-          {notes.length} notes
+          {notes.length} notes · {imageNotes.length} image notes
         </span>
       </footer>
     </div>

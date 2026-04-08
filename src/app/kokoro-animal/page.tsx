@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { saveImageNote, createImageNoteId } from '@/lib/kokoro-note/imageNoteStorage';
+import type { AnimalTalkNoteEntry } from '@/types/noteImage';
 
 export default function KokoroAnimal() {
   const [preview, setPreview] = useState<string | null>(null);
@@ -14,6 +16,7 @@ export default function KokoroAnimal() {
   const [scores, setScores] = useState<Record<string,number> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [autoStarted, setAutoStarted] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
 
   const analyzeWithData = useCallback(async (base64: string, type: string) => {
     setIsLoading(true);
@@ -123,6 +126,34 @@ export default function KokoroAnimal() {
     setInstinctWhisper('');
     setError('');
     setScores(null);
+  };
+
+  const handleSaveToNote = () => {
+    if (!mainText || noteSaved) return;
+    const now = new Date().toISOString();
+    const entry: AnimalTalkNoteEntry = {
+      id: createImageNoteId(),
+      sourceType: 'animal-talk',
+      createdAt: now,
+      updatedAt: now,
+      imageUrl: preview || '',
+      autoTitle: mainText.slice(0, 24) + (mainText.length > 24 ? '…' : ''),
+      result: {
+        emotionText: mainText,
+        resonanceMap: {
+          pathos: scores?.pathos ?? 0,
+          contradiction: scores?.contradiction ?? 0,
+          rawness: scores?.rawness ?? 0,
+          love: scores?.love ?? 0,
+          silence: scores?.silence ?? 0,
+          instinct: scores?.instinct ?? 0,
+        },
+        trueVoice: instinctWhisper,
+        question,
+      },
+    };
+    saveImageNote(entry);
+    setNoteSaved(true);
   };
 
   const AXES = [
@@ -340,7 +371,46 @@ export default function KokoroAnimal() {
                 )}
 
                 {/* アクション */}
-                <div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {noteSaved ? (
+                    <div style={{
+                      fontFamily: "'Space Mono', monospace",
+                      fontSize: 10,
+                      color: '#34d399',
+                      letterSpacing: '0.1em',
+                      textAlign: 'center',
+                      padding: '10px 0',
+                    }}>
+                      ✓ noteに保存しました
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleSaveToNote}
+                      style={{
+                        width: '100%',
+                        background: 'transparent',
+                        color: '#6b7280',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 8,
+                        padding: '12px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        fontFamily: "'Space Mono', monospace",
+                        letterSpacing: '0.1em',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => {
+                        (e.target as HTMLButtonElement).style.borderColor = '#7c3aed';
+                        (e.target as HTMLButtonElement).style.color = '#7c3aed';
+                      }}
+                      onMouseLeave={e => {
+                        (e.target as HTMLButtonElement).style.borderColor = '#e5e7eb';
+                        (e.target as HTMLButtonElement).style.color = '#6b7280';
+                      }}
+                    >
+                      noteに残す
+                    </button>
+                  )}
                   <a href="/kokoro-chat"
                     style={{ display:'block', width:'100%', background:'#7c3aed', color:'#fff', border:'none', borderRadius:8, padding:'12px', fontSize:12, cursor:'pointer', fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', textAlign:'center', textDecoration:'none', boxSizing:'border-box' }}>
                     Talkに戻る →
