@@ -52,6 +52,7 @@ type Message = {
   insightFlowState?: InsightFlowState;
   userTextForNote?: string;
   showRecipe?: boolean;
+  showInsight?: boolean;
 };
 
 type ApiHistory = { role: string; content: string };
@@ -244,8 +245,18 @@ export default function KokoroChat() {
   const isNoteIntent = (text: string): boolean =>
     NOTE_WORDS.some(w => text.includes(w));
 
+  const INSIGHT_WORDS = [
+    'レビュー', '感想', '評価', '分析', 'インパクト',
+    '作品', 'アルバム', '曲', '音楽', '聴いた',
+    '聴いて', '聴かせて', 'どう思う', 'どんな感じ',
+    '影響', '衝撃', '好き嫌い', '批評',
+  ];
+
   const isRecipeIntent = (text: string): boolean =>
     RECIPE_WORDS.some(w => text.includes(w));
+
+  const isInsightIntent = (text: string): boolean =>
+    INSIGHT_WORDS.some(w => text.includes(w));
 
   const isFashionIntent = (text: string): boolean =>
     FASHION_WORDS.some(w => text.includes(w));
@@ -516,6 +527,7 @@ export default function KokoroChat() {
       let showFashionBtn = false;
       const showNoteBtn = isNoteIntent(text);
       const showRecipeBtn = isRecipeIntent(text);
+      const showInsightBtn = isInsightIntent(text);
 
       if (!emiBlocking) {
         if (fashionDetected) {
@@ -573,6 +585,7 @@ export default function KokoroChat() {
             showFashion: showFashionBtn || undefined,
             showNote: showNoteBtn || undefined,
             showRecipe: showRecipeBtn || undefined,
+            showInsight: showInsightBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -654,6 +667,7 @@ export default function KokoroChat() {
             showFashion: showFashionBtn || undefined,
             showNote: showNoteBtn || undefined,
             showRecipe: showRecipeBtn || undefined,
+            showInsight: showInsightBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -699,6 +713,7 @@ export default function KokoroChat() {
             showFashion: showFashionBtn || undefined,
             showNote: showNoteBtn || undefined,
             showRecipe: showRecipeBtn || undefined,
+            showInsight: showInsightBtn || undefined,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -979,6 +994,40 @@ export default function KokoroChat() {
                       }}
                         style={{ background:'transparent', border:'1px solid rgba(52,211,153,0.4)', color:'#6ee7b7', padding:'5px 14px', borderRadius:4, cursor:'pointer', fontSize:12, fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', whiteSpace:'nowrap' }}>
                         Note を開く →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showInsight && (
+                    <div style={{
+                      marginTop: 8,
+                      padding: '10px 14px',
+                      background: 'rgba(124,58,237,0.06)',
+                      border: '1px solid rgba(124,58,237,0.2)',
+                      borderRadius: 8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                    }}>
+                      <span style={{ fontSize: 13, color: '#a78bfa' }}>
+                        🔬 レビューからインパクトを逆算する？
+                      </span>
+                      <button
+                        onClick={() => router.push('/kokoro-insight')}
+                        style={{
+                          fontFamily: "'Space Mono', monospace",
+                          fontSize: 10,
+                          color: '#a78bfa',
+                          background: 'transparent',
+                          border: '1px solid rgba(124,58,237,0.4)',
+                          borderRadius: 4,
+                          padding: '5px 12px',
+                          cursor: 'pointer',
+                          letterSpacing: '0.08em',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Insight →
                       </button>
                     </div>
                   )}
