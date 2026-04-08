@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { InsightInput, InsightResult } from '@/types/insight';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 function safeParseJSON(raw: string) {
   const match = raw.match(/\{[\s\S]*\}/);
@@ -18,7 +19,12 @@ function buildPrompt(input: InsightInput): string {
     ? '※ Context Filter ON：時代背景・アーティスト人気・メディア評価・レーベル・希少性などの外部文脈は完全に無視し、純粋な音・熱・歪み・衝撃のみを読め。'
     : '';
 
+  const valueCtx = KokoroValueEngine.forInsight();
+
   return `あなたは「Kokoro Insight Engine」です。レビューから作品の本当の影響力を逆算します。
+
+${valueCtx}
+
 ${cfNote}
 
 対象作品：${input.workTitle || '（作品名未入力）'}
