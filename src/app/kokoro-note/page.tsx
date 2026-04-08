@@ -18,6 +18,7 @@ import {
   addPersonaInterpretation, setSelectedPersona,
 } from '@/lib/kokoro-note/imageNoteStorage';
 import { createRecipeInputFromNote, setRecipeInput } from '@/lib/kokoro/recipeInput';
+import type { KokoroRecipeInput } from '@/types/recipe';
 
 /* ── 定数 ── */
 const SOURCE_LABELS: Record<string, string> = {
@@ -792,6 +793,29 @@ export default function KokoroNotePage() {
               })}
             </div>
           )}
+        </div>
+
+        {/* Recipe導線 */}
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => {
+              const summary = selectedImageNote.sourceType === 'animal-talk'
+                ? `${selectedImageNote.result.emotionText} / ${selectedImageNote.result.trueVoice}`
+                : `${selectedImageNote.result.styleName}: ${selectedImageNote.result.summary}`;
+
+              const recipeInput: KokoroRecipeInput = {
+                source: 'note',
+                relatedSummary: summary,
+                currentTheme: [selectedImageNote.sourceType === 'animal-talk' ? '感情' : '自己表現'],
+              };
+              setRecipeInput(recipeInput);
+              router.push('/kokoro-recipe');
+            }}
+            className="text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+            style={{ background: '#fff7ed', color: '#f97316' }}
+          >
+            🍳 このnoteからRecipeを作る
+          </button>
         </div>
 
         {/* アクションボタン */}

@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { consumeRecipeInput } from '@/lib/kokoro/recipeInput';
 import type { KokoroRecipeInput, KokoroRecipeResult, DayRecipe } from '@/types/recipe';
+import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
+import type { KokoroNote } from '@/types/note';
 
 export default function KokoroRecipePage() {
   const router = useRouter();
@@ -13,6 +16,7 @@ export default function KokoroRecipePage() {
   const [result, setResult] = useState<KokoroRecipeResult | null>(null);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [noteSaved, setNoteSaved] = useState(false);
 
   const generateRecipe = useCallback(async (inputData?: KokoroRecipeInput) => {
     const payload = inputData ?? {
@@ -50,6 +54,42 @@ export default function KokoroRecipePage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleSaveToNote = () => {
+    if (!result || noteSaved) return;
+
+    const body = [
+      `週のコンセプト：${result.weekConcept}`,
+      '',
+      ...result.days.map(d =>
+        `【${d.day}】${d.title}\n${d.concept}\n飛躍：${d.leap}\n次の一手：${d.nextAction}`
+      ),
+    ].join('\n');
+
+    const draft = {
+      source: 'manual' as const,
+      body,
+      topic: '生活',
+      emotionTone: input.emotionTone,
+    };
+    const meta = generateAutoNoteMeta(draft);
+    const now = new Date().toISOString();
+
+    const note: KokoroNote = {
+      id: createNoteId(),
+      createdAt: now,
+      updatedAt: now,
+      source: 'manual',
+      title: `Recipe：${result.weekConcept}`,
+      body,
+      tags: [...(meta.tags ?? []), 'レシピ'],
+      topic: '生活',
+      pinned: false,
+    };
+
+    saveNote(note);
+    setNoteSaved(true);
+  };
 
   const mono = { fontFamily: "'Space Mono', monospace" };
 
@@ -287,11 +327,11 @@ export default function KokoroRecipePage() {
             </div>
 
             {/* 再生成 */}
-            <div style={{ marginTop: 32, display: 'flex', gap: 12 }}>
+            <div style={{ marginTop: 32, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               <button
-                onClick={() => { setResult(null); setOpenDay(null); }}
+                onClick={() => { setResult(null); setOpenDay(null); setNoteSaved(false); }}
                 style={{
-                  flex: 1, padding: '12px',
+                  flex: 1, minWidth: 120, padding: '12px',
                   background: 'transparent',
                   border: '1px solid #e5e7eb',
                   borderRadius: 8, cursor: 'pointer',
@@ -303,7 +343,7 @@ export default function KokoroRecipePage() {
               <button
                 onClick={() => router.push('/kokoro-chat')}
                 style={{
-                  flex: 1, padding: '12px',
+                  flex: 1, minWidth: 120, padding: '12px',
                   background: 'rgba(124,58,237,0.06)',
                   border: '1px solid rgba(124,58,237,0.3)',
                   borderRadius: 8, cursor: 'pointer',
@@ -311,6 +351,33 @@ export default function KokoroRecipePage() {
                 }}
               >
                 Talkで続きを話す →
+              </button>
+              <button
+                onClick={() => router.push('/kokoro-note')}
+                style={{
+                  flex: 1, minWidth: 120, padding: '12px',
+                  background: 'rgba(52,211,153,0.06)',
+                  border: '1px solid rgba(52,211,153,0.3)',
+                  borderRadius: 8, cursor: 'pointer',
+                  ...mono, fontSize: 11, color: '#34d399',
+                }}
+              >
+                noteへ行く →
+              </button>
+              <button
+                onClick={handleSaveToNote}
+                disabled={noteSaved}
+                style={{
+                  width: '100%', padding: '12px',
+                  background: noteSaved ? 'rgba(52,211,153,0.06)' : 'rgba(249,115,22,0.06)',
+                  border: `1px solid ${noteSaved ? 'rgba(52,211,153,0.3)' : 'rgba(249,115,22,0.3)'}`,
+                  borderRadius: 8,
+                  cursor: noteSaved ? 'default' : 'pointer',
+                  ...mono, fontSize: 11,
+                  color: noteSaved ? '#34d399' : '#f97316',
+                }}
+              >
+                {noteSaved ? '✓ noteに保存しました' : '📝 このRecipeをnoteに残す'}
               </button>
             </div>
           </div>
