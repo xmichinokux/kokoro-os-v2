@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { IdentityState, ResponseStrategy } from '@/types/kokoroOutput';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 /* ── Talk用システムプロンプト構築 ── */
 function buildTalkSystem(params: {
@@ -30,7 +31,9 @@ function buildTalkSystem(params: {
     ? '最初の3ターンなのでプロフィール質問は絶対にしない。'
     : '';
 
-  return `あなたはKokoro OSのTalkです。
+  return `${KokoroValueEngine.forTalk()}
+
+あなたはKokoro OSのTalkです。
 内部で4人格（gnome, shin, canon, dig）が処理しますが、表示するのは最適な1人格のみです。
 以下のJSONのみで返答してください。マークダウンや説明文は一切不要です。
 

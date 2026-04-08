@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { forZen } from '@/lib/valueEngine';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 /* ── Zen強度レベル判定 ── */
 function getZenLevel(text: string): 'soft' | 'insight' | 'deep' {
@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   try {
     const { message, mode } = await req.json();
 
-    const valueInject = forZen();
+    const valueInject = KokoroValueEngine.forZen();
 
     /* ── deep_emiモード（深版エミのみ返す） ── */
     if (mode === 'deep_emi') {
