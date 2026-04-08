@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
+import { setNoteForTalk } from '@/lib/kokoro/noteLinkage';
 
 const SOURCE_LABELS: Record<string, string> = {
   talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き',
@@ -140,7 +141,21 @@ export default function NoteDetailPage() {
             ← 棚に戻る
           </button>
           <button
-            onClick={() => router.push('/kokoro-chat')}
+            onClick={() => {
+              setNoteForTalk({
+                id: note.id,
+                title: note.title,
+                body: note.body ?? '',
+                tags: note.tags ?? [],
+                topic: note.topic,
+                source: note.source,
+                createdAt: note.createdAt,
+                updatedAt: note.createdAt,
+                isPublic: true,
+                pinned: false,
+              });
+              router.push('/kokoro-chat');
+            }}
             style={{
               ...mono, fontSize: 10, color: '#7c3aed',
               background: 'rgba(124,58,237,0.06)',
@@ -148,7 +163,7 @@ export default function NoteDetailPage() {
               borderRadius: 6, padding: '8px 16px', cursor: 'pointer',
             }}
           >
-            Talkで話す →
+            このNoteをTalkで話す →
           </button>
         </div>
 

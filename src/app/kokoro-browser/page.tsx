@@ -6,11 +6,21 @@ import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
 import { getAllNotes } from '@/lib/kokoro/noteStorage';
-import type { PublicNote } from '@/types/browser';
+import type { PublicNote, GamesenNote } from '@/types/browser';
 import type { KokoroNote } from '@/types/note';
 
 const SOURCE_LABELS: Record<string, string> = {
   talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き',
+};
+
+const SONOTA_ID = 'sonota';
+
+const SONOTA_GAMESEN: GamesenNote = {
+  id: SONOTA_ID,
+  title: 'その他',
+  description: 'どの棚にも入らなかった、でも公開されている記録。',
+  keywords: [],
+  color: '#9ca3af',
 };
 
 export default function KokoroBrowserPage() {
@@ -54,6 +64,22 @@ export default function KokoroBrowserPage() {
     () => matchNotesToGamesen(allPublicNotes, selectedGamesen),
     [allPublicNotes, selectedGamesen]
   );
+
+  // どのゲーセンノートにも属さない公開Note
+  const sonotaNotes = useMemo(() => {
+    return allPublicNotes.filter(note => {
+      const belongsToAny = GAMESEN_NOTES.some(g =>
+        matchNotesToGamesen([note], g).length > 0
+      );
+      return !belongsToAny;
+    });
+  }, [allPublicNotes]);
+
+  // 表示するNote（選択中タブに応じて切り替え）
+  const displayedNotes = selectedId === SONOTA_ID ? sonotaNotes : matchedNotes;
+
+  // 選択中のゲーセンノート（その他タブ対応）
+  const currentGamesen = selectedId === SONOTA_ID ? SONOTA_GAMESEN : selectedGamesen;
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8f8f7', color: '#1a1a1a' }}>
@@ -155,6 +181,53 @@ export default function KokoroBrowserPage() {
               </button>
             );
           })}
+
+          {/* その他タブ */}
+          {(() => {
+            const count = sonotaNotes.length;
+            return (
+              <button
+                onClick={() => setSelectedId(SONOTA_ID)}
+                style={{
+                  flexShrink: 0,
+                  padding: '10px 16px',
+                  background: selectedId === SONOTA_ID ? '#f8f8f7' : 'transparent',
+                  border: 'none',
+                  borderBottom: selectedId === SONOTA_ID
+                    ? '2px solid #9ca3af'
+                    : '2px solid transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: selectedId === SONOTA_ID ? '#9ca3af' : '#d1d5db',
+                  flexShrink: 0, display: 'inline-block',
+                }} />
+                <span style={{
+                  ...mono, fontSize: 10,
+                  color: selectedId === SONOTA_ID ? '#1a1a1a' : '#9ca3af',
+                  fontWeight: selectedId === SONOTA_ID ? 600 : 400,
+                  whiteSpace: 'nowrap',
+                }}>
+                  その他
+                </span>
+                {count > 0 && (
+                  <span style={{
+                    ...mono, fontSize: 8,
+                    color: '#9ca3af',
+                    background: '#f3f4f6',
+                    border: '1px solid #e5e7eb',
+                    padding: '0px 5px', borderRadius: 8, lineHeight: '16px',
+                  }}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })()}
         </div>
       </header>
 
@@ -166,14 +239,14 @@ export default function KokoroBrowserPage() {
           marginBottom: 20, padding: '12px 16px',
           background: '#ffffff',
           border: '1px solid #e5e7eb',
-          borderLeft: `3px solid ${selectedGamesen.color}`,
+          borderLeft: `3px solid ${currentGamesen.color}`,
           borderRadius: 6,
         }}>
-          <div style={{ ...mono, fontSize: 9, color: selectedGamesen.color, marginBottom: 4 }}>
-            // {selectedGamesen.title}
+          <div style={{ ...mono, fontSize: 9, color: currentGamesen.color, marginBottom: 4 }}>
+            // {currentGamesen.title}
           </div>
           <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
-            {selectedGamesen.description}
+            {currentGamesen.description}
           </div>
         </div>
 
@@ -182,11 +255,11 @@ export default function KokoroBrowserPage() {
           ...mono, fontSize: 9, color: '#9ca3af',
           marginBottom: 16, letterSpacing: '0.1em',
         }}>
-          // {matchedNotes.length} 件の記録
+          // {displayedNotes.length} 件の記録
         </div>
 
         {/* タイムライン */}
-        {matchedNotes.length === 0 ? (
+        {displayedNotes.length === 0 ? (
           <div style={{
             padding: '60px 0', textAlign: 'center',
             ...mono, fontSize: 10, color: '#9ca3af', letterSpacing: '0.1em',
@@ -195,12 +268,12 @@ export default function KokoroBrowserPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {matchedNotes.map((note, idx) => (
+            {displayedNotes.map((note, idx) => (
               <NoteTimelineItem
                 key={note.id}
                 note={note}
-                accentColor={selectedGamesen.color}
-                isLast={idx === matchedNotes.length - 1}
+                accentColor={currentGamesen.color}
+                isLast={idx === displayedNotes.length - 1}
                 onClick={() => router.push(`/kokoro-browser/${note.id}`)}
               />
             ))}
