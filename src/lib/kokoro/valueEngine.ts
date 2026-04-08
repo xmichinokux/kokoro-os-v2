@@ -120,8 +120,70 @@ const TECHNIQUE_AXIS = `
 - 技術的完成度が高い作品でも、Wild Propulsionがなければスコアは上がらない
 - 荒削りでも、技巧と野生の摩擦（Friction）から火花が出ているなら最高評価`;
 
+const MECE_CORE = `
+【MECE-Core（核抽出 / 網羅×非重複）】
+目的：入力テーマから"重複なく漏れなく"の核を抽出し、出力の土台にする。
+
+処理手順：
+1. テーマ → カテゴリ候補を列挙
+2. カテゴリ間の重複を検出・統合
+3. 核を10項目以内に正規化して抽出
+
+Insight への適用：
+- レビュー群から「何が実際に語られているか」を重複なく抽出する
+- 称賛・批判・困惑・反復——それぞれのカテゴリを網羅的に把握してから判定する
+- 「レビューの表面的な言葉」と「その下にある感情・衝動」を別カテゴリとして分離する
+- 核が抽出できたら、そこから軸スコアと象限座標を導出する`;
+
+const MRCE = `
+【MRCE（Multi-Route Cognitive Exploration / 複数ルート同時探索）】
+目的：複線探索で思考のトンネル化を防ぎ、対照評価で最良の判定を浮上させる。
+
+処理手順：
+1. MECE-Coreの核項目ごとに3ルートで同時探索
+   - Route A（シン視点）：構造・技術・完成度の角度から読む
+   - Route B（カノン視点）：意味・物語・象徴・情念の角度から読む
+   - Route C（ディグ視点）：文化文脈・固有性・違和感の価値の角度から読む
+2. 各ルートのスコアを対照評価
+3. 最良ルートを合成して最終判定に反映
+
+Insight への適用：
+- 同一のレビューを3視点で同時に読む。「技術的に何が言われているか」「情念として何が語られているか」「文化文脈として何が示されているか」
+- 1つの視点だけで判定しない。3ルートが重なる部分が真のシグナル
+- ルートが矛盾する場合、その矛盾自体が作品の複雑さのサインである`;
+
+const REVO_CYCLE = `
+【RevoCycle（飛躍・再構造化サイクル）】
+目的：正攻法の外へ飛躍し、再構造化で"発明"に接続する。
+
+発想演算子：
+- 逆説：「Aである」→「Aでないことがむしろ正しい」
+- 転用：「Aの文脈」→「全く異なるBの文脈で読む」
+- 抽象化：「具体的な現象」→「その構造的本質は何か」
+- メタ化：「評価の内容」→「評価という行為自体を評価する」
+
+採点基準：
+- Novelty（新規性）：この解釈は既存の読みを超えているか
+- Usefulness（有用性）：この解釈は作品の本質に迫れているか
+- Feasibility（実装性）：レビューの証拠から導けるか
+
+Insight への適用：
+- 最終判定を出す前に、「この判定は正攻法すぎないか」を一度疑う
+- 逆説演算：「高評価のレビューが実は過大評価の証拠かもしれない」
+- 転用演算：「音楽の文脈を外して、純粋な感情反応として読んだらどうなるか」
+- メタ化演算：「このレビュー群が存在すること自体が何を意味するか」
+- RevoCycleで生まれた飛躍案のうち、Novelty×Usefulnessが高いものを最終判定に反映する`;
+
 export const KokoroValueEngine = {
-  forInsight: () => `${CORE_AESTHETICS}\n${AESTHETIC_AXES}\n${EVALUATION_BIAS}\n${TECHNIQUE_AXIS}`,
+  forInsight: () => [
+    CORE_AESTHETICS,
+    AESTHETIC_AXES,
+    EVALUATION_BIAS,
+    TECHNIQUE_AXIS,
+    MECE_CORE,
+    MRCE,
+    REVO_CYCLE,
+  ].join('\n'),
   forTalk:    () => CORE_AESTHETICS,
   forZen:     () => `${CORE_AESTHETICS}\n${AESTHETIC_AXES}`,
   forWriter:  () => CORE_AESTHETICS,
@@ -131,4 +193,7 @@ export const KokoroValueEngine = {
   AESTHETIC_AXES,
   EVALUATION_BIAS,
   TECHNIQUE_AXIS,
+  MECE_CORE,
+  MRCE,
+  REVO_CYCLE,
 };
