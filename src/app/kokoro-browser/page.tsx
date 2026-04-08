@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
+import { getAllNotes } from '@/lib/kokoro/noteStorage';
 import type { PublicNote } from '@/types/browser';
+import type { KokoroNote } from '@/types/note';
 
 const SOURCE_LABELS: Record<string, string> = {
   talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き',
@@ -21,9 +23,36 @@ export default function KokoroBrowserPage() {
     [selectedId]
   );
 
+  // localStorageの公開Noteを取得してPublicNote形式に変換
+  const localPublicNotes: PublicNote[] = useMemo(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const all: KokoroNote[] = getAllNotes();
+      return all
+        .filter(n => n.isPublic)
+        .map(n => ({
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          tags: n.tags,
+          topic: n.topic,
+          source: n.source as PublicNote['source'],
+          createdAt: n.createdAt,
+          isPublic: true as const,
+        }));
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const allPublicNotes = useMemo(
+    () => [...localPublicNotes, ...MOCK_PUBLIC_NOTES],
+    [localPublicNotes]
+  );
+
   const matchedNotes = useMemo(
-    () => matchNotesToGamesen(MOCK_PUBLIC_NOTES, selectedGamesen),
-    [selectedGamesen]
+    () => matchNotesToGamesen(allPublicNotes, selectedGamesen),
+    [allPublicNotes, selectedGamesen]
   );
 
   return (

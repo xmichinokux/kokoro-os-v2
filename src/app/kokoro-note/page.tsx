@@ -228,6 +228,14 @@ export default function KokoroNotePage() {
     refresh();
   };
 
+  const handleTogglePublic = (id: string) => {
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    const updated = { ...note, isPublic: !note.isPublic, updatedAt: new Date().toISOString() };
+    saveNote(updated);
+    refresh();
+  };
+
   const handleAiSuggest = async () => {
     if (!editBody.trim()) return;
     setAiLoading(true);
@@ -967,6 +975,26 @@ export default function KokoroNotePage() {
           >
             🍳 このnoteからRecipeを作る
           </button>
+        </div>
+
+        {/* Browser公開ボタン */}
+        <div className="pt-3">
+          <button
+            onClick={() => handleTogglePublic(selectedNote.id)}
+            className="text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+            style={{
+              background: selectedNote.isPublic ? '#f0fdf4' : '#f3f4f6',
+              color: selectedNote.isPublic ? '#16a34a' : '#6b7280',
+              border: `1px solid ${selectedNote.isPublic ? '#bbf7d0' : '#e5e7eb'}`,
+            }}
+          >
+            {selectedNote.isPublic ? '🌐 Browserに公開中　→ 非公開にする' : '🌐 Browserに公開する'}
+          </button>
+          {selectedNote.isPublic && (
+            <div className="text-xs mt-2" style={{ color: '#9ca3af', fontFamily: "'Space Mono', monospace" }}>
+              // Kokoro Browser のタイムラインに表示されます
+            </div>
+          )}
         </div>
       </>
     );

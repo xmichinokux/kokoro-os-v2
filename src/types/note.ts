@@ -15,6 +15,7 @@ export type KokoroNote = {
   emotionTone?: EmotionTone;
   linkedPersona?: string;
   pinned: boolean;
+  isPublic?: boolean;
 };
 
 export type NoteSearchHit = {
