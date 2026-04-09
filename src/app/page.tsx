@@ -82,6 +82,34 @@ const APPS: App[] = [
     href: "/kokoro-buddy",
     ready: true,
   },
+  {
+    icon: "🧠",
+    name: "Kokoro Philosophy",
+    desc: "哲学的な問いを多角視点で照らす。",
+    href: "/kokoro-philosophy",
+    ready: true,
+  },
+  {
+    icon: "👥",
+    name: "Kokoro Board",
+    desc: "会議の進行台本をAIが組み立てる。",
+    href: "/kokoro-board",
+    ready: true,
+  },
+  {
+    icon: "📄",
+    name: "Kokoro Kami",
+    desc: "自然言語から編集可能な表を生成する。",
+    href: "/kokoro-kami",
+    ready: true,
+  },
+  {
+    icon: "🎨",
+    name: "Kokoro Ponchi",
+    desc: "コンセプトを6枚のスライドに翻訳する。",
+    href: "/kokoro-ponchi",
+    ready: true,
+  },
 ];
 
 export default function Home() {
