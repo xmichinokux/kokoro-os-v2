@@ -204,13 +204,14 @@ function ActionBar({
     }}>
       <button
         onClick={onSave}
+        title="プロフィールを保存"
         style={{
           background: accentColor, border: 'none', color: '#fff',
           ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
           padding: '10px 24px', cursor: 'pointer', borderRadius: 3,
         }}
       >
-        ✓ プロフィールを保存
+        Save ✓
       </button>
       {lastSaved && (
         <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.08em' }}>
@@ -219,13 +220,14 @@ function ActionBar({
       )}
       <button
         onClick={onReset}
+        title="リセット"
         style={{
           background: 'transparent', border: '1px solid #d1d5db', color: '#9ca3af',
           ...mono, fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase',
           padding: '10px 16px', cursor: 'pointer', borderRadius: 3, marginLeft: 'auto',
         }}
       >
-        リセット
+        Reset ×
       </button>
     </div>
   );
@@ -393,6 +395,7 @@ export default function KokoroProfilePage() {
         </div>
         <button
           onClick={() => router.push('/')}
+          title="Homeに戻る"
           style={{
             ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af',
             background: 'transparent', border: '1px solid #e5e7eb',
@@ -439,6 +442,7 @@ export default function KokoroProfilePage() {
             <button
               onClick={runAnalysis}
               disabled={analyzing || noteCount === 0}
+              title="Noteを分析する"
               style={{
                 background: accentColor, border: 'none', color: '#fff',
                 ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
@@ -447,7 +451,7 @@ export default function KokoroProfilePage() {
                 opacity: analyzing || noteCount === 0 ? 0.5 : 1,
               }}
             >
-              {analyzing ? '// 分析中...' : 'Note を分析する ▸'}
+              {analyzing ? '// 分析中...' : 'Yoroshiku'}
             </button>
           </div>
 

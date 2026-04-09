@@ -176,6 +176,7 @@ export default function KokoroPhilosophyPage() {
         </div>
         <button
           onClick={() => router.push('/kokoro-chat')}
+          title="Talkに戻る"
           style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
         >
           ← Talk
@@ -225,6 +226,7 @@ export default function KokoroPhilosophyPage() {
         <button
           onClick={handleRun}
           disabled={!question.trim() || isLoading}
+          title="哲学する"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${(!question.trim() || isLoading) ? '#d1d5db' : accentColor}`,
@@ -234,7 +236,7 @@ export default function KokoroPhilosophyPage() {
             borderRadius: 2,
           }}
         >
-          {isLoading ? '// 哲学中...' : '▸ 哲学する'}
+          {isLoading ? '// 哲学中...' : 'Yoroshiku'}
         </button>
 
         {/* ローディング */}
@@ -414,13 +416,14 @@ export default function KokoroPhilosophyPage() {
                 <button
                   onClick={handleContinueDialogue}
                   disabled={dialogueLoading || !dialogueInput.trim()}
+                  title="返す"
                   style={{
                     background: accentColor, border: 'none', borderRadius: 8,
                     color: '#fff', padding: '0 16px', cursor: dialogueLoading ? 'not-allowed' : 'pointer',
                     fontSize: 13, whiteSpace: 'nowrap', opacity: dialogueLoading ? 0.6 : 1,
                   }}
                 >
-                  返す
+                  ↑
                 </button>
               </div>
             </>
@@ -431,6 +434,7 @@ export default function KokoroPhilosophyPage() {
             <button
               onClick={handleSaveToNote}
               disabled={saved}
+              title={saved ? 'Noteに保存しました' : 'Noteに保存'}
               style={{
                 marginTop: 16, background: 'transparent',
                 border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
@@ -440,7 +444,7 @@ export default function KokoroPhilosophyPage() {
                 borderRadius: 3,
               }}
             >
-              {saved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+              {saved ? 'Note ✓' : 'Note +'}
             </button>
           )}
         </div>

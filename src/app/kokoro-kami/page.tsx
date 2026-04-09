@@ -129,6 +129,7 @@ export default function KokoroKamiPage() {
         </div>
         <button
           onClick={() => router.push('/kokoro-chat')}
+          title="Talkに戻る"
           style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
         >
           ← Talk
@@ -168,6 +169,7 @@ export default function KokoroKamiPage() {
         <button
           onClick={handleRun}
           disabled={!canSubmit}
+          title="表を生成する"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${canSubmit ? accentColor : '#d1d5db'}`,
@@ -177,7 +179,7 @@ export default function KokoroKamiPage() {
             borderRadius: 2, marginTop: 12,
           }}
         >
-          {isLoading ? '// 生成中...' : '▸ 表を生成する'}
+          {isLoading ? '// 生成中...' : 'Yoroshiku'}
         </button>
 
         {isLoading && (
@@ -252,6 +254,7 @@ export default function KokoroKamiPage() {
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
               <button
                 onClick={addRow}
+                title="行を追加"
                 style={{
                   ...mono, fontSize: 8, letterSpacing: '.1em',
                   padding: '6px 14px', border: '1px solid #d1d5db',
@@ -259,10 +262,11 @@ export default function KokoroKamiPage() {
                   color: '#9ca3af', background: 'transparent',
                 }}
               >
-                + 行を追加
+                Row +
               </button>
               <button
                 onClick={copyAsTsv}
+                title={copied ? 'コピーしました' : 'CSVでコピー'}
                 style={{
                   ...mono, fontSize: 8, letterSpacing: '.1em',
                   padding: '6px 14px',
@@ -271,11 +275,12 @@ export default function KokoroKamiPage() {
                   color: copied ? accentColor : '#9ca3af', background: 'transparent',
                 }}
               >
-                {copied ? '// コピーしました' : 'CSVでコピー'}
+                {copied ? 'Copy ✓' : 'Copy ↗'}
               </button>
               <button
                 onClick={handleSaveToNote}
                 disabled={saved}
+                title={saved ? 'Noteに保存しました' : 'Noteに保存'}
                 style={{
                   ...mono, fontSize: 8, letterSpacing: '.1em',
                   padding: '6px 14px',
@@ -284,7 +289,7 @@ export default function KokoroKamiPage() {
                   color: saved ? '#10b981' : '#9ca3af', background: 'transparent',
                 }}
               >
-                {saved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+                {saved ? 'Note ✓' : 'Note +'}
               </button>
             </div>
           </div>

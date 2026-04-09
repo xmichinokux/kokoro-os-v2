@@ -92,9 +92,10 @@ export default function KokoroRecipePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={() => router.push('/kokoro-chat')}
+            title="Talkに戻る"
             style={{ ...mono, fontSize: 9, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            ← Talkへ戻る
+            ← Talk
           </button>
           <span style={{ ...mono, fontSize: 11, color: '#7c3aed', letterSpacing: '0.15em' }}>
             // Kokoro Recipe
@@ -186,6 +187,7 @@ export default function KokoroRecipePage() {
             {!isLoading && (
               <button
                 onClick={() => generateRecipe()}
+                title="1週間のRecipeを作る"
                 style={{
                   width: '100%', padding: '14px',
                   background: '#7c3aed', color: '#ffffff',
@@ -193,7 +195,7 @@ export default function KokoroRecipePage() {
                   ...mono, fontSize: 12, letterSpacing: '0.1em',
                 }}
               >
-                1週間のRecipeを作る
+                Yoroshiku
               </button>
             )}
 
@@ -354,6 +356,7 @@ export default function KokoroRecipePage() {
             <div style={{ marginTop: 32, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               <button
                 onClick={() => { setResult(null); setOpenDay(null); setNoteSaved(false); }}
+                title="もう一度作る"
                 style={{
                   flex: 1, minWidth: 120, padding: '12px',
                   background: 'transparent',
@@ -362,10 +365,11 @@ export default function KokoroRecipePage() {
                   ...mono, fontSize: 11, color: '#6b7280',
                 }}
               >
-                もう一度作る
+                Reset ×
               </button>
               <button
                 onClick={() => router.push('/kokoro-chat')}
+                title="Talkで続きを話す"
                 style={{
                   flex: 1, minWidth: 120, padding: '12px',
                   background: 'rgba(124,58,237,0.06)',
@@ -374,10 +378,11 @@ export default function KokoroRecipePage() {
                   ...mono, fontSize: 11, color: '#7c3aed',
                 }}
               >
-                Talkで続きを話す →
+                Talk →
               </button>
               <button
                 onClick={() => router.push('/kokoro-note')}
+                title="noteへ行く"
                 style={{
                   flex: 1, minWidth: 120, padding: '12px',
                   background: 'rgba(52,211,153,0.06)',
@@ -386,11 +391,12 @@ export default function KokoroRecipePage() {
                   ...mono, fontSize: 11, color: '#34d399',
                 }}
               >
-                noteへ行く →
+                Note →
               </button>
               <button
                 onClick={handleSaveToNote}
                 disabled={noteSaved}
+                title={noteSaved ? 'noteに保存しました' : 'noteに残す'}
                 style={{
                   width: '100%', padding: '12px',
                   background: noteSaved ? 'rgba(52,211,153,0.06)' : 'rgba(249,115,22,0.06)',
@@ -401,7 +407,7 @@ export default function KokoroRecipePage() {
                   color: noteSaved ? '#34d399' : '#f97316',
                 }}
               >
-                {noteSaved ? '✓ noteに保存しました' : '📝 このRecipeをnoteに残す'}
+                {noteSaved ? 'Note ✓' : 'Note +'}
               </button>
             </div>
           </div>

@@ -142,6 +142,7 @@ export default function KokoroCouplePage() {
         </div>
         <button
           onClick={() => router.push('/kokoro-chat')}
+          title="Talkに戻る"
           style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
         >
           ← Talk
@@ -230,6 +231,7 @@ export default function KokoroCouplePage() {
         <button
           onClick={() => handleRun()}
           disabled={!canSubmit}
+          title="提案する"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${canSubmit ? accentColor : '#d1d5db'}`,
@@ -239,7 +241,7 @@ export default function KokoroCouplePage() {
             borderRadius: 2, marginTop: 12,
           }}
         >
-          {isLoading ? '// 考えています...' : '▸ 提案する'}
+          {isLoading ? '// 考えています...' : 'Yoroshiku'}
         </button>
 
         {/* ローディング */}
@@ -282,6 +284,7 @@ export default function KokoroCouplePage() {
             <button
               onClick={handleSaveToNote}
               disabled={saved}
+              title={saved ? 'Noteに保存しました' : 'Noteに保存'}
               style={{
                 marginTop: 12, background: 'transparent',
                 border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
@@ -291,7 +294,7 @@ export default function KokoroCouplePage() {
                 borderRadius: 3,
               }}
             >
-              {saved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+              {saved ? 'Note ✓' : 'Note +'}
             </button>
           </div>
         )}

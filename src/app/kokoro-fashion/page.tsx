@@ -160,9 +160,9 @@ export default function KokoroFashion() {
           <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
           <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Fashion</span>
         </div>
-        <a href="/kokoro-chat"
+        <a href="/kokoro-chat" title="Talkに戻る"
           style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px' }}>
-          ← Talk に戻る
+          ← Talk
         </a>
       </header>
 
@@ -265,8 +265,9 @@ export default function KokoroFashion() {
 
             {/* details toggle */}
             <button onClick={() => setDetailsOpen(v => !v)}
+              title={detailsOpen ? '閉じる' : '詳しく見る'}
               style={{ width: '100%', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, color: '#6b7280', fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', padding: '13px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span>{detailsOpen ? '▲ 閉じる' : '▼ 詳しく見る'}</span>
+              <span>{detailsOpen ? '▲' : 'Details ▼'}</span>
               <span style={{ fontSize: 8, color: '#9ca3af' }}>// Details</span>
             </button>
 
@@ -294,6 +295,7 @@ export default function KokoroFashion() {
               {noteSaved ? (
                 <a
                   href="/kokoro-browser"
+                  title="noteに保存しました"
                   style={{
                     fontFamily: "'Space Mono', monospace",
                     fontSize: 11,
@@ -308,11 +310,12 @@ export default function KokoroFashion() {
                     textAlign: 'center',
                   }}
                 >
-                  ✓ noteに保存しました　→ 確認する
+                  Note ✓
                 </a>
               ) : (
                 <button
                   onClick={handleSaveToNote}
+                  title="noteに残す"
                   style={{
                     width: '100%',
                     background: 'transparent',
@@ -335,12 +338,12 @@ export default function KokoroFashion() {
                     (e.target as HTMLButtonElement).style.color = '#6b7280';
                   }}
                 >
-                  noteに残す
+                  Note +
                 </button>
               )}
-              <a href="/kokoro-chat"
+              <a href="/kokoro-chat" title="Talkに戻る"
                 style={{ display: 'block', width: '100%', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' }}>
-                Talk に戻る →
+                ← Talk
               </a>
             </div>
           </div>

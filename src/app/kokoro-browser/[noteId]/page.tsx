@@ -35,8 +35,8 @@ export default function NoteDetailPage() {
       <div style={{ padding: 40, ...mono, fontSize: 11, color: '#9ca3af' }}>
         // このNoteは見つかりません
         <br />
-        <button onClick={() => router.back()} style={{ marginTop: 16, color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer' }}>
-          ← 戻る
+        <button onClick={() => router.back()} title="戻る" style={{ marginTop: 16, color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer' }}>
+          ← Back
         </button>
       </div>
     );
@@ -54,6 +54,7 @@ export default function NoteDetailPage() {
       }}>
         <button
           onClick={() => router.push('/kokoro-browser')}
+          title="Browserに戻る"
           style={{ ...mono, fontSize: 9, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}
         >
           ← Browser
@@ -132,13 +133,14 @@ export default function NoteDetailPage() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button
             onClick={() => router.push('/kokoro-browser')}
+            title="Browserに戻る"
             style={{
               ...mono, fontSize: 10, color: '#9ca3af',
               background: 'transparent', border: '1px solid #e5e7eb',
               borderRadius: 6, padding: '8px 16px', cursor: 'pointer',
             }}
           >
-            ← 棚に戻る
+            ← Browser
           </button>
           <button
             onClick={() => {
@@ -156,6 +158,7 @@ export default function NoteDetailPage() {
               });
               router.push('/kokoro-chat');
             }}
+            title="このNoteをTalkで話す"
             style={{
               ...mono, fontSize: 10, color: '#7c3aed',
               background: 'rgba(124,58,237,0.06)',
@@ -163,7 +166,7 @@ export default function NoteDetailPage() {
               borderRadius: 6, padding: '8px 16px', cursor: 'pointer',
             }}
           >
-            このNoteをTalkで話す →
+            Talk →
           </button>
         </div>
 

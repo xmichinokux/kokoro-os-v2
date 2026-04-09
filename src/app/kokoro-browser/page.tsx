@@ -98,6 +98,7 @@ export default function KokoroBrowserPage() {
         }}>
           <button
             onClick={() => router.push('/kokoro-chat')}
+            title="Talkに戻る"
             style={{
               ...mono, fontSize: 9, color: '#9ca3af',
               background: 'none', border: 'none', cursor: 'pointer',

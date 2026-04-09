@@ -155,6 +155,7 @@ export default function KokoroWishlistPage() {
         </div>
         <button
           onClick={() => router.push('/kokoro-chat')}
+          title="Talkに戻る"
           style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
         >
           ← Talk
@@ -209,6 +210,7 @@ export default function KokoroWishlistPage() {
 
           <button
             onClick={() => setShowAddForm((v) => !v)}
+            title={showAddForm ? 'キャンセル' : '手動で追加'}
             style={{
               ...mono, fontSize: 10, letterSpacing: '.12em',
               color: showAddForm ? '#9ca3af' : accentColor,
@@ -218,7 +220,7 @@ export default function KokoroWishlistPage() {
               alignSelf: 'flex-end',
             }}
           >
-            {showAddForm ? 'キャンセル' : '+ 手動で追加'}
+            {showAddForm ? '×' : 'Wish +'}
           </button>
         </div>
 
@@ -287,6 +289,7 @@ export default function KokoroWishlistPage() {
             <button
               onClick={handleAdd}
               disabled={!newText.trim()}
+              title="追加する"
               style={{
                 ...mono, fontSize: 11, letterSpacing: '.12em',
                 color: '#fff', background: newText.trim() ? accentColor : '#d1d5db',
@@ -295,7 +298,7 @@ export default function KokoroWishlistPage() {
                 marginTop: 16,
               }}
             >
-              追加する
+              Save ✓
             </button>
           </div>
         )}
@@ -358,6 +361,7 @@ export default function KokoroWishlistPage() {
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <button
                       onClick={() => handleTalk(it)}
+                      title="Talkで話す"
                       style={{
                         ...mono, fontSize: 9, letterSpacing: '.1em',
                         color: '#7c3aed', background: 'transparent',
@@ -365,10 +369,11 @@ export default function KokoroWishlistPage() {
                         padding: '5px 12px', borderRadius: 3, cursor: 'pointer',
                       }}
                     >
-                      Talk で話す →
+                      Talk →
                     </button>
                     <button
                       onClick={() => handleDelete(it.id)}
+                      title="削除"
                       style={{
                         ...mono, fontSize: 9, letterSpacing: '.1em',
                         color: '#9ca3af', background: 'transparent',
@@ -376,7 +381,7 @@ export default function KokoroWishlistPage() {
                         padding: '5px 12px', borderRadius: 3, cursor: 'pointer',
                       }}
                     >
-                      削除
+                      ×
                     </button>
                   </div>
                 </div>

@@ -105,6 +105,7 @@ export default function KokoroBoardPage() {
         </div>
         <button
           onClick={() => router.push('/kokoro-chat')}
+          title="Talkに戻る"
           style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
         >
           ← Talk
@@ -154,6 +155,7 @@ export default function KokoroBoardPage() {
         <button
           onClick={handleStart}
           disabled={!canSubmit}
+          title="会議を始める"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${canSubmit ? accentColor : '#d1d5db'}`,
@@ -163,7 +165,7 @@ export default function KokoroBoardPage() {
             borderRadius: 2,
           }}
         >
-          {isLoading ? '// 準備中...' : '▸ 会議を始める'}
+          {isLoading ? '// 準備中...' : 'Yoroshiku'}
         </button>
 
         {isLoading && (
@@ -263,6 +265,7 @@ export default function KokoroBoardPage() {
             <button
               onClick={handleSaveToNote}
               disabled={saved}
+              title={saved ? 'Noteに保存しました' : 'Noteに保存'}
               style={{
                 marginTop: 16, background: 'transparent',
                 border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
@@ -272,7 +275,7 @@ export default function KokoroBoardPage() {
                 borderRadius: 3,
               }}
             >
-              {saved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+              {saved ? 'Note ✓' : 'Note +'}
             </button>
           </div>
         )}

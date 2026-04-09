@@ -652,9 +652,10 @@ export default function KokoroInsightPage() {
           {reviews.length < 5 && (
             <button
               onClick={addReview}
+              title="レビューを追加"
               style={{ width: '100%', background: 'transparent', border: '1px dashed #e5e7eb', color: '#6b7280', ...mono, fontSize: 9, letterSpacing: '.12em', padding: 8, cursor: 'pointer', borderRadius: 2 }}
             >
-              ＋ レビューを追加
+              Row +
             </button>
           )}
         </div>
@@ -663,6 +664,7 @@ export default function KokoroInsightPage() {
         <button
           onClick={handleSubmit}
           disabled={!canSubmit || isLoading}
+          title="インパクトを判定する"
           style={{
             width: '100%', marginBottom: 20,
             background: !canSubmit || isLoading ? '#9ca3af' : '#7c3aed',
@@ -672,7 +674,7 @@ export default function KokoroInsightPage() {
             borderRadius: 3,
           }}
         >
-          ▸ インパクトを判定する
+          Yoroshiku
         </button>
 
         {/* ローディング */}
@@ -931,6 +933,7 @@ export default function KokoroInsightPage() {
               <button
                 onClick={handleSaveToNote}
                 disabled={noteSaved}
+                title={noteSaved ? 'Noteに保存しました' : 'Noteに保存'}
                 style={{
                   ...mono, fontSize: 9, letterSpacing: '.12em',
                   background: 'transparent',
@@ -941,16 +944,16 @@ export default function KokoroInsightPage() {
                   borderRadius: 2,
                 }}
               >
-                {noteSaved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+                {noteSaved ? 'Note ✓' : 'Note +'}
               </button>
-              <button onClick={resetCurrent} style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
-                ↺ 別の作品を判定する
+              <button onClick={resetCurrent} title="別の作品を判定する" style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
+                Reset ×
               </button>
-              <button onClick={resetAll} style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
-                ✕ すべてクリア
+              <button onClick={resetAll} title="すべてクリア" style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
+                Clear ×
               </button>
-              <button onClick={() => router.push('/kokoro-chat')} style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid rgba(124,58,237,.3)', color: '#7c3aed', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
-                → Talk に戻る
+              <button onClick={() => router.push('/kokoro-chat')} title="Talkに戻る" style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid rgba(124,58,237,.3)', color: '#7c3aed', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
+                ← Talk
               </button>
             </div>
           </div>

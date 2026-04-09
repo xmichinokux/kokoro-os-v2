@@ -101,6 +101,7 @@ export default function KokoroPonchiPage() {
         </div>
         <button
           onClick={() => router.push('/kokoro-chat')}
+          title="Talkに戻る"
           style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
         >
           ← Talk
@@ -140,6 +141,7 @@ export default function KokoroPonchiPage() {
         <button
           onClick={handleRun}
           disabled={!canSubmit}
+          title="プレゼン化する"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${canSubmit ? accentColor : '#d1d5db'}`,
@@ -149,7 +151,7 @@ export default function KokoroPonchiPage() {
             borderRadius: 2, marginTop: 12,
           }}
         >
-          {isLoading ? '// 変換中...' : '▸ プレゼン化する'}
+          {isLoading ? '// 変換中...' : 'Yoroshiku'}
         </button>
 
         {isLoading && (
@@ -219,6 +221,7 @@ export default function KokoroPonchiPage() {
             <button
               onClick={handleSaveToNote}
               disabled={saved}
+              title={saved ? 'Noteに保存しました' : 'Noteに保存'}
               style={{
                 marginTop: 16, background: 'transparent',
                 border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
@@ -228,7 +231,7 @@ export default function KokoroPonchiPage() {
                 borderRadius: 3,
               }}
             >
-              {saved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+              {saved ? 'Note ✓' : 'Note +'}
             </button>
           </>
         )}
