@@ -75,6 +75,13 @@ const APPS: App[] = [
     href: "/kokoro-couple",
     ready: true,
   },
+  {
+    icon: "🎧",
+    name: "Kokoro Buddy",
+    desc: "アイデアの壁打ち相手。ディグが広げ、深める。",
+    href: "/kokoro-buddy",
+    ready: true,
+  },
 ];
 
 export default function Home() {
