@@ -18,11 +18,11 @@ export async function POST(req: NextRequest) {
 設定：
 ・熱量レベル: ${heat}/5（高いほど野心的なタスク量）
 ・粒度レベル: ${grain}/5（高いほど細かいタスク）
+${valueInject ? '\n' + valueInject + '\n' : ''}
+タスク数の目安：熱量${heat}×粒度${grain}に応じて5〜15個
 
-以下のJSONのみを返してください：
-{"tasks":[{"text":"タスク内容","estimate":"所要時間の目安","priority":"high/mid/low"},...]}
-
-タスク数の目安：熱量${heat}×粒度${grain}に応じて5〜15個${valueInject ? '\n' + valueInject : ''}`;
+必ず以下のJSON形式のみを返してください。説明文や前置きは一切含めないでください：
+{"tasks":[{"text":"タスク内容","estimate":"所要時間の目安","priority":"high/mid/low"},...]}`;
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;

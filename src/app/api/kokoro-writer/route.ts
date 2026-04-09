@@ -17,8 +17,9 @@ export async function POST(req: NextRequest) {
 
   const baseSystem = WRITER_SYSTEMS[mode] ?? WRITER_SYSTEMS.lite;
   // Coreモードのみ MECE_CORE + REVO_CYCLE を注入
+  // valueInjectは先頭に置き、baseSystemの「〜のみ返してください」を最後の指示として残す
   const valueInject = mode === 'core' ? KokoroValueEngine.forWriterCore() : '';
-  const system = baseSystem + (valueInject ? '\n' + valueInject : '');
+  const system = (valueInject ? valueInject + '\n\n' : '') + baseSystem;
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
