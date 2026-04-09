@@ -110,6 +110,20 @@ const APPS: App[] = [
     href: "/kokoro-ponchi",
     ready: true,
   },
+  {
+    icon: "🍳",
+    name: "Kokoro Recipe",
+    desc: "7日間の献立を生成する。",
+    href: "/kokoro-recipe",
+    ready: true,
+  },
+  {
+    icon: "🐾",
+    name: "Kokoro Animal",
+    desc: "動物写真から本能の声を読む。",
+    href: "/kokoro-animal",
+    ready: true,
+  },
 ];
 
 export default function Home() {
