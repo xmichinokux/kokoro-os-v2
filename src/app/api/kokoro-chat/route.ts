@@ -8,6 +8,12 @@ export type TalkRoute =
   | 'fashion' | 'recipe' | 'insight' | 'couple' | 'buddy'
   | 'philosophy' | 'board' | 'kami' | 'ponchi' | null;
 
+export type WishlistItemSuggestion = {
+  text: string;
+  category: 'fashion' | 'food' | 'place' | 'person' | 'thing' | 'other';
+  intensity: 'now' | 'soon' | 'someday';
+};
+
 export type TalkMeta = {
   need_zen: boolean;
   need_plan: boolean;
@@ -24,6 +30,8 @@ export type TalkMeta = {
   need_board: boolean;
   need_kami: boolean;
   need_ponchi: boolean;
+  need_wishlist: boolean;
+  wishlist_item: WishlistItemSuggestion | null;
   sync_rate: number;
   route: TalkRoute;
 };
@@ -34,8 +42,32 @@ function createEmptyMeta(): TalkMeta {
     need_animal_talk: false, need_note: false, need_fashion: false, need_recipe: false,
     need_insight: false, need_couple: false, need_buddy: false, need_philosophy: false,
     need_board: false, need_kami: false, need_ponchi: false,
+    need_wishlist: false, wishlist_item: null,
     sync_rate: 0, route: null,
   };
+}
+
+const VALID_WISH_CATEGORIES: ReadonlyArray<WishlistItemSuggestion['category']> = [
+  'fashion', 'food', 'place', 'person', 'thing', 'other',
+];
+const VALID_WISH_INTENSITIES: ReadonlyArray<WishlistItemSuggestion['intensity']> = [
+  'now', 'soon', 'someday',
+];
+
+function normalizeWishlistItem(raw: unknown): WishlistItemSuggestion | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const w = raw as Record<string, unknown>;
+  const text = typeof w.text === 'string' ? w.text.trim() : '';
+  if (!text) return null;
+  const category = typeof w.category === 'string'
+    && (VALID_WISH_CATEGORIES as readonly string[]).includes(w.category)
+    ? (w.category as WishlistItemSuggestion['category'])
+    : 'other';
+  const intensity = typeof w.intensity === 'string'
+    && (VALID_WISH_INTENSITIES as readonly string[]).includes(w.intensity)
+    ? (w.intensity as WishlistItemSuggestion['intensity'])
+    : 'someday';
+  return { text, category, intensity };
 }
 
 const VALID_ROUTES: ReadonlyArray<TalkRoute> = [
@@ -68,6 +100,8 @@ function normalizeMeta(raw: unknown): TalkMeta {
     need_board: bool('need_board'),
     need_kami: bool('need_kami'),
     need_ponchi: bool('need_ponchi'),
+    need_wishlist: bool('need_wishlist'),
+    wishlist_item: normalizeWishlistItem(m.wishlist_item),
     sync_rate: sync,
     route,
   };
@@ -142,6 +176,12 @@ function buildTalkSystem(params: {
     "need_board": true | false,
     "need_kami": true | false,
     "need_ponchi": true | false,
+    "need_wishlist": true | false,
+    "wishlist_item": {
+      "text": "ウィッシュの内容（20字以内推奨）",
+      "category": "fashion" | "food" | "place" | "person" | "thing" | "other",
+      "intensity": "now" | "soon" | "someday"
+    } | null,
     "sync_rate": 0.0,
     "route": "zen" | "plan" | "writer" | "browser" | "animal_talk" | "note" | "fashion" | "recipe" | "insight" | "couple" | "buddy" | "philosophy" | "board" | "kami" | "ponchi" | null
   }
@@ -167,6 +207,13 @@ function buildTalkSystem(params: {
 - need_board: 「会議」「ミーティング」「打ち合わせ」「議事進行」
 - need_kami: 「表にしたい」「比較したい」「リスト化したい」「整理して並べたい」
 - need_ponchi: 「プレゼン」「スライド」「6枚で説明」「コンセプトを伝えたい」
+- need_wishlist: 「〜したい」「〜が欲しい」「〜に行きたい」「〜が好き」「〜を探してる」など、欲望・願望の表現
+
+need_wishlist が true のときは wishlist_item を必ず以下の形で埋める：
+- text: ユーザーの欲望を 20 字程度に簡潔化（例「黒のロングコート」「京都の喫茶店」）
+- category: fashion(服飾) / food(飲食) / place(場所・店) / person(人・出会い) / thing(モノ) / other(その他) のいずれか
+- intensity: now(今すぐ) / soon(そのうち) / someday(いつか) のいずれか — 発話の切迫感から判断
+need_wishlist が false の場合は wishlist_item は null。
 
 これらは「ユーザーが明示的に求めている」または「強く示唆している」ときのみ true。
 雑談や情緒の吐露だけのときは全て false にする（押し付けないこと）。

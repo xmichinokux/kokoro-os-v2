@@ -18,6 +18,7 @@ import type { KokoroNote } from '@/types/note';
 import type { KokoroNoteDraft } from '@/types/noteMeta';
 import type { InsightFlowState } from '@/lib/kokoro/shouldShowSaveToNoteButton';
 import { createRecipeInputFromTalk, setRecipeInput } from '@/lib/kokoro/recipeInput';
+import { saveToWishlist, type WishCategory, type WishIntensity } from '@/lib/wishlist';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -63,6 +64,11 @@ type Message = {
   showBoard?: boolean;
   showKami?: boolean;
   showPonchi?: boolean;
+  // ウィッシュリスト追加バナー
+  showWishlist?: boolean;
+  wishlistText?: string;
+  wishlistCategory?: WishCategory;
+  wishlistIntensity?: WishIntensity;
   // バナー click 時に sessionStorage に渡すためのソースデータ
   routingUserText?: string;       // 最後のユーザー発言テキスト
   routingHistoryShort?: string;   // 会話履歴テキスト（最新5件）
@@ -115,6 +121,29 @@ export default function KokoroChat() {
   const [turnCount, setTurnCount] = useState(0);
   const [linkedNote, setLinkedNote] = useState<Partial<KokoroNote> | null>(null);
   const [savedNoteIds, setSavedNoteIds] = useState<Set<number>>(new Set());
+  const [savedWishIds, setSavedWishIds] = useState<Set<number>>(new Set());
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2400);
+  };
+
+  const handleAddToWishlist = (msgIndex: number, msg: Message) => {
+    if (!msg.wishlistText) return;
+    const result = saveToWishlist({
+      text: msg.wishlistText,
+      category: msg.wishlistCategory,
+      intensity: msg.wishlistIntensity,
+      source: 'Talk',
+    });
+    if (result) {
+      setSavedWishIds(prev => new Set(prev).add(msgIndex));
+      showToast('ウィッシュリストに追加しました');
+    } else {
+      showToast('保存に失敗しました');
+    }
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -584,7 +613,7 @@ export default function KokoroChat() {
       }
 
       // meta 由来の新規バナー（plan / writer / browser / couple / buddy /
-      //   philosophy / board / kami / ponchi）— エミ中は抑制
+      //   philosophy / board / kami / ponchi / wishlist）— エミ中は抑制
       const showPlanBtn       = !emiBlocking && meta.need_plan === true;
       const showWriterBtn     = !emiBlocking && meta.need_writer === true;
       const showBrowserBtn    = !emiBlocking && meta.need_browser === true;
@@ -594,6 +623,10 @@ export default function KokoroChat() {
       const showBoardBtn      = !emiBlocking && meta.need_board === true;
       const showKamiBtn       = !emiBlocking && meta.need_kami === true;
       const showPonchiBtn     = !emiBlocking && meta.need_ponchi === true;
+
+      // wishlist は wishlist_item が伴っている時だけ表示
+      const wishItem = (meta as { wishlist_item?: { text: string; category: WishCategory; intensity: WishIntensity } | null }).wishlist_item ?? null;
+      const showWishlistBtn = !emiBlocking && meta.need_wishlist === true && !!wishItem && !!wishItem.text;
 
       // 3つの aiMsg 構築箇所で共通して使う meta 由来のフィールド
       const metaFields: Partial<Message> = {
@@ -606,6 +639,10 @@ export default function KokoroChat() {
         showBoard:      showBoardBtn      || undefined,
         showKami:       showKamiBtn       || undefined,
         showPonchi:     showPonchiBtn     || undefined,
+        showWishlist:   showWishlistBtn   || undefined,
+        wishlistText:     showWishlistBtn ? wishItem!.text : undefined,
+        wishlistCategory: showWishlistBtn ? wishItem!.category : undefined,
+        wishlistIntensity: showWishlistBtn ? wishItem!.intensity : undefined,
         routingUserText,
         routingHistoryShort,
         routingHistoryLong,
@@ -1206,6 +1243,20 @@ export default function KokoroChat() {
                       </button>
                     </div>
                   )}
+                  {msg.showWishlist && msg.wishlistText && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(244,114,182,0.06)', border:'1px solid rgba(244,114,182,0.25)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#ec4899' }}>
+                        ⭐ 「{msg.wishlistText}」をウィッシュリストに追加する？
+                      </span>
+                      <button
+                        onClick={() => handleAddToWishlist(i, msg)}
+                        disabled={savedWishIds.has(i)}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color: savedWishIds.has(i) ? '#9ca3af' : '#ec4899', background:'transparent', border:`1px solid ${savedWishIds.has(i) ? '#e5e7eb' : 'rgba(244,114,182,0.4)'}`, borderRadius:4, padding:'5px 12px', cursor: savedWishIds.has(i) ? 'default' : 'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        {savedWishIds.has(i) ? '追加済み' : '追加する'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1282,6 +1333,18 @@ export default function KokoroChat() {
           )}
         </div>
       </div>
+
+      {toast && (
+        <div style={{
+          position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)',
+          background:'#1a1a1a', color:'#fff', padding:'10px 18px', borderRadius:8,
+          fontSize:13, fontFamily:"'Noto Sans JP', sans-serif",
+          boxShadow:'0 4px 12px rgba(0,0,0,0.18)', zIndex:9999,
+          animation:'fadeIn 0.2s ease-out',
+        }}>
+          {toast}
+        </div>
+      )}
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
