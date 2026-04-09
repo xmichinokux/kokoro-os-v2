@@ -23,6 +23,188 @@ const LIVING_OPTIONS = ['一人暮らし', 'パートナーと同居', '家族�
 const accentColor = '#6366f1';
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 
+const LABELS: Record<ProfileKey, string> = {
+  p_name: '呼び名（任意）',
+  p_age: '年代',
+  p_gender: '性別（任意）',
+  p_location: '居住地',
+  p_style: '好きなスタイル',
+  p_brands: 'よく使うブランド',
+  p_colors: '好きな色・NGな色',
+  p_budget: '予算感（1着あたり）',
+  p_usage: '主な用途',
+  p_fashion_memo: 'その他のこだわり・メモ',
+  p_family_size: '食べる人数',
+  p_cook_skill: '料理スキル',
+  p_allergy: 'アレルギー・NG食材',
+  p_diet: '食の制限',
+  p_food_pref: '好きな料理・よく食べるもの',
+  p_recipe_memo: '料理環境・その他メモ',
+  p_work: '働き方',
+  p_living: '住まい',
+  p_hobbies: '趣味・興味',
+  p_memo: '自由記述（AIへの補足・伝えたいこと）',
+};
+
+const fieldBase = {
+  background: '#f8f9fa',
+  border: '1px solid #d1d5db',
+  borderLeft: '2px solid #d1d5db',
+  borderRadius: '0 4px 4px 0',
+  padding: '10px 14px',
+  fontSize: 13,
+  color: '#111827',
+  outline: 'none',
+  fontFamily: "'Noto Sans JP', sans-serif",
+  width: '100%',
+  boxSizing: 'border-box' as const,
+};
+const highlightStyle = { borderLeftColor: accentColor, background: 'rgba(99,102,241,0.04)' };
+
+/* ── External UI components (defined outside the page so they don't get
+      recreated on every render — keeps inputs from losing focus on each keystroke) ── */
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <label style={{ ...mono, fontSize: 8, letterSpacing: '0.16em', color: '#9ca3af', textTransform: 'uppercase' }}>
+      {children}
+    </label>
+  );
+}
+
+type FieldProps = {
+  k: ProfileKey;
+  value: string;
+  onChange: (v: string) => void;
+  highlighted: boolean;
+  placeholder?: string;
+  full?: boolean;
+};
+
+function TextField({ k, value, onChange, highlighted, placeholder, full = false }: FieldProps) {
+  return (
+    <div style={{ gridColumn: full ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <Label>// {LABELS[k]}</Label>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ ...fieldBase, ...(highlighted ? highlightStyle : {}) }}
+      />
+    </div>
+  );
+}
+
+function SelectField({
+  k, value, onChange, highlighted, options, full = false,
+}: FieldProps & { options: string[] }) {
+  return (
+    <div style={{ gridColumn: full ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <Label>// {LABELS[k]}</Label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ ...fieldBase, ...(highlighted ? highlightStyle : {}), cursor: 'pointer', WebkitAppearance: 'none' }}
+      >
+        <option value="">選択...</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function TextArea({ k, value, onChange, highlighted, placeholder, full = true }: FieldProps) {
+  return (
+    <div style={{ gridColumn: full ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <Label>// {LABELS[k]}</Label>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        style={{ ...fieldBase, ...(highlighted ? highlightStyle : {}), minHeight: 65, resize: 'vertical', lineHeight: 1.7 }}
+      />
+    </div>
+  );
+}
+
+function Section({
+  icon, title, apps, children,
+}: { icon: string; title: string; apps?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 36 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18,
+        paddingBottom: 10, borderBottom: '1px solid #e5e7eb',
+      }}>
+        <span style={{ fontSize: 16 }}>{icon}</span>
+        <span style={{ ...mono, fontSize: 9, letterSpacing: '0.2em', color: '#111827', textTransform: 'uppercase', flex: 1 }}>
+          {title}
+        </span>
+        {apps && (
+          <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.06em' }}>{apps}</span>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ActionBar({
+  onSave, onReset, lastSaved,
+}: { onSave: () => void; onReset: () => void; lastSaved: string }) {
+  return (
+    <div style={{
+      display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
+      marginBottom: 40, padding: '16px 20px',
+      background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: 4,
+    }}>
+      <button
+        onClick={onSave}
+        style={{
+          background: accentColor, border: 'none', color: '#fff',
+          ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
+          padding: '10px 24px', cursor: 'pointer', borderRadius: 3,
+        }}
+      >
+        ✓ プロフィールを保存
+      </button>
+      {lastSaved && (
+        <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.08em' }}>
+          // 最終保存: {lastSaved}
+        </span>
+      )}
+      <button
+        onClick={onReset}
+        style={{
+          background: 'transparent', border: '1px solid #d1d5db', color: '#9ca3af',
+          ...mono, fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase',
+          padding: '10px 16px', cursor: 'pointer', borderRadius: 3, marginLeft: 'auto',
+        }}
+      >
+        リセット
+      </button>
+    </div>
+  );
+}
+
+function Chip({
+  color, bg, border, children,
+}: { color: string; bg: string; border: string; children: React.ReactNode }) {
+  return (
+    <span style={{
+      ...mono, fontSize: 8, letterSpacing: '0.1em',
+      padding: '4px 10px', borderRadius: 12, textTransform: 'uppercase' as const,
+      color, background: bg, border: `1px solid ${border}`,
+    }}>
+      {children}
+    </span>
+  );
+}
+
 export default function KokoroProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<KokoroUserProfile>(createEmptyProfile());
@@ -57,17 +239,15 @@ export default function KokoroProfilePage() {
     setTimeout(() => setToast(''), 2000);
   };
 
-  const setField = (key: ProfileKey, value: string) => {
+  const setField = useCallback((key: ProfileKey, value: string) => {
     setProfile(prev => ({ ...prev, [key]: value }));
-    // ユーザーが手動編集したらハイライトを消す
-    if (aiFilled.has(key)) {
-      setAiFilled(prev => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-    }
-  };
+    setAiFilled(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
 
   const handleSave = () => {
     const now = new Date().toLocaleString('ja-JP');
@@ -144,133 +324,6 @@ export default function KokoroProfilePage() {
       setAnalyzing(false);
     }
   }, [noteCount, profile]);
-
-  /* ── UI components ── */
-  const fieldBase = {
-    background: '#f8f9fa',
-    border: '1px solid #d1d5db',
-    borderLeft: '2px solid #d1d5db',
-    borderRadius: '0 4px 4px 0',
-    padding: '10px 14px',
-    fontSize: 13,
-    color: '#111827',
-    outline: 'none',
-    fontFamily: "'Noto Sans JP', sans-serif",
-    width: '100%',
-    boxSizing: 'border-box' as const,
-  };
-  const fieldHighlight = (key: ProfileKey) =>
-    aiFilled.has(key)
-      ? { borderLeftColor: accentColor, background: 'rgba(99,102,241,0.04)' }
-      : {};
-
-  const Label = ({ children }: { children: React.ReactNode }) => (
-    <label style={{ ...mono, fontSize: 8, letterSpacing: '0.16em', color: '#9ca3af', textTransform: 'uppercase' }}>
-      {children}
-    </label>
-  );
-
-  const TextField = ({
-    k, placeholder, full = false,
-  }: { k: ProfileKey; placeholder?: string; full?: boolean }) => (
-    <div style={{ gridColumn: full ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <Label>// {LABELS[k]}</Label>
-      <input
-        type="text"
-        value={profile[k]}
-        onChange={e => setField(k, e.target.value)}
-        placeholder={placeholder}
-        style={{ ...fieldBase, ...fieldHighlight(k) }}
-      />
-    </div>
-  );
-
-  const SelectField = ({
-    k, options, full = false,
-  }: { k: ProfileKey; options: string[]; full?: boolean }) => (
-    <div style={{ gridColumn: full ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <Label>// {LABELS[k]}</Label>
-      <select
-        value={profile[k]}
-        onChange={e => setField(k, e.target.value)}
-        style={{ ...fieldBase, ...fieldHighlight(k), cursor: 'pointer', WebkitAppearance: 'none' }}
-      >
-        <option value="">選択...</option>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  );
-
-  const TextArea = ({
-    k, placeholder, full = true,
-  }: { k: ProfileKey; placeholder?: string; full?: boolean }) => (
-    <div style={{ gridColumn: full ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <Label>// {LABELS[k]}</Label>
-      <textarea
-        value={profile[k]}
-        onChange={e => setField(k, e.target.value)}
-        placeholder={placeholder}
-        rows={3}
-        style={{ ...fieldBase, ...fieldHighlight(k), minHeight: 65, resize: 'vertical', lineHeight: 1.7 }}
-      />
-    </div>
-  );
-
-  const Section = ({
-    icon, title, apps, children,
-  }: { icon: string; title: string; apps?: string; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 36 }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18,
-        paddingBottom: 10, borderBottom: '1px solid #e5e7eb',
-      }}>
-        <span style={{ fontSize: 16 }}>{icon}</span>
-        <span style={{ ...mono, fontSize: 9, letterSpacing: '0.2em', color: '#111827', textTransform: 'uppercase', flex: 1 }}>
-          {title}
-        </span>
-        {apps && (
-          <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.06em' }}>{apps}</span>
-        )}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
-        {children}
-      </div>
-    </div>
-  );
-
-  const ActionBar = () => (
-    <div style={{
-      display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
-      marginBottom: 40, padding: '16px 20px',
-      background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: 4,
-    }}>
-      <button
-        onClick={handleSave}
-        style={{
-          background: accentColor, border: 'none', color: '#fff',
-          ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
-          padding: '10px 24px', cursor: 'pointer', borderRadius: 3,
-        }}
-      >
-        ✓ プロフィールを保存
-      </button>
-      {lastSaved && (
-        <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.08em' }}>
-          // 最終保存: {lastSaved}
-        </span>
-      )}
-      <button
-        onClick={handleReset}
-        style={{
-          background: 'transparent', border: '1px solid #d1d5db', color: '#9ca3af',
-          ...mono, fontSize: 8, letterSpacing: '0.12em', textTransform: 'uppercase',
-          padding: '10px 16px', cursor: 'pointer', borderRadius: 3, marginLeft: 'auto',
-        }}
-      >
-        リセット
-      </button>
-    </div>
-  );
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
@@ -397,45 +450,45 @@ export default function KokoroProfilePage() {
           )}
         </div>
 
-        <ActionBar />
+        <ActionBar onSave={handleSave} onReset={handleReset} lastSaved={lastSaved} />
 
         {/* 基本情報 */}
         <Section icon="🙂" title="基本情報">
-          <TextField k="p_name" placeholder="例：田中" />
-          <SelectField k="p_age" options={AGE_OPTIONS} />
-          <SelectField k="p_gender" options={GENDER_OPTIONS} />
-          <TextField k="p_location" placeholder="例：東京・岩手" />
+          <TextField k="p_name" value={profile.p_name} onChange={v => setField('p_name', v)} highlighted={aiFilled.has('p_name')} placeholder="例：田中" />
+          <SelectField k="p_age" value={profile.p_age} onChange={v => setField('p_age', v)} highlighted={aiFilled.has('p_age')} options={AGE_OPTIONS} />
+          <SelectField k="p_gender" value={profile.p_gender} onChange={v => setField('p_gender', v)} highlighted={aiFilled.has('p_gender')} options={GENDER_OPTIONS} />
+          <TextField k="p_location" value={profile.p_location} onChange={v => setField('p_location', v)} highlighted={aiFilled.has('p_location')} placeholder="例:東京・岩手" />
         </Section>
 
         {/* ファッション */}
         <Section icon="👗" title="ファッション設定" apps="→ Fashion が使用">
-          <TextField k="p_style" placeholder="例：カジュアル・きれいめ、シンプル、モード系" full />
-          <TextField k="p_brands" placeholder="例：ユニクロ、ZARA、無印" />
-          <TextField k="p_colors" placeholder="例：白・黒・紺好き、オレンジはNG" />
-          <SelectField k="p_budget" options={BUDGET_OPTIONS} />
-          <TextField k="p_usage" placeholder="例：普段着、仕事、デート、週末" />
-          <TextArea k="p_fashion_memo" placeholder="例：背が低め、なで肩、暑がり、シワになりやすい素材はNG" />
+          <TextField k="p_style" value={profile.p_style} onChange={v => setField('p_style', v)} highlighted={aiFilled.has('p_style')} placeholder="例:カジュアル・きれいめ、シンプル、モード系" full />
+          <TextField k="p_brands" value={profile.p_brands} onChange={v => setField('p_brands', v)} highlighted={aiFilled.has('p_brands')} placeholder="例:ユニクロ、ZARA、無印" />
+          <TextField k="p_colors" value={profile.p_colors} onChange={v => setField('p_colors', v)} highlighted={aiFilled.has('p_colors')} placeholder="例:白・黒・紺好き、オレンジはNG" />
+          <SelectField k="p_budget" value={profile.p_budget} onChange={v => setField('p_budget', v)} highlighted={aiFilled.has('p_budget')} options={BUDGET_OPTIONS} />
+          <TextField k="p_usage" value={profile.p_usage} onChange={v => setField('p_usage', v)} highlighted={aiFilled.has('p_usage')} placeholder="例:普段着、仕事、デート、週末" />
+          <TextArea k="p_fashion_memo" value={profile.p_fashion_memo} onChange={v => setField('p_fashion_memo', v)} highlighted={aiFilled.has('p_fashion_memo')} placeholder="例:背が低め、なで肩、暑がり、シワになりやすい素材はNG" />
         </Section>
 
         {/* 食事・料理 */}
         <Section icon="🍳" title="食事・料理設定" apps="→ Recipe が使用">
-          <SelectField k="p_family_size" options={FAMILY_SIZE_OPTIONS} />
-          <SelectField k="p_cook_skill" options={COOK_SKILL_OPTIONS} />
-          <TextField k="p_allergy" placeholder="例：甲殻類アレルギー、パクチーNG" />
-          <TextField k="p_diet" placeholder="例：ベジタリアン、低糖質、減塩" />
-          <TextField k="p_food_pref" placeholder="例：和食中心、麺類が好き、スパイス系が得意" full />
-          <TextArea k="p_recipe_memo" placeholder="例：IHコンロのみ、冷蔵庫小さめ、週末にまとめ買い、時短レシピ優先" />
+          <SelectField k="p_family_size" value={profile.p_family_size} onChange={v => setField('p_family_size', v)} highlighted={aiFilled.has('p_family_size')} options={FAMILY_SIZE_OPTIONS} />
+          <SelectField k="p_cook_skill" value={profile.p_cook_skill} onChange={v => setField('p_cook_skill', v)} highlighted={aiFilled.has('p_cook_skill')} options={COOK_SKILL_OPTIONS} />
+          <TextField k="p_allergy" value={profile.p_allergy} onChange={v => setField('p_allergy', v)} highlighted={aiFilled.has('p_allergy')} placeholder="例:甲殻類アレルギー、パクチーNG" />
+          <TextField k="p_diet" value={profile.p_diet} onChange={v => setField('p_diet', v)} highlighted={aiFilled.has('p_diet')} placeholder="例:ベジタリアン、低糖質、減塩" />
+          <TextField k="p_food_pref" value={profile.p_food_pref} onChange={v => setField('p_food_pref', v)} highlighted={aiFilled.has('p_food_pref')} placeholder="例:和食中心、麺類が好き、スパイス系が得意" full />
+          <TextArea k="p_recipe_memo" value={profile.p_recipe_memo} onChange={v => setField('p_recipe_memo', v)} highlighted={aiFilled.has('p_recipe_memo')} placeholder="例:IHコンロのみ、冷蔵庫小さめ、週末にまとめ買い、時短レシピ優先" />
         </Section>
 
         {/* ライフスタイル */}
         <Section icon="🌱" title="ライフスタイル" apps="→ Plan・Talk が参照">
-          <SelectField k="p_work" options={WORK_OPTIONS} />
-          <SelectField k="p_living" options={LIVING_OPTIONS} />
-          <TextField k="p_hobbies" placeholder="例：音楽、ゲーム、読書、映画、カフェ巡り" full />
-          <TextArea k="p_memo" placeholder="例：夜型、HSP気質、新しいもの好き、完璧主義" />
+          <SelectField k="p_work" value={profile.p_work} onChange={v => setField('p_work', v)} highlighted={aiFilled.has('p_work')} options={WORK_OPTIONS} />
+          <SelectField k="p_living" value={profile.p_living} onChange={v => setField('p_living', v)} highlighted={aiFilled.has('p_living')} options={LIVING_OPTIONS} />
+          <TextField k="p_hobbies" value={profile.p_hobbies} onChange={v => setField('p_hobbies', v)} highlighted={aiFilled.has('p_hobbies')} placeholder="例:音楽、ゲーム、読書、映画、カフェ巡り" full />
+          <TextArea k="p_memo" value={profile.p_memo} onChange={v => setField('p_memo', v)} highlighted={aiFilled.has('p_memo')} placeholder="例:夜型、HSP気質、新しいもの好き、完璧主義" />
         </Section>
 
-        <ActionBar />
+        <ActionBar onSave={handleSave} onReset={handleReset} lastSaved={lastSaved} />
 
       </div>
 
@@ -458,42 +511,5 @@ export default function KokoroProfilePage() {
         }
       `}</style>
     </div>
-  );
-}
-
-const LABELS: Record<ProfileKey, string> = {
-  p_name: '呼び名（任意）',
-  p_age: '年代',
-  p_gender: '性別（任意）',
-  p_location: '居住地',
-  p_style: '好きなスタイル',
-  p_brands: 'よく使うブランド',
-  p_colors: '好きな色・NGな色',
-  p_budget: '予算感（1着あたり）',
-  p_usage: '主な用途',
-  p_fashion_memo: 'その他のこだわり・メモ',
-  p_family_size: '食べる人数',
-  p_cook_skill: '料理スキル',
-  p_allergy: 'アレルギー・NG食材',
-  p_diet: '食の制限',
-  p_food_pref: '好きな料理・よく食べるもの',
-  p_recipe_memo: '料理環境・その他メモ',
-  p_work: '働き方',
-  p_living: '住まい',
-  p_hobbies: '趣味・興味',
-  p_memo: '自由記述（AIへの補足・伝えたいこと）',
-};
-
-function Chip({
-  color, bg, border, children,
-}: { color: string; bg: string; border: string; children: React.ReactNode }) {
-  return (
-    <span style={{
-      ...mono, fontSize: 8, letterSpacing: '0.1em',
-      padding: '4px 10px', borderRadius: 12, textTransform: 'uppercase' as const,
-      color, background: bg, border: `1px solid ${border}`,
-    }}>
-      {children}
-    </span>
   );
 }
