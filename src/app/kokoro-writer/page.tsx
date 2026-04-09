@@ -6,6 +6,53 @@ import { saveToNote } from '@/lib/saveToNote';
 
 type WriterMode = 'lite' | 'core';
 
+/**
+ * Core モードのXMLフォーマット出力をパースして、
+ * 描画用HTML・コピー/保存用プレーンテキスト・memos/suggestionを取り出す
+ */
+function parseWriterXml(raw: string): {
+  html: string;
+  plain: string;
+  memos: string;
+  suggestion: string;
+} {
+  const editedMatch = raw.match(/<edited>([\s\S]*?)<\/edited>/);
+  const memosMatch = raw.match(/<memos>([\s\S]*?)<\/memos>/);
+  const suggestionMatch = raw.match(/<suggestion>([\s\S]*?)<\/suggestion>/);
+
+  let html: string;
+  if (editedMatch) {
+    html = editedMatch[1].trim();
+  } else {
+    // XMLタグが無かった場合のフォールバック：そのままwpで包む
+    const escaped = raw
+      .trim()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    html = `<p class="wp">${escaped.replace(/\n/g, '<br>')}</p>`;
+  }
+
+  // プレーンテキスト化（Note保存・コピー用）
+  const plain = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|h1|h2|h3|h4|li|blockquote|ul|ol|hr|div)\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return {
+    html,
+    plain,
+    memos: memosMatch ? memosMatch[1].trim() : '',
+    suggestion: suggestionMatch ? suggestionMatch[1].trim() : '',
+  };
+}
+
 export default function KokoroWriterPage() {
   const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
@@ -13,6 +60,7 @@ export default function KokoroWriterPage() {
   const [mode, setMode] = useState<WriterMode>('lite');
   const [inputText, setInputText] = useState('');
   const [outputText, setOutputText] = useState('');
+  const [outputHtml, setOutputHtml] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -26,6 +74,7 @@ export default function KokoroWriterPage() {
     setIsLoading(true);
     setError('');
     setOutputText('');
+    setOutputHtml('');
     setSaved(false);
 
     try {
@@ -37,7 +86,18 @@ export default function KokoroWriterPage() {
       if (!res.ok) throw new Error('編集に失敗しました');
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setOutputText(data.result ?? '');
+
+      const raw = (data.result ?? '') as string;
+      if (mode === 'core') {
+        // Core モード: XMLパース → HTML描画 + プレーンテキスト化
+        const parsed = parseWriterXml(raw);
+        setOutputHtml(parsed.html);
+        setOutputText(parsed.plain);
+      } else {
+        // Lite モード: 既存通りプレーンテキストのまま
+        setOutputText(raw);
+        setOutputHtml('');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました');
     } finally {
@@ -138,10 +198,10 @@ export default function KokoroWriterPage() {
           ))}
         </div>
 
-        {/* 2カラムレイアウト */}
+        {/* レイアウト：Liteは2カラム、CoreはHTML描画のため1カラム縦積み */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+          gridTemplateColumns: mode === 'lite' ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
           gap: 16,
         }}>
           {/* 入力カラム */}
@@ -171,19 +231,48 @@ export default function KokoroWriterPage() {
             <span style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af' }}>
               // 出力
             </span>
-            <textarea
-              value={outputText}
-              readOnly
-              placeholder="ここに編集結果が表示されます..."
-              style={{
-                width: '100%', minHeight: 280, background: '#f1f3f5',
-                border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
-                padding: 16, fontSize: 14, color: '#111827',
-                resize: 'vertical', outline: 'none', lineHeight: 1.8,
-                fontFamily: "'Noto Serif JP', serif",
-                cursor: 'default', boxSizing: 'border-box',
-              }}
-            />
+            {mode === 'lite' ? (
+              // Liteモード：従来通りのtextarea表示
+              <textarea
+                value={outputText}
+                readOnly
+                placeholder="ここに編集結果が表示されます..."
+                style={{
+                  width: '100%', minHeight: 280, background: '#f1f3f5',
+                  border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
+                  padding: 16, fontSize: 14, color: '#111827',
+                  resize: 'vertical', outline: 'none', lineHeight: 1.8,
+                  fontFamily: "'Noto Serif JP', serif",
+                  cursor: 'default', boxSizing: 'border-box',
+                }}
+              />
+            ) : (
+              // Coreモード：モダン・エディトリアル風HTML描画
+              <div
+                className="edited-text-zone"
+                style={{
+                  minHeight: 320,
+                  border: '1px solid #e5e7eb',
+                  borderLeft: '2px solid #d1d5db',
+                  borderRadius: 2,
+                }}
+              >
+                {outputHtml ? (
+                  <div
+                    className="edited-text"
+                    dangerouslySetInnerHTML={{ __html: outputHtml }}
+                  />
+                ) : (
+                  <div style={{
+                    ...mono, fontSize: 10, color: '#bbb',
+                    textAlign: 'center', padding: '80px 20px',
+                    letterSpacing: '.12em',
+                  }}>
+                    // ここに編集結果が表示されます
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

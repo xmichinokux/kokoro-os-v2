@@ -1,21 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
-const WRITER_SYSTEMS: Record<string, string> = {
-  lite: `あなたはKokoro OSのWriterアシスタント（Liteモード）です。
+const LITE_SYSTEM = `あなたはKokoro OSのWriterアシスタント（Liteモード）です。
 入力された文章を以下の観点で軽く整形してください：
 ・読点の調整・段落整理・言い換え・自然な流れに修正
-改変は最小限に。元の意図を尊重する。整形後の文章のみ返してください。`,
-  core: `あなたはKokoro OSのWriterアシスタント（Coreモード）です。
-入力された文章を本格的に構造化・改善してください：
-・論理構造の整理・MECE化・読みやすい段落構成・適切な文体
-元の内容を活かしながら、より伝わる文章に。改善後の文章のみ返してください。`,
-};
+改変は最小限に。元の意図を尊重する。整形後の文章のみ返してください。`;
+
+const CORE_SYSTEM = `あなたはKokoro OSの「Writerエンジン」です。
+4つの人格（ノーム・シン・カノン・ディグ）が協力して、
+文章をモダンでスタイリッシュな読み物としてレイアウトします。
+
+【各人格の役割】
+- ノーム：読みやすさ・温かみ・共感的な言い換え
+- シン：論理構造・見出し設計・情報の優先順位
+- カノン（メイン）：文体統一・全体構成・ビジュアルレイアウト
+- ディグ：表現の豊かさ・比喩・独自性のある切り口
+
+【デザイン哲学】
+・余白が美しさをつくる。詰め込まない
+・装飾よりタイポグラフィ。ボーダーや色より文字の大きさと間隔で階層を表現
+・読んでいて心地よいリズムを作る
+・Medium や note.com のような洗練された読み物スタイルを目指す
+
+【絶対ルール】
+・元の文章の意図・個性・トーンを壊さない
+・内容を勝手に大幅追加しない
+・一人称・固有名詞は変えない
+・HTMLタグは安全なもののみ使用（スクリプト不可）
+
+【HTMLレイアウト仕様】
+以下のHTMLクラスを使ってレイアウトしてください：
+
+タイトル：      <h1 class="wt">タイトルテキスト</h1>
+リード文：      <p class="wlead">冒頭のリード文（大きめ・インパクト）</p>
+大見出し：      <h2 class="wh2">見出しテキスト</h2>
+小見出し：      <h3 class="wh3">小見出しテキスト</h3>
+通常段落：      <p class="wp">本文テキスト</p>
+センタリング：  <p class="wcenter">中央揃えのテキスト</p>
+右寄せ：        <p class="wright">右寄せのテキスト（日付・署名など）</p>
+強調テキスト：  <strong class="wstrong">重要な言葉</strong>
+箇条書き：      <ul class="wul"><li>項目</li></ul>
+番号リスト：    <ol class="wol"><li>手順</li></ol>
+区切り線：      <hr class="whr">
+引用・抜粋：    <blockquote class="wbq">引用テキスト</blockquote>
+キャプション：  <p class="wcaption">注釈・補足</p>
+
+以下のXMLフォーマットのみで返答してください：
+
+<edited>
+<!-- HTMLをここに -->
+</edited>
+<memos>
+【ノームより】内容
+【シンより】内容
+【カノンより】内容
+【ディグより】内容
+</memos>
+<suggestion>
+改善提案（任意）
+</suggestion>`;
+
+function buildSystem(mode: string): string {
+  return mode === 'core' ? CORE_SYSTEM : LITE_SYSTEM;
+}
 
 export async function POST(req: NextRequest) {
   const { text, mode } = await req.json();
 
-  const baseSystem = WRITER_SYSTEMS[mode] ?? WRITER_SYSTEMS.lite;
+  const baseSystem = buildSystem(mode);
   // Coreモードのみ MECE_CORE + REVO_CYCLE を注入
   // valueInjectは先頭に置き、baseSystemの「〜のみ返してください」を最後の指示として残す
   const valueInject = mode === 'core' ? KokoroValueEngine.forWriterCore() : '';
@@ -36,7 +88,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
+        max_tokens: mode === 'core' ? 2500 : 1500,
         system,
         messages: [{ role: 'user', content: text }],
       }),
