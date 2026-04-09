@@ -174,6 +174,19 @@ Insight への適用：
 - メタ化演算：「このレビュー群が存在すること自体が何を意味するか」
 - RevoCycleで生まれた飛躍案のうち、Novelty×Usefulnessが高いものを最終判定に反映する`;
 
+/* ────────────────────────────────────────────────
+ * アプリ別 適用ガイド（システムプロンプトに直接注入する短文）
+ * 各アプリの目的に合わせた "適用方針" を簡潔に示す
+ * ──────────────────────────────────────────────── */
+
+const MECE_CORE_PLAN = `
+【MECE-Core 適用】
+タスクを分解する際は以下を守ること：
+・カテゴリ間の重複を排除する
+・重要なタスクの漏れをなくす
+・各タスクは独立して実行可能な粒度にする
+・優先度（high/mid/low）は実際の依存関係と工数から判断する`;
+
 export const KokoroValueEngine = {
   forInsight: () => [
     CORE_AESTHETICS,
@@ -188,12 +201,14 @@ export const KokoroValueEngine = {
   forZen:     () => `${CORE_AESTHETICS}\n${AESTHETIC_AXES}`,
   forWriter:  () => CORE_AESTHETICS,
   forNote:    () => `${CORE_AESTHETICS}\n${EVALUATION_BIAS}`,
+  forPlan:    () => MECE_CORE_PLAN,
   forGeneral: () => CORE_AESTHETICS,
   CORE_AESTHETICS,
   AESTHETIC_AXES,
   EVALUATION_BIAS,
   TECHNIQUE_AXIS,
   MECE_CORE,
+  MECE_CORE_PLAN,
   MRCE,
   REVO_CYCLE,
 };

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 function safeParseJSON(raw: string) {
   const match = raw.match(/\{[\s\S]*\}/);
@@ -8,6 +9,8 @@ function safeParseJSON(raw: string) {
 
 export async function POST(req: NextRequest) {
   const { goal, heat, grain } = await req.json();
+
+  const valueInject = KokoroValueEngine.forPlan();
 
   const system = `あなたはKokoro OSのPlanアシスタントです。
 ユーザーの目標を実行可能なタスクに分解してください。
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
 以下のJSONのみを返してください：
 {"tasks":[{"text":"タスク内容","estimate":"所要時間の目安","priority":"high/mid/low"},...]}
 
-タスク数の目安：熱量${heat}×粒度${grain}に応じて5〜15個`;
+タスク数の目安：熱量${heat}×粒度${grain}に応じて5〜15個${valueInject ? '\n' + valueInject : ''}`;
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
