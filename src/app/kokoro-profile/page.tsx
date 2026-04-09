@@ -20,6 +20,25 @@ const COOK_SKILL_OPTIONS = ['ほぼしない', '簡単なものだけ', '普通'
 const WORK_OPTIONS = ['会社員（出社）', '会社員（リモート）', 'フリーランス', '学生', '自営業', 'その他'];
 const LIVING_OPTIONS = ['一人暮らし', 'パートナーと同居', '家族と同居', 'シェアハウス'];
 
+const PREFECTURE_OPTIONS = [
+  '北海道',
+  '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+  '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+  '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
+  '岐阜県', '静岡県', '愛知県', '三重県',
+  '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
+  '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+  '徳島県', '香川県', '愛媛県', '高知県',
+  '福岡県', '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県',
+  '沖縄県',
+];
+
+const AREA_RANGE_OPTIONS = [
+  { value: 'city', label: '市区町村のみ' },
+  { value: 'prefecture', label: '都道府県' },
+  { value: 'country', label: '全国' },
+];
+
 const accentColor = '#6366f1';
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 
@@ -28,6 +47,9 @@ const LABELS: Record<ProfileKey, string> = {
   p_age: '年代',
   p_gender: '性別（任意）',
   p_location: '居住地',
+  p_prefecture: '都道府県',
+  p_city: '市区町村',
+  p_area_range: '表示範囲',
   p_style: '好きなスタイル',
   p_brands: 'よく使うブランド',
   p_colors: '好きな色・NGな色',
@@ -109,6 +131,24 @@ function SelectField({
       >
         <option value="">選択...</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function LabeledSelectField({
+  k, value, onChange, highlighted, options, full = false,
+}: FieldProps & { options: { value: string; label: string }[] }) {
+  return (
+    <div style={{ gridColumn: full ? '1 / -1' : undefined, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <Label>// {LABELS[k]}</Label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ ...fieldBase, ...(highlighted ? highlightStyle : {}), cursor: 'pointer', WebkitAppearance: 'none' }}
+      >
+        <option value="">選択...</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
@@ -458,6 +498,16 @@ export default function KokoroProfilePage() {
           <SelectField k="p_age" value={profile.p_age} onChange={v => setField('p_age', v)} highlighted={aiFilled.has('p_age')} options={AGE_OPTIONS} />
           <SelectField k="p_gender" value={profile.p_gender} onChange={v => setField('p_gender', v)} highlighted={aiFilled.has('p_gender')} options={GENDER_OPTIONS} />
           <TextField k="p_location" value={profile.p_location} onChange={v => setField('p_location', v)} highlighted={aiFilled.has('p_location')} placeholder="例:東京・岩手" />
+          <SelectField k="p_prefecture" value={profile.p_prefecture} onChange={v => setField('p_prefecture', v)} highlighted={aiFilled.has('p_prefecture')} options={PREFECTURE_OPTIONS} />
+          <TextField k="p_city" value={profile.p_city} onChange={v => setField('p_city', v)} highlighted={aiFilled.has('p_city')} placeholder="例:奥州市" />
+          <LabeledSelectField
+            k="p_area_range"
+            value={profile.p_area_range}
+            onChange={v => setField('p_area_range', v)}
+            highlighted={aiFilled.has('p_area_range')}
+            options={AREA_RANGE_OPTIONS}
+            full
+          />
         </Section>
 
         {/* ファッション */}

@@ -131,6 +131,13 @@ const APPS: App[] = [
     href: "/kokoro-profile",
     ready: true,
   },
+  {
+    icon: "⭐",
+    name: "Kokoro Wishlist",
+    desc: "欲しい・行きたい・やってみたいを静かに貯める。",
+    href: "/kokoro-wishlist",
+    ready: true,
+  },
 ];
 
 export default function Home() {

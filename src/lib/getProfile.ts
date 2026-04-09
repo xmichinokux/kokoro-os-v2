@@ -11,6 +11,9 @@ export type KokoroUserProfile = {
   p_age: string;
   p_gender: string;
   p_location: string;
+  p_prefecture: string;   // 都道府県（手動入力。にゃんパスシティーの土台）
+  p_city: string;         // 市区町村
+  p_area_range: string;   // 表示範囲: city / prefecture / country
   p_style: string;
   p_brands: string;
   p_colors: string;
@@ -34,6 +37,7 @@ export const PROFILE_STORAGE_KEY = 'kokoro_profile';
 
 export const PROFILE_FIELDS: (keyof Omit<KokoroUserProfile, 'updatedAt'>)[] = [
   'p_name', 'p_age', 'p_gender', 'p_location',
+  'p_prefecture', 'p_city', 'p_area_range',
   'p_style', 'p_brands', 'p_colors', 'p_budget', 'p_usage', 'p_fashion_memo',
   'p_family_size', 'p_cook_skill', 'p_allergy', 'p_diet', 'p_food_pref', 'p_recipe_memo',
   'p_work', 'p_living', 'p_hobbies', 'p_memo',
@@ -42,6 +46,7 @@ export const PROFILE_FIELDS: (keyof Omit<KokoroUserProfile, 'updatedAt'>)[] = [
 export function createEmptyProfile(): KokoroUserProfile {
   return {
     p_name: '', p_age: '', p_gender: '', p_location: '',
+    p_prefecture: '', p_city: '', p_area_range: '',
     p_style: '', p_brands: '', p_colors: '', p_budget: '', p_usage: '', p_fashion_memo: '',
     p_family_size: '', p_cook_skill: '', p_allergy: '', p_diet: '', p_food_pref: '', p_recipe_memo: '',
     p_work: '', p_living: '', p_hobbies: '', p_memo: '',

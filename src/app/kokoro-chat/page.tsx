@@ -213,6 +213,18 @@ export default function KokoroChat() {
         }
       } catch { /* ignore */ }
     }
+
+    // Wishlist → Talk 遷移
+    const wishData = sessionStorage.getItem('wishlistToTalk');
+    if (wishData) {
+      sessionStorage.removeItem('wishlistToTalk');
+      try {
+        const { userText } = JSON.parse(wishData);
+        if (typeof userText === 'string' && userText) {
+          setTimeout(() => { setInput(userText); }, 300);
+        }
+      } catch { /* ignore */ }
+    }
   }, []);
 
   const apiHistory: ApiHistory[] = messages.map(m => ({
