@@ -185,8 +185,9 @@ export default function KokoroZen() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Zen</span>
         </div>
         <button onClick={() => router.push('/kokoro-chat')}
+          title="Talk に戻る"
           style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-          ← Talk に戻る
+          ← Talk
         </button>
       </header>
 
@@ -198,8 +199,9 @@ export default function KokoroZen() {
             <div style={{ fontSize:18, color:'#6b7280', marginBottom:12 }}>Talkから遷移してください</div>
             <div style={{ fontSize:13, color:'#9ca3af', marginBottom:24 }}>Talkで会話した内容をもとに分析します</div>
             <button onClick={() => router.push('/kokoro-chat')}
+              title="Talk を開く"
               style={{ fontFamily:"'Space Mono', monospace", fontSize:11, color:'#7c3aed', background:'#ede9fe', border:'none', borderRadius:6, padding:'10px 24px', cursor:'pointer' }}>
-              Talk を開く →
+              ← Talk
             </button>
           </div>
         )}
@@ -242,8 +244,9 @@ export default function KokoroZen() {
 
             {/* ② もっと深く見る */}
             <button onClick={loadDeepEmi}
+              title={deepOpen && deepData ? '閉じる' : 'もっと深く見てみる'}
               style={{ width:'100%', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, color:'#6b7280', fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', padding:'13px 20px', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4, transition:'all .2s' }}>
-              <span>{deepLoading ? '// 深部に降りています...' : deepOpen && deepData ? '▲ 閉じる' : '▼ もっと深く見てみる'}</span>
+              <span>{deepLoading ? '// 深部に降りています...' : deepOpen && deepData ? '▲' : 'Deep ▼'}</span>
               <span style={{ fontSize:8, color:'#9ca3af', letterSpacing:'0.05em' }}>エミ（深）</span>
             </button>
 
@@ -271,8 +274,9 @@ export default function KokoroZen() {
 
             {/* ③ 4人格（折りたたみ） */}
             <button onClick={() => setPersonasOpen(v => !v)}
+              title={personasOpen ? '閉じる' : '他の視点を見る'}
               style={{ width:'100%', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, color:'#6b7280', fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', padding:'13px 20px', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4, transition:'all .2s' }}>
-              <span>{personasOpen ? '▲ 閉じる' : '▼ 他の視点を見る'}</span>
+              <span>{personasOpen ? '▲' : 'Details ▼'}</span>
               <span style={{ fontSize:8, color:'#9ca3af' }}>// 4つの人格</span>
             </button>
 
@@ -289,8 +293,9 @@ export default function KokoroZen() {
 
             {/* ④ Reasoning Core（折りたたみ） */}
             <button onClick={() => setCoreOpen(v => !v)}
+              title={coreOpen ? '閉じる' : '状況の構造を見る'}
               style={{ width:'100%', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, color:'#6b7280', fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', padding:'13px 20px', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4, transition:'all .2s' }}>
-              <span>{coreOpen ? '▲ 閉じる' : '▼ 状況の構造を見る'}</span>
+              <span>{coreOpen ? '▲' : 'Details ▼'}</span>
               <span style={{ fontSize:8, color:'#9ca3af' }}>// Reasoning Core</span>
             </button>
 
@@ -346,6 +351,7 @@ export default function KokoroZen() {
               {zenNoteSaved ? (
                 <button
                   onClick={() => router.push('/kokoro-note')}
+                  title="noteに保存しました - 確認する"
                   style={{
                     fontFamily: "'Space Mono', monospace",
                     fontSize: 11,
@@ -358,11 +364,12 @@ export default function KokoroZen() {
                     letterSpacing: '0.1em',
                   }}
                 >
-                  ✓ noteに保存しました　→ 確認する
+                  ✓ Note →
                 </button>
               ) : (
                 <button
                   onClick={handleSaveZenNote}
+                  title="この整理をnoteに残す"
                   style={{
                     fontFamily: "'Space Mono', monospace",
                     fontSize: 11,
@@ -376,7 +383,7 @@ export default function KokoroZen() {
                     transition: 'all 0.15s',
                   }}
                 >
-                  📝 この整理をnoteに残す
+                  Note +
                 </button>
               )}
               <button
@@ -389,6 +396,7 @@ export default function KokoroZen() {
                   setRecipeInput(recipeInput);
                   router.push('/kokoro-recipe');
                 }}
+                title="生活に落とす - Recipeを開く"
                 style={{
                   fontFamily: "'Space Mono', monospace",
                   fontSize: 11, color: '#f97316',
@@ -398,10 +406,11 @@ export default function KokoroZen() {
                   cursor: 'pointer', letterSpacing: '0.1em',
                 }}
               >
-                🍳 生活に落とす →
+                Recipe →
               </button>
               <button
                 onClick={() => router.push('/kokoro-chat')}
+                title="Talkで続きを話す"
                 style={{
                   fontFamily: "'Space Mono', monospace",
                   fontSize: 11,
@@ -414,7 +423,7 @@ export default function KokoroZen() {
                   letterSpacing: '0.1em',
                 }}
               >
-                Talkで続きを話す →
+                ← Talk
               </button>
             </div>
 

@@ -172,6 +172,7 @@ export default function KokoroPlanPage() {
         <button
           onClick={() => handleGenerate()}
           disabled={!canSubmit}
+          title="タスクを生成する"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${canSubmit ? '#10b981' : '#d1d5db'}`,
@@ -181,7 +182,7 @@ export default function KokoroPlanPage() {
             borderRadius: 2,
           }}
         >
-          {isLoading ? '// 生成中...' : '▸ タスクを生成する'}
+          {isLoading ? '// 生成中...' : 'Yoroshiku'}
         </button>
 
         {/* ローディング */}
@@ -265,6 +266,7 @@ export default function KokoroPlanPage() {
             <button
               onClick={handleSaveToNote}
               disabled={saved}
+              title="Noteに保存"
               style={{
                 marginTop: 12, background: 'transparent',
                 border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
@@ -274,7 +276,7 @@ export default function KokoroPlanPage() {
                 borderRadius: 3,
               }}
             >
-              {saved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+              {saved ? 'Note ✓' : 'Note +'}
             </button>
 
             <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>

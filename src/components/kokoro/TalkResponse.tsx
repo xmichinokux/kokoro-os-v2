@@ -106,6 +106,7 @@ export default function TalkResponse({
           ) : (
             <button
               onClick={onSaveNote}
+              title="書き留めておく？ Noteに保存"
               style={{
                 fontFamily: "'Space Mono', monospace",
                 fontSize: 10,
@@ -127,7 +128,7 @@ export default function TalkResponse({
                 (e.target as HTMLButtonElement).style.color = '#6b7280';
               }}
             >
-              書き留めておく？
+              Note +
             </button>
           )}
         </div>
@@ -138,6 +139,7 @@ export default function TalkResponse({
         <div style={{ marginTop: 6 }}>
           <button
             onClick={onSaveRecipe}
+            title="今週のRecipeにしてみる？"
             style={{
               fontFamily: "'Space Mono', monospace",
               fontSize: 10, color: '#f97316',
@@ -147,7 +149,7 @@ export default function TalkResponse({
               cursor: 'pointer', letterSpacing: '0.08em',
             }}
           >
-            🍳 今週のRecipeにしてみる？
+            Recipe →
           </button>
         </div>
       )}

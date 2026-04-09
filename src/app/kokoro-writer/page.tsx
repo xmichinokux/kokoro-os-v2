@@ -191,6 +191,7 @@ export default function KokoroWriterPage() {
         <button
           onClick={() => handleRun()}
           disabled={!canSubmit}
+          title="編集する"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${canSubmit ? accentColor : '#d1d5db'}`,
@@ -200,7 +201,7 @@ export default function KokoroWriterPage() {
             borderRadius: 2, marginTop: 8,
           }}
         >
-          {isLoading ? '// 編集中...' : '▸ 編集する'}
+          {isLoading ? '// 編集中...' : 'Yoroshiku'}
         </button>
 
         {/* ローディング */}
@@ -227,6 +228,7 @@ export default function KokoroWriterPage() {
             <button
               onClick={handleSaveToNote}
               disabled={saved}
+              title="Noteに保存"
               style={{
                 background: 'transparent',
                 border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
@@ -236,12 +238,13 @@ export default function KokoroWriterPage() {
                 borderRadius: 3,
               }}
             >
-              {saved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+              {saved ? 'Note ✓' : 'Note +'}
             </button>
 
             {/* コピー */}
             <button
               onClick={handleCopy}
+              title="クリップボードにコピー"
               style={{
                 background: 'transparent',
                 border: `1px solid ${copied ? accentColor : '#d1d5db'}`,
@@ -251,7 +254,7 @@ export default function KokoroWriterPage() {
                 borderRadius: 2,
               }}
             >
-              {copied ? '// コピーしました ✓' : 'コピー'}
+              {copied ? 'Copy ✓' : 'Copy ↗'}
             </button>
           </div>
         )}

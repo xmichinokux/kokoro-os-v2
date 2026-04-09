@@ -872,16 +872,19 @@ export default function KokoroChat() {
         </div>
         <div style={{ display:'flex', gap:6 }}>
           <button onClick={() => { localStorage.removeItem('talkMessages'); setMessages([]); }}
+            title="履歴をクリア"
             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            履歴をクリア
+            History ×
           </button>
           <button onClick={() => { localStorage.removeItem('kokoroProfile'); }}
+            title="プロフィールをクリア"
             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            プロフィールをクリア
+            Profile ×
           </button>
           <button onClick={() => { clearHonneLogs(); }}
+            title="本音ログをクリア"
             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            本音ログをクリア
+            Honne ×
           </button>
         </div>
       </header>
@@ -976,8 +979,9 @@ export default function KokoroChat() {
                       {msg.stayWhispers && msg.stayWhispers.length > 0 && (
                         <div style={{ marginTop:10 }}>
                           <button onClick={() => setWhisperOpen(prev => ({ ...prev, [i]: !prev[i] }))}
+                            title={whisperOpen[i] ? '他の声を閉じる' : '他の声も聞く'}
                             style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'3px 8px', cursor:'pointer' }}>
-                            {whisperOpen[i] ? '▲ 他の声を閉じる' : '▼ 他の声も聞く'}
+                            {whisperOpen[i] ? '▲' : 'Details ▼'}
                           </button>
                           {whisperOpen[i] && (
                             <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
@@ -1014,8 +1018,9 @@ export default function KokoroChat() {
                         <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
                           <span style={{ fontSize:12, color:'#7c3aed' }}>内側を整理してみない？</span>
                           <button onClick={() => handleZenClick({ conflict: msg.emiConflict, deepFeeling: msg.emiDeepFeeling })}
+                            title="Zen を開く"
                             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                            Zen を開く →
+                            Zen →
                           </button>
                         </div>
                       )}
@@ -1088,8 +1093,9 @@ export default function KokoroChat() {
                         {msg.stayPersona ? '他の視点も見てみる？' : '少しだけ、見方を変えてみる？'}
                       </span>
                       <button onClick={msg.stayPersona ? exitStayMode : () => handleZenClick()}
+                        title={msg.stayPersona ? '4人格モードに戻る' : 'Zen を開く'}
                         style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        {msg.stayPersona ? '4人格モードに戻る →' : 'Zen を開く →'}
+                        {msg.stayPersona ? '← Personas' : 'Zen →'}
                       </button>
                     </div>
                   )}
@@ -1097,8 +1103,9 @@ export default function KokoroChat() {
                     <div style={{ marginTop:8, padding:'10px 14px', background:'#f9f5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
                       <span style={{ fontSize:12, color:'#7c3aed' }}>🐾 この子、何か言ってそう。声を聞いてみる？</span>
                       <button onClick={() => openAnimalTalk(msg)}
+                        title="動物の声を聞く"
                         style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        動物の声を聞く →
+                        Animal →
                       </button>
                     </div>
                   )}
@@ -1106,8 +1113,9 @@ export default function KokoroChat() {
                     <div style={{ marginTop:8, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
                       <span style={{ fontSize:12, color:'#7c3aed' }}>👔 装いの奥を読んでみる？</span>
                       <button onClick={openFashion}
+                        title="Fashion診断へ"
                         style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        Fashion診断へ →
+                        Fashion →
                       </button>
                     </div>
                   )}
@@ -1117,8 +1125,9 @@ export default function KokoroChat() {
                       <button onClick={() => {
                         window.location.href = '/kokoro-note?mode=create';
                       }}
+                        title="Note を開く"
                         style={{ background:'transparent', border:'1px solid rgba(52,211,153,0.4)', color:'#6ee7b7', padding:'5px 14px', borderRadius:4, cursor:'pointer', fontSize:12, fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', whiteSpace:'nowrap' }}>
-                        Note を開く →
+                        Note →
                       </button>
                     </div>
                   )}
