@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { InsightResult } from '@/types/insight';
+import { saveToNote } from '@/lib/saveToNote';
 
 /* ─── 定数 ─── */
 const DOT_COLORS = ['#7c3aed','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16'];
@@ -76,6 +77,51 @@ export default function KokoroInsightPage() {
   const [plots, setPlots] = useState<Plot[]>([]);
   const [currentResult, setCurrentResult] = useState<Plot | null>(null);
   const [compareText, setCompareText] = useState('');
+  const [noteSaved, setNoteSaved] = useState(false);
+
+  /* ─── Note に保存 ─── */
+  const handleSaveToNote = () => {
+    if (!currentResult) return;
+    const parts: string[] = [];
+    parts.push(`[${currentResult.title}]`);
+    parts.push(`スコア: ${currentResult.trueScore.toFixed(1)}`);
+    parts.push(`タイプ: ${currentResult.type} — ${currentResult.typeDesc}`);
+    if (currentResult.desc) parts.push(currentResult.desc);
+    parts.push('');
+    parts.push(`// Technical: ${currentResult.technicalScore}`);
+    parts.push(`// Soul: ${currentResult.soulScore}`);
+    parts.push(`// Rawness: ${currentResult.rawness}${currentResult.rawnessDesc ? ` (${currentResult.rawnessDesc})` : ''}`);
+    parts.push(`// Pathos: ${currentResult.pathos.toFixed(2)}${currentResult.pathosDesc ? ` (${currentResult.pathosDesc})` : ''}`);
+    if (currentResult.techniqueVerdict) parts.push(`// ${currentResult.techniqueVerdict}`);
+    parts.push('');
+    parts.push('// 影響の読み直し');
+    parts.push(currentResult.reconstruction);
+    if (currentResult.perReview.length > 0) {
+      parts.push('');
+      parts.push('// レビューごとの読解サイン');
+      currentResult.perReview.forEach(p => {
+        parts.push(`「${p.quote}」 → ${p.signal}`);
+      });
+    }
+    parts.push('');
+    parts.push('// 5君からの一言');
+    parts.push(currentResult.prescription);
+    if (currentResult.isFake && currentResult.fakeReason) {
+      parts.push('');
+      parts.push('⚠ 過大評価バグ');
+      parts.push(currentResult.fakeReason);
+    }
+    if (compareText) {
+      parts.push('');
+      parts.push('// 作品間の断絶');
+      parts.push(compareText);
+    }
+
+    if (saveToNote(parts.join('\n'), 'Insight')) {
+      setNoteSaved(true);
+      setTimeout(() => setNoteSaved(false), 2000);
+    }
+  };
 
   /* Canvas */
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -882,6 +928,21 @@ export default function KokoroInsightPage() {
 
             {/* アクションボタン */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={handleSaveToNote}
+                disabled={noteSaved}
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '.12em',
+                  background: 'transparent',
+                  border: `1px solid ${noteSaved ? '#10b981' : '#e5e7eb'}`,
+                  color: noteSaved ? '#10b981' : '#6b7280',
+                  padding: '9px 20px',
+                  cursor: noteSaved ? 'default' : 'pointer',
+                  borderRadius: 2,
+                }}
+              >
+                {noteSaved ? '// Noteに保存しました ✓' : '📝 Note に保存'}
+              </button>
               <button onClick={resetCurrent} style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
                 ↺ 別の作品を判定する
               </button>
