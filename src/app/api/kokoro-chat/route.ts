@@ -2,6 +2,77 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { IdentityState, ResponseStrategy } from '@/types/kokoroOutput';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
+/* ── Talk meta（ルーティング判定） ── */
+export type TalkRoute =
+  | 'zen' | 'plan' | 'writer' | 'browser' | 'animal_talk' | 'note'
+  | 'fashion' | 'recipe' | 'insight' | 'couple' | 'buddy'
+  | 'philosophy' | 'board' | 'kami' | 'ponchi' | null;
+
+export type TalkMeta = {
+  need_zen: boolean;
+  need_plan: boolean;
+  need_writer: boolean;
+  need_browser: boolean;
+  need_animal_talk: boolean;
+  need_note: boolean;
+  need_fashion: boolean;
+  need_recipe: boolean;
+  need_insight: boolean;
+  need_couple: boolean;
+  need_buddy: boolean;
+  need_philosophy: boolean;
+  need_board: boolean;
+  need_kami: boolean;
+  need_ponchi: boolean;
+  sync_rate: number;
+  route: TalkRoute;
+};
+
+function createEmptyMeta(): TalkMeta {
+  return {
+    need_zen: false, need_plan: false, need_writer: false, need_browser: false,
+    need_animal_talk: false, need_note: false, need_fashion: false, need_recipe: false,
+    need_insight: false, need_couple: false, need_buddy: false, need_philosophy: false,
+    need_board: false, need_kami: false, need_ponchi: false,
+    sync_rate: 0, route: null,
+  };
+}
+
+const VALID_ROUTES: ReadonlyArray<TalkRoute> = [
+  'zen','plan','writer','browser','animal_talk','note','fashion','recipe',
+  'insight','couple','buddy','philosophy','board','kami','ponchi',
+];
+
+function normalizeMeta(raw: unknown): TalkMeta {
+  const empty = createEmptyMeta();
+  if (!raw || typeof raw !== 'object') return empty;
+  const m = raw as Record<string, unknown>;
+  const bool = (k: keyof TalkMeta) => m[k] === true;
+  const sync = typeof m.sync_rate === 'number' ? Math.min(1, Math.max(0, m.sync_rate)) : 0;
+  const route = typeof m.route === 'string' && (VALID_ROUTES as readonly string[]).includes(m.route)
+    ? (m.route as TalkRoute)
+    : null;
+  return {
+    need_zen: bool('need_zen'),
+    need_plan: bool('need_plan'),
+    need_writer: bool('need_writer'),
+    need_browser: bool('need_browser'),
+    need_animal_talk: bool('need_animal_talk'),
+    need_note: bool('need_note'),
+    need_fashion: bool('need_fashion'),
+    need_recipe: bool('need_recipe'),
+    need_insight: bool('need_insight'),
+    need_couple: bool('need_couple'),
+    need_buddy: bool('need_buddy'),
+    need_philosophy: bool('need_philosophy'),
+    need_board: bool('need_board'),
+    need_kami: bool('need_kami'),
+    need_ponchi: bool('need_ponchi'),
+    sync_rate: sync,
+    route,
+  };
+}
+
 /* ── Talk用システムプロンプト構築 ── */
 function buildTalkSystem(params: {
   profile?: Record<string, unknown>;
@@ -54,8 +125,52 @@ function buildTalkSystem(params: {
   },
   "identityState": "NO_GAP" | "DEFENSIVE_GAP" | "IDENTITY_SHIFT" | "COLLAPSE" | "RECONSTRUCTION",
   "gapIntensity": 0.0,
-  "responseStrategy": "normal" | "soften" | "structure" | "stabilize" | "direct"
+  "responseStrategy": "normal" | "soften" | "structure" | "stabilize" | "direct",
+  "meta": {
+    "need_zen": true | false,
+    "need_plan": true | false,
+    "need_writer": true | false,
+    "need_browser": true | false,
+    "need_animal_talk": true | false,
+    "need_note": true | false,
+    "need_fashion": true | false,
+    "need_recipe": true | false,
+    "need_insight": true | false,
+    "need_couple": true | false,
+    "need_buddy": true | false,
+    "need_philosophy": true | false,
+    "need_board": true | false,
+    "need_kami": true | false,
+    "need_ponchi": true | false,
+    "sync_rate": 0.0,
+    "route": "zen" | "plan" | "writer" | "browser" | "animal_talk" | "note" | "fashion" | "recipe" | "insight" | "couple" | "buddy" | "philosophy" | "board" | "kami" | "ponchi" | null
+  }
 }
+
+【meta フィールドの判定基準】
+ユーザーの最新発話と直近の文脈から、以下のいずれかが当てはまる時のみ true にする。
+複数当てはまる場合も同時に true にしてよいが、最も適切な1つを route にセットする（無ければ null）。
+当てはまるものが何もなければ全て false、route は null、sync_rate は会話の温度感（0.0〜1.0）。
+
+- need_zen: 同じ悩みが繰り返される / 「どうしたらいい」が出る / 内省を深めたい
+- need_plan: 「やることが多い」「整理したい」「タスクに分けたい」「段取りが知りたい」
+- need_writer: 「文章にしたい」「メール書きたい」「文章を整えたい」「言葉を磨きたい」
+- need_browser: 「他の人の Note が見たい」「似た悩みを探したい」「公開ノートを眺めたい」
+- need_animal_talk: 動物の写真が添付されている / 「この子何考えてる」「ペットの気持ち」
+- need_note: 「書き留めたい」「メモしたい」「残しておきたい」「日記にしたい」
+- need_fashion: 「服」「コーデ」「何着よう」「ファッション」
+- need_recipe: 「献立」「今週何作ろう」「料理のアイデア」「ご飯どうしよう」
+- need_insight: 「この映画/本/作品どう思う」「レビューを書きたい」「作品の影響を分析」
+- need_couple: 「パートナー」「恋人」「夫/妻」「彼/彼女との関係」
+- need_buddy: 「アイデアを壁打ちしたい」「企画」「ブレスト」「ふと思いついた」
+- need_philosophy: 「そもそも」「意味って何」「哲学的」「本質的に」
+- need_board: 「会議」「ミーティング」「打ち合わせ」「議事進行」
+- need_kami: 「表にしたい」「比較したい」「リスト化したい」「整理して並べたい」
+- need_ponchi: 「プレゼン」「スライド」「6枚で説明」「コンセプトを伝えたい」
+
+これらは「ユーザーが明示的に求めている」または「強く示唆している」ときのみ true。
+雑談や情緒の吐露だけのときは全て false にする（押し付けないこと）。
+sync_rate は 0.0〜1.0 の数値で、会話の波長の合い具合（0.0=噛み合わない、1.0=深く同期）。
 
 - identityState: 自己認識ズレの5状態のいずれか（文字列）
 - gapIntensity: ズレの強度（数値 0.0〜1.0）
@@ -238,6 +353,7 @@ export async function POST(req: NextRequest) {
     let identityState: IdentityState = 'NO_GAP';
     let gapIntensity = 0;
     let responseStrategy: ResponseStrategy = 'normal';
+    let meta: TalkMeta = createEmptyMeta();
 
     try {
       const parsed = safeParseJSON(raw);
@@ -250,6 +366,9 @@ export async function POST(req: NextRequest) {
       identityState = parsed.identityState ?? 'NO_GAP';
       gapIntensity = Math.min(1, Math.max(0, parsed.gapIntensity ?? 0));
       responseStrategy = parsed.responseStrategy ?? 'normal';
+      meta = normalizeMeta(parsed.meta);
+      // needZen が true の場合は meta.need_zen も同期
+      if (needZen) meta.need_zen = true;
     } catch {
       // JSONパース失敗 → フォールバック
       response = raw;
@@ -263,6 +382,7 @@ export async function POST(req: NextRequest) {
       identityState,
       gapIntensity,
       responseStrategy,
+      meta,
     });
 
   } catch (err) {

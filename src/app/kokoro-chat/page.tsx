@@ -53,6 +53,20 @@ type Message = {
   userTextForNote?: string;
   showRecipe?: boolean;
   showInsight?: boolean;
+  // meta 由来の追加バナー（spec: for_claude_code_routing.md）
+  showPlan?: boolean;
+  showWriter?: boolean;
+  showBrowser?: boolean;
+  showCouple?: boolean;
+  showBuddy?: boolean;
+  showPhilosophy?: boolean;
+  showBoard?: boolean;
+  showKami?: boolean;
+  showPonchi?: boolean;
+  // バナー click 時に sessionStorage に渡すためのソースデータ
+  routingUserText?: string;       // 最後のユーザー発言テキスト
+  routingHistoryShort?: string;   // 会話履歴テキスト（最新5件）
+  routingHistoryLong?: string;    // 会話履歴テキスト（最新10件）
 };
 
 type ApiHistory = { role: string; content: string };
@@ -394,6 +408,22 @@ export default function KokoroChat() {
     router.push('/kokoro-zen');
   };
 
+  /* ── sessionStorage ルーティング（spec: for_claude_code_routing.md） ──
+     渡されるデータは Message に保持済みのスナップショット（routingUserText など）。
+     キーは仕様の `xxxFromTalk`。各アプリ側は次セッションで読み出し処理を実装する。 */
+  const routeFromTalk = (
+    targetKey: string,
+    targetUrl: string,
+    payload: Record<string, unknown>,
+  ) => {
+    try {
+      sessionStorage.setItem(targetKey, JSON.stringify(payload));
+    } catch {
+      /* QuotaExceeded などは握りつぶして遷移は行う */
+    }
+    router.push(targetUrl);
+  };
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -490,6 +520,17 @@ export default function KokoroChat() {
       const gapIntensity: number = data.gapIntensity ?? 0;
       const responseStrategy: ResponseStrategy = data.responseStrategy ?? 'normal';
 
+      // meta（spec: for_claude_code_routing.md）— AIが返す各アプリへの誘導フラグ
+      const meta = (data.meta ?? {}) as Record<string, boolean | number | string | null>;
+
+      // 履歴スナップショット（バナークリック時に sessionStorage に渡す素材）
+      const allTurns = [...messages, userMsg];
+      const fmtHistory = (n: number) =>
+        allTurns.slice(-n).map(m => `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`).join('\n');
+      const routingUserText = text;
+      const routingHistoryShort = fmtHistory(5);
+      const routingHistoryLong = fmtHistory(10);
+
       const savedImage = attachedImage;
       const savedMediaType = attachedMediaType;
       const savedPreview = attachedPreview;
@@ -525,9 +566,10 @@ export default function KokoroChat() {
 
       let showAnimalBtn = !!(savedImage && savedMediaType) && !emiBlocking;
       let showFashionBtn = false;
-      const showNoteBtn = isNoteIntent(text);
-      const showRecipeBtn = isRecipeIntent(text);
-      const showInsightBtn = isInsightIntent(text);
+      // 既存のキーワード検出 OR meta フラグ（AI 判定）の両対応
+      const showNoteBtn = isNoteIntent(text) || meta.need_note === true;
+      const showRecipeBtn = isRecipeIntent(text) || meta.need_recipe === true;
+      const showInsightBtn = isInsightIntent(text) || meta.need_insight === true;
 
       if (!emiBlocking) {
         if (fashionDetected) {
@@ -535,8 +577,39 @@ export default function KokoroChat() {
           if (hasImage) showAnimalBtn = false;
         } else if (profileUpdated && hasRecentFashionContext(messages)) {
           showFashionBtn = true;
+        } else if (meta.need_fashion === true) {
+          showFashionBtn = true;
         }
+        if (meta.need_animal_talk === true && hasImage) showAnimalBtn = true;
       }
+
+      // meta 由来の新規バナー（plan / writer / browser / couple / buddy /
+      //   philosophy / board / kami / ponchi）— エミ中は抑制
+      const showPlanBtn       = !emiBlocking && meta.need_plan === true;
+      const showWriterBtn     = !emiBlocking && meta.need_writer === true;
+      const showBrowserBtn    = !emiBlocking && meta.need_browser === true;
+      const showCoupleBtn     = !emiBlocking && meta.need_couple === true;
+      const showBuddyBtn      = !emiBlocking && meta.need_buddy === true;
+      const showPhilosophyBtn = !emiBlocking && meta.need_philosophy === true;
+      const showBoardBtn      = !emiBlocking && meta.need_board === true;
+      const showKamiBtn       = !emiBlocking && meta.need_kami === true;
+      const showPonchiBtn     = !emiBlocking && meta.need_ponchi === true;
+
+      // 3つの aiMsg 構築箇所で共通して使う meta 由来のフィールド
+      const metaFields: Partial<Message> = {
+        showPlan:       showPlanBtn       || undefined,
+        showWriter:     showWriterBtn     || undefined,
+        showBrowser:    showBrowserBtn    || undefined,
+        showCouple:     showCoupleBtn     || undefined,
+        showBuddy:      showBuddyBtn      || undefined,
+        showPhilosophy: showPhilosophyBtn || undefined,
+        showBoard:      showBoardBtn      || undefined,
+        showKami:       showKamiBtn       || undefined,
+        showPonchi:     showPonchiBtn     || undefined,
+        routingUserText,
+        routingHistoryShort,
+        routingHistoryLong,
+      };
 
       // 本音ログ保存
       if (data.honneLog) {
@@ -586,6 +659,7 @@ export default function KokoroChat() {
             showNote: showNoteBtn || undefined,
             showRecipe: showRecipeBtn || undefined,
             showInsight: showInsightBtn || undefined,
+            ...metaFields,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -668,6 +742,7 @@ export default function KokoroChat() {
             showNote: showNoteBtn || undefined,
             showRecipe: showRecipeBtn || undefined,
             showInsight: showInsightBtn || undefined,
+            ...metaFields,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -714,6 +789,7 @@ export default function KokoroChat() {
             showNote: showNoteBtn || undefined,
             showRecipe: showRecipeBtn || undefined,
             showInsight: showInsightBtn || undefined,
+            ...metaFields,
             imagePreview: savedPreview || undefined,
             imageBase64: savedImage || undefined,
             imageMediaType: savedMediaType || undefined,
@@ -1028,6 +1104,105 @@ export default function KokoroChat() {
                         }}
                       >
                         Insight →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showPlan && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>📋 これ、タスクに分解できそう。</span>
+                      <button
+                        onClick={() => routeFromTalk('planFromTalk', '/kokoro-plan', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Plan →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showWriter && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>✍️ 文章として整えてみますか？</span>
+                      <button
+                        onClick={() => routeFromTalk('writerFromTalk', '/kokoro-writer', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Writer →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showBrowser && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>📚 Noteを見てみる？</span>
+                      <button
+                        onClick={() => routeFromTalk('browserFromTalk', '/kokoro-browser', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Browser →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showCouple && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>❤️ パートナーのことで使ってみる？</span>
+                      <button
+                        onClick={() => routeFromTalk('coupleFromTalk', '/kokoro-couple', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Couple →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showBuddy && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>🎧 アイデアを壁打ちしてみる？</span>
+                      <button
+                        onClick={() => routeFromTalk('buddyFromTalk', '/kokoro-buddy', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Buddy →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showPhilosophy && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>🧠 哲学的に掘り下げてみる？</span>
+                      <button
+                        onClick={() => routeFromTalk('philosophyFromTalk', '/kokoro-philosophy', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Philosophy →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showBoard && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>👥 会議の進行を整理する？</span>
+                      <button
+                        onClick={() => routeFromTalk('boardFromTalk', '/kokoro-board', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Board →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showKami && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>📄 表にまとめてみる？</span>
+                      <button
+                        onClick={() => routeFromTalk('kamiFromTalk', '/kokoro-kami', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Kami →
+                      </button>
+                    </div>
+                  )}
+                  {msg.showPonchi && (
+                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                      <span style={{ fontSize:13, color:'#a78bfa' }}>🎨 プレゼン化してみる？</span>
+                      <button
+                        onClick={() => routeFromTalk('ponchiFromTalk', '/kokoro-ponchi', { userText: msg.routingUserText })}
+                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
+                      >
+                        Ponchi →
                       </button>
                     </div>
                   )}
