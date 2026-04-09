@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 const BOARD_SYSTEM = `あなたはKokoro OSのBoardアシスタントです。会議の音頭を取るAIファシリテーターです。
 
@@ -25,6 +26,9 @@ export async function POST(req: NextRequest) {
 
     const input = (members ? `参加者：${members}\n` : '') + 'アジェンダ：' + agenda;
 
+    const valueInject = KokoroValueEngine.forBoard();
+    const system = BOARD_SYSTEM + (valueInject ? '\n' + valueInject : '');
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -35,7 +39,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1200,
-        system: BOARD_SYSTEM,
+        system,
         messages: [{ role: 'user', content: input }],
       }),
     });

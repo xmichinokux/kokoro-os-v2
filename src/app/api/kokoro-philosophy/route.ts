@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 type PhilMode = 'multi' | 'socratic' | 'eastern' | 'modern';
 
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
     }
 
+    const valueInject = KokoroValueEngine.forPhilosophy();
+
     // 対話の継続
     if (mode === 'socratic-continue') {
       const trimmed = Array.isArray(messages) ? messages.slice(-16) : [];
@@ -52,7 +55,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 300,
-          system: SOCRATIC_CONTINUE_SYSTEM,
+          system: SOCRATIC_CONTINUE_SYSTEM + (valueInject ? '\n' + valueInject : ''),
           messages: trimmed,
         }),
       });
@@ -66,7 +69,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 初回生成
-    const system = MODE_SYSTEMS[mode as PhilMode] ?? MODE_SYSTEMS.multi;
+    const baseSystem = MODE_SYSTEMS[mode as PhilMode] ?? MODE_SYSTEMS.multi;
+    const system = baseSystem + (valueInject ? '\n' + valueInject : '');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {

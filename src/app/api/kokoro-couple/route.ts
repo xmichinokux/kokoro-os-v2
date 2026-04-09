@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 type CoupleTab = 'consult' | 'gift' | 'date' | 'message';
 
@@ -16,7 +17,9 @@ const TAB_SYSTEMS: Record<CoupleTab, string> = {
 export async function POST(req: NextRequest) {
   const { text, tab, partnerName, partnerTraits } = await req.json();
 
-  const system = TAB_SYSTEMS[tab as CoupleTab] ?? TAB_SYSTEMS.consult;
+  const baseSystem = TAB_SYSTEMS[tab as CoupleTab] ?? TAB_SYSTEMS.consult;
+  const valueInject = KokoroValueEngine.forCouple();
+  const system = baseSystem + (valueInject ? '\n' + valueInject : '');
 
   // Build user content with partner context
   let userContent = '';

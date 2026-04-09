@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { KokoroRecipeInput } from '@/types/recipe';
 import { buildRecipeProfileContext, type KokoroUserProfile } from '@/lib/getProfile';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 type RequestBody = KokoroRecipeInput & { kokoroProfile?: KokoroUserProfile | null };
 
@@ -73,6 +74,9 @@ ${contextBlock}
 
 月〜日の7日分を必ず生成してください。`;
 
+  const valueInject = KokoroValueEngine.forRecipe();
+  const finalPrompt = prompt + (valueInject ? '\n' + valueInject : '');
+
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -89,7 +93,7 @@ ${contextBlock}
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 3000,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: finalPrompt }],
       }),
     });
 

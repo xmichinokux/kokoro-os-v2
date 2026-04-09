@@ -210,6 +210,46 @@ const MRCE_BUDDY = `
 ・深掘りルート（ディグ）：希少性・反主流・隠れた価値
 3つのルートを意識しながら、最も刺激的な角度から返答する`;
 
+const MRCE_MECE_PHILOSOPHY = `
+【MRCE + MECE-Core 適用】
+問いを探究する際：
+・複数の哲学的伝統から同時にアプローチする
+・各視点の重複を避け、独自の角度を保つ
+・表層的な答えではなく、問いの核心（核）を抽出する
+・最終的に「より深い問い」を生成する`;
+
+const EVALUATION_BIAS_COUPLE = `
+【ValueEngine 適用】
+相談に答える際：
+・社会的な「正解」や一般論に引っ張られない
+・その人の価値観・状況に固有の答えを出す
+・「こうすべき」ではなく「こういう見方もある」で返す
+・両者の価値観の差異を構造として捉える`;
+
+const MECE_CORE_BOARD = `
+【MECE-Core 適用】
+会議の議題を整理する際：
+・議題間の重複を排除する
+・議論すべき論点の漏れをなくす
+・各議題は独立して議論できる粒度にする
+・アクションアイテムは担当・期限・成果物が明確になるよう設計する`;
+
+const EVALUATION_BIAS_RECIPE = `
+【ValueEngine 適用】
+献立を提案する際：
+・一般的な「健康的な食事」の定型に縛られない
+・プロフィール情報があればそれを最優先する
+・その人のライフスタイル・制約・好みを中心に設計する
+・「正しい食事」より「その人に合った食事」を提案する`;
+
+const REVO_CYCLE_PONCHI = `
+【RevoCycle 適用】
+コンセプトをスライド化する際：
+・入力された言葉をそのまま使わない
+・より本質的・インパクトのある表現に昇華する
+・「一言でいうと」スライドは特に飛躍的な核を抽出する
+・聞いた人が「なるほど」ではなく「!?」と感じる表現を目指す`;
+
 export const KokoroValueEngine = {
   forInsight: () => [
     CORE_AESTHETICS,
@@ -225,8 +265,13 @@ export const KokoroValueEngine = {
   forWriter:  () => CORE_AESTHETICS,
   forWriterCore: () => `${MECE_CORE_WRITER}\n${REVO_CYCLE_WRITER}`,
   forNote:    () => `${CORE_AESTHETICS}\n${EVALUATION_BIAS}`,
-  forPlan:    () => MECE_CORE_PLAN,
-  forBuddy:   () => MRCE_BUDDY,
+  forPlan:       () => MECE_CORE_PLAN,
+  forBuddy:      () => MRCE_BUDDY,
+  forPhilosophy: () => MRCE_MECE_PHILOSOPHY,
+  forCouple:     () => EVALUATION_BIAS_COUPLE,
+  forBoard:      () => MECE_CORE_BOARD,
+  forRecipe:     () => EVALUATION_BIAS_RECIPE,
+  forPonchi:     () => REVO_CYCLE_PONCHI,
   forGeneral: () => CORE_AESTHETICS,
   CORE_AESTHETICS,
   AESTHETIC_AXES,
@@ -235,8 +280,13 @@ export const KokoroValueEngine = {
   MECE_CORE,
   MECE_CORE_PLAN,
   MECE_CORE_WRITER,
+  MECE_CORE_BOARD,
   REVO_CYCLE_WRITER,
+  REVO_CYCLE_PONCHI,
   MRCE_BUDDY,
+  MRCE_MECE_PHILOSOPHY,
+  EVALUATION_BIAS_COUPLE,
+  EVALUATION_BIAS_RECIPE,
   MRCE,
   REVO_CYCLE,
 };
