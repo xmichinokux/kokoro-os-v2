@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 const BUDDY_SYSTEM = `あなたはKokoro OSの「Buddy（ディグ）」です。
 アイデアの壁打ち相手。ユーザーのアイデアを広げ、深め、別の角度から照らす。
@@ -30,6 +31,9 @@ export async function POST(req: NextRequest) {
     // 直近16件までに制限（長すぎる履歴を防ぐ）
     const trimmed: BuddyMessage[] = Array.isArray(messages) ? messages.slice(-16) : [];
 
+    const valueInject = KokoroValueEngine.forBuddy();
+    const system = BUDDY_SYSTEM + (valueInject ? '\n' + valueInject : '');
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -40,7 +44,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 300,
-        system: BUDDY_SYSTEM,
+        system,
         messages: trimmed,
       }),
     });

@@ -187,6 +187,29 @@ const MECE_CORE_PLAN = `
 ・各タスクは独立して実行可能な粒度にする
 ・優先度（high/mid/low）は実際の依存関係と工数から判断する`;
 
+const MECE_CORE_WRITER = `
+【MECE-Core 適用】
+文章を構造化する際は以下を守ること：
+・論点間の重複を排除する
+・抜け落ちている論点がないか確認する
+・各段落は独立した役割を持つように配置する`;
+
+const REVO_CYCLE_WRITER = `
+【RevoCycle 適用】
+文章を再構造化する際、以下の発想演算を適用すること：
+・逆説：逆の立場から見た場合の視点を加える
+・抽象化：具体的な話をより本質的な概念に昇華する
+・圧縮：冗長な表現を核心だけに絞る
+単なる整形ではなく、文章の価値を高める再構造化を行う`;
+
+const MRCE_BUDDY = `
+【MRCE 適用】
+ユーザーのアイデアに対して、以下の3ルートで同時に探索すること：
+・分析ルート（シン）：構造・論理・実現可能性
+・美学ルート（カノン）：表現・感性・独自性
+・深掘りルート（ディグ）：希少性・反主流・隠れた価値
+3つのルートを意識しながら、最も刺激的な角度から返答する`;
+
 export const KokoroValueEngine = {
   forInsight: () => [
     CORE_AESTHETICS,
@@ -200,8 +223,10 @@ export const KokoroValueEngine = {
   forTalk:    () => CORE_AESTHETICS,
   forZen:     () => `${CORE_AESTHETICS}\n${AESTHETIC_AXES}`,
   forWriter:  () => CORE_AESTHETICS,
+  forWriterCore: () => `${MECE_CORE_WRITER}\n${REVO_CYCLE_WRITER}`,
   forNote:    () => `${CORE_AESTHETICS}\n${EVALUATION_BIAS}`,
   forPlan:    () => MECE_CORE_PLAN,
+  forBuddy:   () => MRCE_BUDDY,
   forGeneral: () => CORE_AESTHETICS,
   CORE_AESTHETICS,
   AESTHETIC_AXES,
@@ -209,6 +234,9 @@ export const KokoroValueEngine = {
   TECHNIQUE_AXIS,
   MECE_CORE,
   MECE_CORE_PLAN,
+  MECE_CORE_WRITER,
+  REVO_CYCLE_WRITER,
+  MRCE_BUDDY,
   MRCE,
   REVO_CYCLE,
 };

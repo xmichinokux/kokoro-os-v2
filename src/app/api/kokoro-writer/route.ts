@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 const WRITER_SYSTEMS: Record<string, string> = {
   lite: `あなたはKokoro OSのWriterアシスタント（Liteモード）です。
@@ -14,7 +15,10 @@ const WRITER_SYSTEMS: Record<string, string> = {
 export async function POST(req: NextRequest) {
   const { text, mode } = await req.json();
 
-  const system = WRITER_SYSTEMS[mode] ?? WRITER_SYSTEMS.lite;
+  const baseSystem = WRITER_SYSTEMS[mode] ?? WRITER_SYSTEMS.lite;
+  // Coreモードのみ MECE_CORE + REVO_CYCLE を注入
+  const valueInject = mode === 'core' ? KokoroValueEngine.forWriterCore() : '';
+  const system = baseSystem + (valueInject ? '\n' + valueInject : '');
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
