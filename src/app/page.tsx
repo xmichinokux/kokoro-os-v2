@@ -38,14 +38,14 @@ const APPS: App[] = [
     name: "Kokoro Plan",
     desc: "タスク分解。行動を設計する。",
     href: "/kokoro-plan",
-    ready: false,
+    ready: true,
   },
   {
     icon: "✍️",
     name: "Kokoro Writer",
     desc: "文章編集。シンプルなWordの代替。",
     href: "/kokoro-writer",
-    ready: false,
+    ready: true,
   },
   {
     icon: "🔍",
