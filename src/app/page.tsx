@@ -68,6 +68,13 @@ const APPS: App[] = [
     href: "/kokoro-browser",
     ready: true,
   },
+  {
+    icon: "❤️",
+    name: "Kokoro Couple",
+    desc: "パートナーとの関係をAIが静かにサポートする。",
+    href: "/kokoro-couple",
+    ready: true,
+  },
 ];
 
 export default function Home() {
