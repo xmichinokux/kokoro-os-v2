@@ -70,13 +70,21 @@ export default function KokoroPlanPage() {
 
   // sessionStorage から planFromTalk を読み取り
   useEffect(() => {
-    const from = sessionStorage.getItem('planFromTalk');
-    if (from) {
-      sessionStorage.removeItem('planFromTalk');
-      setGoal(from);
+    const raw = sessionStorage.getItem('planFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('planFromTalk');
+    let userText = '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.userText === 'string') userText = parsed.userText;
+    } catch {
+      userText = raw;
+    }
+    if (userText) {
+      setGoal(userText);
       // 少し遅延して自動実行
       setTimeout(() => {
-        handleGenerate(from);
+        handleGenerate(userText);
       }, 300);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

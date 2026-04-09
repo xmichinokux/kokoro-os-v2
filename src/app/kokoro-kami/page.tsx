@@ -91,11 +91,17 @@ export default function KokoroKamiPage() {
   };
 
   useEffect(() => {
-    const from = sessionStorage.getItem('kamiFromTalk');
-    if (from) {
-      sessionStorage.removeItem('kamiFromTalk');
-      setInputText(from);
+    const raw = sessionStorage.getItem('kamiFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('kamiFromTalk');
+    let userText = '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.userText === 'string') userText = parsed.userText;
+    } catch {
+      userText = raw;
     }
+    if (userText) setInputText(userText);
   }, []);
 
   return (

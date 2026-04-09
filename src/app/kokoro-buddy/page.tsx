@@ -87,12 +87,17 @@ export default function KokoroBuddyPage() {
 
   // sessionStorage から buddyFromTalk を読み取り
   useEffect(() => {
-    const from = sessionStorage.getItem('buddyFromTalk');
-    if (from) {
-      sessionStorage.removeItem('buddyFromTalk');
-      // HTML版と同様：ユーザー: で始まる最後の行を抽出
-      const lines = from.split('\n').filter(l => l.startsWith('ユーザー:'));
-      const last = lines.length > 0 ? lines[lines.length - 1].replace('ユーザー:', '').trim() : from.trim();
+    const raw = sessionStorage.getItem('buddyFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('buddyFromTalk');
+    try {
+      const parsed = JSON.parse(raw);
+      const userText = typeof parsed?.userText === 'string' ? parsed.userText : '';
+      if (userText) setInputText(userText);
+    } catch {
+      // 旧形式（プレーン文字列）フォールバック
+      const lines = raw.split('\n').filter(l => l.startsWith('ユーザー:'));
+      const last = lines.length > 0 ? lines[lines.length - 1].replace('ユーザー:', '').trim() : raw.trim();
       setInputText(last);
     }
   }, []);

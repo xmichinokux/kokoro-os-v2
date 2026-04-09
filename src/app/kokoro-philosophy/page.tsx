@@ -135,11 +135,17 @@ export default function KokoroPhilosophyPage() {
     (mode === 'socratic' && dialogueHistory.length > 0);
 
   useEffect(() => {
-    const from = sessionStorage.getItem('philosophyFromTalk');
-    if (from) {
-      sessionStorage.removeItem('philosophyFromTalk');
-      setQuestion(from);
+    const raw = sessionStorage.getItem('philosophyFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('philosophyFromTalk');
+    let userText = '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.userText === 'string') userText = parsed.userText;
+    } catch {
+      userText = raw;
     }
+    if (userText) setQuestion(userText);
   }, []);
 
   return (

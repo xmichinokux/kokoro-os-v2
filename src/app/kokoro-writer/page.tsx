@@ -61,12 +61,20 @@ export default function KokoroWriterPage() {
 
   // sessionStorage から writerFromTalk を読み取り
   useEffect(() => {
-    const from = sessionStorage.getItem('writerFromTalk');
-    if (from) {
-      sessionStorage.removeItem('writerFromTalk');
-      setInputText(from);
+    const raw = sessionStorage.getItem('writerFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('writerFromTalk');
+    let userText = '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.userText === 'string') userText = parsed.userText;
+    } catch {
+      userText = raw;
+    }
+    if (userText) {
+      setInputText(userText);
       setTimeout(() => {
-        handleRun(from);
+        handleRun(userText);
       }, 300);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

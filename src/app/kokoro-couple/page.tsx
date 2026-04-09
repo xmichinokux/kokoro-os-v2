@@ -92,11 +92,17 @@ export default function KokoroCouplePage() {
 
   // sessionStorage から coupleFromTalk を読み取り
   useEffect(() => {
-    const from = sessionStorage.getItem('coupleFromTalk');
-    if (from) {
-      sessionStorage.removeItem('coupleFromTalk');
-      setInputText(from);
+    const raw = sessionStorage.getItem('coupleFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('coupleFromTalk');
+    let userText = '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.userText === 'string') userText = parsed.userText;
+    } catch {
+      userText = raw;
     }
+    if (userText) setInputText(userText);
   }, []);
 
   const handleTabChange = (tab: CoupleTab) => {

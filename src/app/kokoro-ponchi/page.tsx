@@ -63,11 +63,17 @@ export default function KokoroPonchiPage() {
     body.split('・').map((part, i) => i === 0 ? part : '・' + part).join('\n');
 
   useEffect(() => {
-    const from = sessionStorage.getItem('ponchiFromTalk');
-    if (from) {
-      sessionStorage.removeItem('ponchiFromTalk');
-      setInputText(from);
+    const raw = sessionStorage.getItem('ponchiFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('ponchiFromTalk');
+    let userText = '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.userText === 'string') userText = parsed.userText;
+    } catch {
+      userText = raw;
     }
+    if (userText) setInputText(userText);
   }, []);
 
   return (

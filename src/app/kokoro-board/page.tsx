@@ -67,11 +67,17 @@ export default function KokoroBoardPage() {
   };
 
   useEffect(() => {
-    const from = sessionStorage.getItem('boardFromTalk');
-    if (from) {
-      sessionStorage.removeItem('boardFromTalk');
-      setAgenda(from);
+    const raw = sessionStorage.getItem('boardFromTalk');
+    if (!raw) return;
+    sessionStorage.removeItem('boardFromTalk');
+    let userText = '';
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.userText === 'string') userText = parsed.userText;
+    } catch {
+      userText = raw;
     }
+    if (userText) setAgenda(userText);
   }, []);
 
   return (
