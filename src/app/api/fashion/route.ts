@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { KokoroProfile } from '@/lib/profile';
+import { buildFashionProfileContext, type KokoroUserProfile } from '@/lib/getProfile';
 
 const FASHION_SYSTEM = `あなたはKokoro OSの「Fashion」診断AIです。
 
@@ -45,9 +46,16 @@ const FASHION_SYSTEM = `あなたはKokoro OSの「Fashion」診断AIです。
 function buildUserMessage(
   textInput?: string,
   profile?: KokoroProfile,
-  hasImage?: boolean
+  hasImage?: boolean,
+  kokoroProfile?: KokoroUserProfile | null
 ): string {
   const parts: string[] = [];
+
+  // ユーザー主導型プロフィール（/kokoro-profile）を最優先でプロンプト先頭に付与
+  const userProfileCtx = buildFashionProfileContext(kokoroProfile ?? null);
+  if (userProfileCtx) {
+    parts.push(userProfileCtx);
+  }
 
   if (hasImage) {
     parts.push('【画像あり】添付画像のファッションを診断してください。');
@@ -87,7 +95,7 @@ function safeParseJSON(raw: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageBase64, imageMediaType, textInput, profile } = await req.json();
+    const { imageBase64, imageMediaType, textInput, profile, kokoroProfile } = await req.json();
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -99,7 +107,7 @@ export async function POST(req: NextRequest) {
     }
 
     const hasImage = !!(imageBase64 && imageMediaType);
-    const userText = buildUserMessage(textInput, profile, hasImage);
+    const userText = buildUserMessage(textInput, profile, hasImage, kokoroProfile);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const content: any[] = [];

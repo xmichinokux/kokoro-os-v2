@@ -4,6 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { getProfile, updateInferred } from '@/lib/profile';
 import type { KokoroProfile } from '@/lib/profile';
 import { saveToNote } from '@/lib/saveToNote';
+import {
+  getProfile as getKokoroProfile,
+  hasProfileData,
+  type KokoroUserProfile,
+} from '@/lib/getProfile';
 
 type FashionResult = {
   styleName: string;
@@ -31,6 +36,7 @@ export default function KokoroFashion() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [started, setStarted] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
+  const [kokoroProfile, setKokoroProfile] = useState<KokoroUserProfile | null>(null);
 
   const runAnalysis = useCallback(async (opts: {
     profile?: KokoroProfile;
@@ -50,6 +56,7 @@ export default function KokoroFashion() {
           imageBase64: opts.imageBase64 || undefined,
           imageMediaType: opts.imageMediaType || undefined,
           profile: opts.profile || getProfile(),
+          kokoroProfile: getKokoroProfile(),
         }),
       });
       const data = await res.json();
@@ -78,6 +85,9 @@ export default function KokoroFashion() {
   useEffect(() => {
     if (started) return;
     setStarted(true);
+
+    // Kokoro Profile を読み込んでバナー表示用にstateへ
+    setKokoroProfile(getKokoroProfile());
 
     const currentProfile = getProfile();
     let intentProfile = currentProfile;
@@ -157,6 +167,43 @@ export default function KokoroFashion() {
       </header>
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 20px 80px' }}>
+
+        {/* プロフィール使用中バナー */}
+        {hasProfileData(kokoroProfile) && (
+          <div style={{
+            marginBottom: 24,
+            padding: '10px 16px',
+            background: 'rgba(99,102,241,0.06)',
+            border: '1px solid rgba(99,102,241,0.2)',
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}>
+            <span style={{
+              fontFamily: "'Space Mono', monospace",
+              fontSize: 10,
+              color: '#6366f1',
+              letterSpacing: '0.12em',
+            }}>
+              // プロフィールを使用中
+            </span>
+            <a
+              href="/kokoro-profile"
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 9,
+                color: '#9ca3af',
+                textDecoration: 'none',
+                letterSpacing: '0.1em',
+              }}
+            >
+              編集 →
+            </a>
+          </div>
+        )}
 
         {/* title */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>

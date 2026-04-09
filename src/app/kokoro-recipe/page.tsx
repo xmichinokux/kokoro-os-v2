@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 import { consumeRecipeInput } from '@/lib/kokoro/recipeInput';
 import type { KokoroRecipeInput, KokoroRecipeResult, DayRecipe } from '@/types/recipe';
 import { saveToNote } from '@/lib/saveToNote';
+import {
+  getProfile as getKokoroProfile,
+  hasProfileData,
+  type KokoroUserProfile,
+} from '@/lib/getProfile';
 
 export default function KokoroRecipePage() {
   const router = useRouter();
@@ -15,6 +20,7 @@ export default function KokoroRecipePage() {
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [noteSaved, setNoteSaved] = useState(false);
+  const [kokoroProfile, setKokoroProfile] = useState<KokoroUserProfile | null>(null);
 
   const generateRecipe = useCallback(async (inputData?: KokoroRecipeInput) => {
     const payload = inputData ?? {
@@ -28,7 +34,10 @@ export default function KokoroRecipePage() {
       const res = await fetch('/api/kokoro-recipe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          kokoroProfile: getKokoroProfile(),
+        }),
       });
       if (!res.ok) throw new Error('生成失敗');
       const data: KokoroRecipeResult = await res.json();
@@ -43,6 +52,7 @@ export default function KokoroRecipePage() {
 
   // マウント時にlocalStorageから入力を取得
   useEffect(() => {
+    setKokoroProfile(getKokoroProfile());
     const saved = consumeRecipeInput();
     if (saved) {
       setInput(saved);
@@ -93,6 +103,43 @@ export default function KokoroRecipePage() {
       </header>
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 24px' }}>
+
+        {/* プロフィール使用中バナー */}
+        {hasProfileData(kokoroProfile) && (
+          <div style={{
+            marginBottom: 24,
+            padding: '10px 16px',
+            background: 'rgba(99,102,241,0.06)',
+            border: '1px solid rgba(99,102,241,0.2)',
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}>
+            <span style={{
+              ...mono,
+              fontSize: 10,
+              color: '#6366f1',
+              letterSpacing: '0.12em',
+            }}>
+              // プロフィールを使用中
+            </span>
+            <a
+              href="/kokoro-profile"
+              style={{
+                ...mono,
+                fontSize: 9,
+                color: '#9ca3af',
+                textDecoration: 'none',
+                letterSpacing: '0.1em',
+              }}
+            >
+              編集 →
+            </a>
+          </div>
+        )}
 
         {/* source由来ラベル */}
         {input.source !== 'manual' && input.relatedSummary && (

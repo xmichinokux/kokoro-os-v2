@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { KokoroRecipeInput } from '@/types/recipe';
+import { buildRecipeProfileContext, type KokoroUserProfile } from '@/lib/getProfile';
+
+type RequestBody = KokoroRecipeInput & { kokoroProfile?: KokoroUserProfile | null };
 
 const CONCEPT_MAP: Record<string, string> = {
   '停滞': '小さな変化の週',
@@ -17,7 +20,8 @@ function safeParseJSON(raw: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const input: KokoroRecipeInput = await req.json();
+  const body = (await req.json()) as RequestBody;
+  const { kokoroProfile, ...input } = body;
 
   const sourceLabels: Record<string, string> = {
     talk: 'Talk由来', zen: 'Zen由来', note: 'Note由来', manual: '',
@@ -26,12 +30,15 @@ export async function POST(req: NextRequest) {
   const emotionHint = input.emotionTone?.[0] ?? '';
   const weekConcept = CONCEPT_MAP[emotionHint] ?? '今週のための週';
 
+  const profileCtx = buildRecipeProfileContext(kokoroProfile ?? null);
+
   const contextBlock = [
+    profileCtx,
     input.relatedSummary ? `状態の要約: ${input.relatedSummary}` : '',
     input.currentTheme?.length ? `テーマ: ${input.currentTheme.join('、')}` : '',
     input.emotionTone?.length ? `感情トーン: ${input.emotionTone.join('、')}` : '',
     input.weeklyStateText ? `今週の状態: ${input.weeklyStateText}` : '',
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n\n');
 
   const prompt = `あなたはKokoro OSのRecipeエンジンです。
 料理は媒体ですが、本質は「内面状態に合う1週間の生活体験の設計」です。

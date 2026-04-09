@@ -124,6 +124,13 @@ const APPS: App[] = [
     href: "/kokoro-animal",
     ready: true,
   },
+  {
+    icon: "👤",
+    name: "Kokoro Profile",
+    desc: "あなたのデータ層。他アプリが静かに参照する。",
+    href: "/kokoro-profile",
+    ready: true,
+  },
 ];
 
 export default function Home() {
