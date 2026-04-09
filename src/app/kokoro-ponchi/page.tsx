@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type Slide = {
   num: string;
@@ -52,17 +52,9 @@ export default function KokoroPonchiPage() {
   }, [inputText]);
 
   const handleSaveToNote = () => {
+    if (slides.length === 0) return;
     const body = slides.map(s => `// ${s.num} ${s.title}\n${s.body}`).join('\n\n');
-    saveNote({
-      id: createNoteId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'manual',
-      title: `Ponchi: ${slides[0]?.title || inputText.slice(0, 40)}`,
-      body,
-      tags: ['ponchi'],
-      pinned: false,
-    });
+    saveToNote(body, 'Ponchi');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

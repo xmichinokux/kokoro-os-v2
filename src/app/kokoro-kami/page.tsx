@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type KamiResult = {
   title: string;
@@ -81,19 +81,11 @@ export default function KokoroKamiPage() {
   };
 
   const handleSaveToNote = () => {
+    if (!hasTable) return;
     const header = columns.join('\t');
-    const body = rows.map(r => r.join('\t')).join('\n');
-    const text = `${title}\n${description}\n\n${header}\n${body}`;
-    saveNote({
-      id: createNoteId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'manual',
-      title: `Kami: ${title || inputText.slice(0, 40)}`,
-      body: text,
-      tags: ['kami'],
-      pinned: false,
-    });
+    const bodyRows = rows.map(r => r.join('\t')).join('\n');
+    const text = `${title}\n${description}\n\n${header}\n${bodyRows}`;
+    saveToNote(text, 'Kami');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

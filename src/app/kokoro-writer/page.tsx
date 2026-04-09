@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type WriterMode = 'lite' | 'core';
 
@@ -53,16 +53,8 @@ export default function KokoroWriterPage() {
   };
 
   const handleSaveToNote = () => {
-    saveNote({
-      id: createNoteId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'manual',
-      title: `Writer: ${outputText.slice(0, 40)}`,
-      body: outputText,
-      tags: ['writer'],
-      pinned: false,
-    });
+    if (!outputText) return;
+    saveToNote(outputText, 'Writer');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

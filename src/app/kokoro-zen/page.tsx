@@ -3,8 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { consumeNoteForZen, buildZenPromptFromNoteData } from '@/lib/kokoro/noteLinkage';
-import { createNoteFromZen } from '@/lib/kokoro/createNoteFromTalk';
-import { saveNote } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 import { createRecipeInputFromZen, setRecipeInput } from '@/lib/kokoro/recipeInput';
 
 type PersonaResult = { id: string; name: string; text: string };
@@ -141,8 +140,31 @@ export default function KokoroZen() {
 
   const handleSaveZenNote = () => {
     if (!result || zenNoteSaved) return;
-    const note = createNoteFromZen(result);
-    saveNote(note);
+    const parts: string[] = [];
+    parts.push(`[中心の物語]\n${result.core.main_story}`);
+    if (result.core.tensions?.length) {
+      parts.push(`[緊張]\n${result.core.tensions.map(t => '・' + t).join('\n')}`);
+    }
+    if (result.core.needs?.length) {
+      parts.push(`[必要としているもの]\n${result.core.needs.map(n => '・' + n).join('\n')}`);
+    }
+    if (result.core.key_question) {
+      parts.push(`[核となる問い]\n${result.core.key_question}`);
+    }
+    if (result.personas?.length) {
+      parts.push(
+        '[4つの視点]\n' +
+          result.personas.map(p => `【${p.name}】\n${p.text}`).join('\n\n')
+      );
+    }
+    if (result.emiMain) {
+      parts.push(`[エミの返答]\n${result.emiMain}`);
+    }
+    if (result.emiQuestion) {
+      parts.push(`[エミの問い]\n${result.emiQuestion}`);
+    }
+    const body = parts.join('\n\n');
+    saveToNote(body, 'Zen');
     setZenNoteSaved(true);
   };
 

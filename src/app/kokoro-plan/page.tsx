@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type Task = {
   text: string;
@@ -61,17 +61,9 @@ export default function KokoroPlanPage() {
   };
 
   const handleSaveToNote = () => {
-    const body = `Goal: ${goal}\n\n${tasks.map((t, i) => `${t.done ? '✓' : '□'} ${t.text}${t.estimate ? ` (${t.estimate})` : ''}`).join('\n')}`;
-    saveNote({
-      id: createNoteId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'manual',
-      title: `Plan: ${goal.slice(0, 40)}`,
-      body,
-      tags: ['plan'],
-      pinned: false,
-    });
+    if (!goal.trim() || tasks.length === 0) return;
+    const body = `Goal: ${goal}\n\n${tasks.map(t => `${t.done ? '✓' : '□'} ${t.text}${t.estimate ? ` (${t.estimate})` : ''}`).join('\n')}`;
+    saveToNote(body, 'Plan');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

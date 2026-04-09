@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type AgendaItem = { topic: string; duration: string; questions: string[] };
 type ActionItem = { task: string; owner?: string };
@@ -61,16 +61,7 @@ export default function KokoroBoardPage() {
     body += result.action_items.map(a => `✓ ${a.task}${a.owner ? ` (${a.owner})` : ''}`).join('\n');
     body += `\n\n[閉会]\n${result.closing}`;
 
-    saveNote({
-      id: createNoteId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'manual',
-      title: `Board: ${agenda.slice(0, 40)}`,
-      body,
-      tags: ['board'],
-      pinned: false,
-    });
+    saveToNote(body, 'Board');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

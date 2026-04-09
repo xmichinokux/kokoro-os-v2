@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type CoupleTab = 'consult' | 'gift' | 'date' | 'message';
 
@@ -82,16 +82,10 @@ export default function KokoroCouplePage() {
   }, [inputText, activeTab, partnerName, partnerTraits]);
 
   const handleSaveToNote = () => {
-    saveNote({
-      id: createNoteId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'manual',
-      title: `Couple: ${resultText.slice(0, 40)}`,
-      body: resultText,
-      tags: ['couple'],
-      pinned: false,
-    });
+    if (!resultText) return;
+    const label = TAB_CONFIG[activeTab].label;
+    const body = `[${label}] ${resultText}`;
+    saveToNote(body, 'Couple');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type PhilMode = 'multi' | 'socratic' | 'eastern' | 'modern';
 
@@ -119,18 +119,11 @@ export default function KokoroPhilosophyPage() {
       body += `\n\n[問いの残余]\n${modernResult.critique}`;
     } else if (mode === 'socratic') {
       body += dialogueHistory.map(m => `${m.role === 'user' ? 'ユーザー' : 'ソクラテス'}: ${m.content}`).join('\n\n');
+    } else {
+      return;
     }
 
-    saveNote({
-      id: createNoteId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'manual',
-      title: `Philosophy: ${question.slice(0, 40)}`,
-      body,
-      tags: ['philosophy', mode],
-      pinned: false,
-    });
+    saveToNote(body, 'Philosophy');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

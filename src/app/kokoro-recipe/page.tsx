@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { consumeRecipeInput } from '@/lib/kokoro/recipeInput';
 import type { KokoroRecipeInput, KokoroRecipeResult, DayRecipe } from '@/types/recipe';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
-import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
-import type { KokoroNote } from '@/types/note';
+import { saveToNote } from '@/lib/saveToNote';
 
 export default function KokoroRecipePage() {
   const router = useRouter();
@@ -66,28 +64,7 @@ export default function KokoroRecipePage() {
       ),
     ].join('\n');
 
-    const draft = {
-      source: 'manual' as const,
-      body,
-      topic: '生活',
-      emotionTone: input.emotionTone,
-    };
-    const meta = generateAutoNoteMeta(draft);
-    const now = new Date().toISOString();
-
-    const note: KokoroNote = {
-      id: createNoteId(),
-      createdAt: now,
-      updatedAt: now,
-      source: 'manual',
-      title: `Recipe：${result.weekConcept}`,
-      body,
-      tags: [...(meta.tags ?? []), 'レシピ'],
-      topic: '生活',
-      pinned: false,
-    };
-
-    saveNote(note);
+    saveToNote(body, 'Recipe');
     setNoteSaved(true);
   };
 

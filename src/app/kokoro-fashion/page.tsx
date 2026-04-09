@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getProfile, updateInferred } from '@/lib/profile';
 import type { KokoroProfile } from '@/lib/profile';
-import { saveImageNote, createImageNoteId } from '@/lib/kokoro-note/imageNoteStorage';
-import type { FashionNoteEntry } from '@/types/noteImage';
+import { saveToNote } from '@/lib/saveToNote';
 
 type FashionResult = {
   styleName: string;
@@ -109,26 +108,23 @@ export default function KokoroFashion() {
 
   const handleSaveToNote = () => {
     if (!result || noteSaved) return;
-    const now = new Date().toISOString();
-    const entry: FashionNoteEntry = {
-      id: createImageNoteId(),
-      sourceType: 'fashion',
-      createdAt: now,
-      updatedAt: now,
-      imageUrl: preview || '',
-      autoTitle: result.styleName || result.summary.slice(0, 24),
-      result: {
-        styleName: result.styleName,
-        tags: result.keywords,
-        summary: result.summary,
-        scores: result.scores,
-        strengths: result.details.goodPoints,
-        gapAndSuggestion: result.details.mismatches,
-        impression: result.details.impression,
-        ageContext: result.details.ageVision,
-      },
-    };
-    saveImageNote(entry);
+    const text = [
+      `[スタイル名] ${result.styleName}`,
+      result.keywords.length ? `[キーワード] ${result.keywords.join(', ')}` : '',
+      '',
+      result.summary,
+      '',
+      `[スコア] Style Match: ${result.scores.styleMatch} / Reality Fit: ${result.scores.realityFit}`,
+      '',
+      `[良い点]\n${result.details.goodPoints}`,
+      '',
+      `[ズレ / 提案]\n${result.details.mismatches}`,
+      '',
+      `[印象]\n${result.details.impression}`,
+      '',
+      `[年齢・文脈]\n${result.details.ageVision}`,
+    ].filter(Boolean).join('\n');
+    saveToNote(text, 'Fashion');
     setNoteSaved(true);
   };
 
