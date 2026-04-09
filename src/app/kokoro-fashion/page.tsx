@@ -246,7 +246,7 @@ export default function KokoroFashion() {
             <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {noteSaved ? (
                 <a
-                  href="/kokoro-note"
+                  href="/kokoro-browser"
                   style={{
                     fontFamily: "'Space Mono', monospace",
                     fontSize: 11,
