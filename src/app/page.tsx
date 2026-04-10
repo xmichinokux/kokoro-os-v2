@@ -118,6 +118,13 @@ const APPS: App[] = [
     ready: true,
   },
   {
+    icon: "🌍",
+    name: "Kokoro World",
+    desc: "企画書から動くデモページを自動生成。",
+    href: "/kokoro-world",
+    ready: true,
+  },
+  {
     icon: "🍳",
     name: "Kokoro Recipe",
     desc: "7日間の献立を生成する。",

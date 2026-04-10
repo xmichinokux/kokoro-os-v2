@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { loadStrategyInputs, clearStrategyInputs, type StrategyInputs } from '@/lib/strategyInputs';
+import { saveWorldInput } from '@/lib/worldInput';
 import { saveToNote } from '@/lib/saveToNote';
 import PersonaLoading from '@/components/PersonaLoading';
 
@@ -358,6 +359,22 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
                 }}
               >
                 Download ↓
+              </button>
+              <button
+                onClick={() => {
+                  saveWorldInput(outputHtml, outputPlain);
+                  router.push('/kokoro-world');
+                }}
+                title="Worldでデモページを生成"
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(16,185,129,0.5)',
+                  color: '#10b981',
+                  ...mono, fontSize: 9, letterSpacing: '.12em',
+                  padding: '8px 16px', cursor: 'pointer', borderRadius: 2,
+                }}
+              >
+                World →
               </button>
               <button
                 onClick={handleReset}
