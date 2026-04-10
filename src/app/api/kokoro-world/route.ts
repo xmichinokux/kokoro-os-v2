@@ -5,16 +5,17 @@ const DEMO_TYPES: Record<string, string> = {
   appui: 'アプリUIモック（アプリの画面イメージ）',
   slides: 'プレゼンスライド（インタラクティブなスライドデモ）',
   pitch: 'ピッチデッキ（投資家・クライアント向け）',
-  auto: 'AIに任せる（企画書の内容から最適なタイプを判断）',
+  svg: 'SVGデザイン（ロゴ・バナー・アイコンなどをSVGで生成）',
+  auto: 'AIに任せる（内容から最適なタイプを判断）',
 };
 
 function buildSystem(strategyText: string, demoType: string): string {
   const typeName = DEMO_TYPES[demoType] ?? DEMO_TYPES.auto;
 
   return `あなたはKokoro OSの「World」エンジンです。
-以下の企画書を読んで、動作するHTMLデモページを生成してください。
+以下の入力を読んで、動作するHTMLデモページを生成してください。
 
-【企画書】
+【入力】
 ${strategyText}
 
 【デモタイプ】
@@ -23,11 +24,11 @@ ${typeName}
 【指示】
 ・完全に動作するシングルファイルのHTMLを生成する
 ・外部ライブラリはCDN経由で読み込んでOK（Tailwind・Alpine.js・Chart.jsなど）
-・企画書の内容・世界観・トーンを忠実に反映する
+・入力の内容・世界観・トーンを忠実に反映する
 ・実際に動くボタン・アニメーション・インタラクションを入れる
 ・モバイル対応（レスポンシブ）にする
 ・日本語対応（Noto Sans JPをGoogle Fontsから読み込む）
-・企画書にない内容を勝手に追加しない
+・入力にない内容を勝手に追加しない
 ・コードブロックやmarkdownは使わない。HTMLのみを返す
 ・<!DOCTYPE html>から始まる完全なHTMLドキュメントを返す
 
@@ -55,15 +56,23 @@ ${typeName}
 ・問題・解決策・市場・チーム・数値・CTA の構成
 ・グラフ・図表を含む（Chart.jsなど使用可）
 
+SVGデザインの場合：
+・ロゴ・バナー・アイコン・イラストなどをSVGで生成する
+・HTMLファイルの中にインラインSVGを埋め込む
+・複数のバリエーション（サイズ・カラー違いなど）を並べて表示
+・SVGはクリーンでモダンなデザインにする
+・背景にグリッドを敷いて、デザインツールのような見た目にする
+
 HTMLのみを返してください。説明文やコードブロックの囲みは不要です。`;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { strategyText, demoType } = await req.json();
+    const { strategyText, directText, demoType } = await req.json();
+    const inputText = strategyText || directText;
 
-    if (!strategyText) {
-      return NextResponse.json({ error: '企画書データがありません' }, { status: 400 });
+    if (!inputText) {
+      return NextResponse.json({ error: '入力データがありません' }, { status: 400 });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -71,7 +80,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'APIキーが設定されていません' }, { status: 500 });
     }
 
-    const system = buildSystem(strategyText, demoType ?? 'auto');
+    const system = buildSystem(inputText, demoType ?? 'auto');
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -84,7 +93,7 @@ export async function POST(req: NextRequest) {
         model: 'claude-sonnet-4-20250514',
         max_tokens: 8000,
         system,
-        messages: [{ role: 'user', content: '企画書をもとにデモページを生成してください。HTMLのみを返してください。' }],
+        messages: [{ role: 'user', content: '入力をもとにデモページを生成してください。HTMLのみを返してください。' }],
       }),
     });
 

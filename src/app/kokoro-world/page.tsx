@@ -6,11 +6,14 @@ import { loadWorldInput, clearWorldInput, type WorldInput } from '@/lib/worldInp
 import { saveToNote } from '@/lib/saveToNote';
 import PersonaLoading from '@/components/PersonaLoading';
 
+type InputMode = 'strategy' | 'direct';
+
 const DEMO_TYPES = [
   { key: 'landing', label: 'ランディングページ', emoji: '🌐' },
   { key: 'appui',   label: 'アプリUIモック',     emoji: '📱' },
   { key: 'slides',  label: 'プレゼンスライド',   emoji: '🎞️' },
   { key: 'pitch',   label: 'ピッチデッキ',       emoji: '📈' },
+  { key: 'svg',     label: 'SVGデザイン',        emoji: '✏️' },
   { key: 'auto',    label: 'AIに任せる',         emoji: '✨' },
 ] as const;
 
@@ -21,7 +24,9 @@ export default function KokoroWorldPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
   const accentColor = '#10b981';
 
-  const [input, setInput] = useState<WorldInput | null>(null);
+  const [inputMode, setInputMode] = useState<InputMode>('strategy');
+  const [strategyInput, setStrategyInput] = useState<WorldInput | null>(null);
+  const [directText, setDirectText] = useState('');
   const [demoType, setDemoType] = useState<DemoTypeKey>('auto');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -33,14 +38,18 @@ export default function KokoroWorldPage() {
   const MAX_RETRIES = 5;
 
   useEffect(() => {
-    setInput(loadWorldInput());
+    const loaded = loadWorldInput();
+    setStrategyInput(loaded);
+    if (!loaded) setInputMode('direct');
     return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); };
   }, []);
 
-  const canSubmit = !!input && !isLoading;
+  const canSubmit = inputMode === 'strategy'
+    ? !!strategyInput && !isLoading
+    : directText.trim().length > 0 && !isLoading;
 
   const handleGenerate = useCallback(async (retryCount = 0) => {
-    if (!input) return;
+    if (!canSubmit) return;
     setIsLoading(true);
     setError('');
     setRetryMsg('');
@@ -50,13 +59,14 @@ export default function KokoroWorldPage() {
     }
 
     try {
+      const body = inputMode === 'strategy'
+        ? { strategyText: strategyInput!.strategyText, demoType }
+        : { directText: directText.trim(), demoType };
+
       const res = await fetch('/api/kokoro-world', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          strategyText: input.strategyText,
-          demoType,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
 
@@ -80,7 +90,7 @@ export default function KokoroWorldPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, demoType]);
+  }, [canSubmit, inputMode, strategyInput, directText, demoType]);
 
   // iframe に HTML を書き込む
   useEffect(() => {
@@ -114,8 +124,11 @@ export default function KokoroWorldPage() {
 
   const handleReset = () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    clearWorldInput();
-    setInput(null);
+    if (inputMode === 'strategy') {
+      clearWorldInput();
+      setStrategyInput(null);
+    }
+    setDirectText('');
     setGeneratedHtml('');
     setError('');
     setRetryMsg('');
@@ -126,6 +139,11 @@ export default function KokoroWorldPage() {
     const d = new Date(iso);
     return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
+
+  const INPUT_MODES: { key: InputMode; label: string }[] = [
+    { key: 'strategy', label: 'Strategy から' },
+    { key: 'direct',   label: '直接入力' },
+  ];
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151' }}>
@@ -149,56 +167,105 @@ export default function KokoroWorldPage() {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 28px 100px' }}>
 
-        {/* インプットステータス */}
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 12 }}>
-            // INPUT STATUS
-          </div>
-          {input ? (
-            <div style={{
-              padding: '16px 20px', border: `1px solid ${accentColor}`,
-              borderRadius: 6, background: 'rgba(16,185,129,0.04)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 16 }}>⚡</span>
-                <span style={{ ...mono, fontSize: 10, fontWeight: 600, color: '#111827' }}>
-                  ✓ Strategy から読み込み済み
-                </span>
-                <span style={{ ...mono, fontSize: 8, color: '#9ca3af', marginLeft: 'auto' }}>
-                  {formatDate(input.savedAt)}
-                </span>
-              </div>
-              <div style={{
-                fontSize: 11, color: '#6b7280', lineHeight: 1.6,
-                overflow: 'hidden', textOverflow: 'ellipsis',
-                display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const,
-              }}>
-                {input.strategyText.slice(0, 200)}
-              </div>
-            </div>
-          ) : (
-            <div style={{
-              padding: '20px', border: '1px solid #e5e7eb',
-              borderRadius: 6, background: '#f9fafb', textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 10 }}>
-                ✗ Strategy のデータがありません
-              </div>
-              <button onClick={() => router.push('/kokoro-strategy')}
+        {/* 入力モード切替タブ */}
+        {!generatedHtml && (
+          <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
+            {INPUT_MODES.map(m => (
+              <button
+                key={m.key}
+                onClick={() => { setInputMode(m.key); setError(''); }}
                 style={{
-                  ...mono, fontSize: 9, letterSpacing: '.1em',
-                  color: '#f59e0b', background: 'transparent',
-                  border: '1px solid rgba(245,158,11,0.4)',
-                  borderRadius: 4, padding: '6px 16px', cursor: 'pointer',
-                }}>
-                Strategy へ →
+                  ...mono, fontSize: 10, letterSpacing: '.1em',
+                  padding: '8px 20px', borderRadius: 2, cursor: 'pointer',
+                  border: `1px solid ${inputMode === m.key ? accentColor : '#d1d5db'}`,
+                  color: inputMode === m.key ? '#fff' : '#9ca3af',
+                  background: inputMode === m.key ? accentColor : 'transparent',
+                  fontWeight: inputMode === m.key ? 600 : 400,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {m.label}
               </button>
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* デモタイプ選択 */}
-        {input && !generatedHtml && (
+        {/* Strategy モード: インプットステータス */}
+        {inputMode === 'strategy' && !generatedHtml && (
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 12 }}>
+              // INPUT STATUS
+            </div>
+            {strategyInput ? (
+              <div style={{
+                padding: '16px 20px', border: `1px solid ${accentColor}`,
+                borderRadius: 6, background: 'rgba(16,185,129,0.04)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 16 }}>⚡</span>
+                  <span style={{ ...mono, fontSize: 10, fontWeight: 600, color: '#111827' }}>
+                    ✓ Strategy から読み込み済み
+                  </span>
+                  <span style={{ ...mono, fontSize: 8, color: '#9ca3af', marginLeft: 'auto' }}>
+                    {formatDate(strategyInput.savedAt)}
+                  </span>
+                </div>
+                <div style={{
+                  fontSize: 11, color: '#6b7280', lineHeight: 1.6,
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const,
+                }}>
+                  {strategyInput.strategyText.slice(0, 200)}
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                padding: '20px', border: '1px solid #e5e7eb',
+                borderRadius: 6, background: '#f9fafb', textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 10 }}>
+                  ✗ Strategy のデータがありません
+                </div>
+                <button onClick={() => router.push('/kokoro-strategy')}
+                  style={{
+                    ...mono, fontSize: 9, letterSpacing: '.1em',
+                    color: '#f59e0b', background: 'transparent',
+                    border: '1px solid rgba(245,158,11,0.4)',
+                    borderRadius: 4, padding: '6px 16px', cursor: 'pointer',
+                  }}>
+                  Strategy へ →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 直接入力モード: テキストエリア */}
+        {inputMode === 'direct' && !generatedHtml && (
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 10 }}>
+              // DIRECT INPUT
+            </div>
+            <textarea
+              value={directText}
+              onChange={e => setDirectText(e.target.value)}
+              placeholder={"作りたいページの内容を自由に書いてください\n例：猫カフェの紹介ランディングページ。店名は「にゃんハウス」、キャッチコピーは「猫と過ごす、やさしい午後」\n例：フィットネスアプリのUIモック。ダッシュボード・ワークアウト記録・カレンダー画面\n例：「Kokoro OS」のロゴをSVGで3パターン作って"}
+              style={{
+                width: '100%', minHeight: 140, background: '#f8f9fa',
+                border: '1px solid #d1d5db', borderLeft: `2px solid #d1d5db`,
+                padding: 16, fontSize: 14, color: '#111827',
+                resize: 'vertical', outline: 'none', lineHeight: 1.8,
+                fontFamily: "'Noto Serif JP', serif",
+                boxSizing: 'border-box', borderRadius: '0 4px 4px 0',
+              }}
+              onFocus={e => e.currentTarget.style.borderLeftColor = accentColor}
+              onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
+            />
+          </div>
+        )}
+
+        {/* デモタイプ選択 + Yoroshiku */}
+        {!generatedHtml && (inputMode === 'direct' || (inputMode === 'strategy' && strategyInput)) && (
           <>
             <div style={{ marginBottom: 20 }}>
               <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 10 }}>
@@ -223,7 +290,6 @@ export default function KokoroWorldPage() {
               </div>
             </div>
 
-            {/* Yoroshiku ボタン */}
             <button
               onClick={() => handleGenerate()}
               disabled={!canSubmit}
@@ -312,7 +378,7 @@ export default function KokoroWorldPage() {
               </button>
               <button
                 onClick={handleReset}
-                title="インプットをクリアして最初から"
+                title="リセットして最初から"
                 style={{
                   background: 'transparent',
                   border: '1px solid #d1d5db',
