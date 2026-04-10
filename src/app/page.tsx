@@ -177,16 +177,17 @@ export default function Home() {
       {/* Hero */}
       <section className="px-8 pt-16 pb-12 text-center">
         <h1
-          className="text-2xl font-bold tracking-tight mb-3"
+          className="text-xl font-bold tracking-tight mb-3"
           style={{
             color: "#1a1a1a",
             fontFamily: "var(--font-noto-serif-jp), serif",
+            lineHeight: 1.6,
           }}
         >
-          心と生活のためのAI OS
+          話しかけるだけで、思考が動き出す。
         </h1>
-        <p className="text-sm" style={{ color: "#6b7280" }}>
-          好みではなく、変化を学習する。
+        <p className="text-xs leading-relaxed" style={{ color: "#6b7280" }}>
+          Kokoro OSは、あなたの日常・創作・思考を静かに支えるAI OSです。
         </p>
       </section>
 

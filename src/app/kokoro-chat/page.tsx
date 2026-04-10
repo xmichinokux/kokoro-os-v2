@@ -289,31 +289,33 @@ export default function KokoroChat() {
 
   /* ── ヘルプ機能：アプリ紹介 ── */
   const APP_INTRODUCTIONS: { name: string; emoji: string; description: string }[] = [
-    { name: 'Zen', emoji: '🧘', description: '深掘り相談。複数の人格が対話しながら、あなたの本音に迫る。' },
-    { name: 'Recipe', emoji: '📋', description: '今週のアクションを具体的に提案。行動レシピとして保存できる。' },
-    { name: 'Note', emoji: '📝', description: '日記を書くと、AIが状態を読み解いてフィードバックする。' },
-    { name: 'Insight', emoji: '🔭', description: '好きな作品のレビューから、あなたへの影響を逆算する。' },
-    { name: 'Plan', emoji: '🗂️', description: 'やりたいことをタスクに分解。優先度と順番を整理する。' },
-    { name: 'Writer', emoji: '✍️', description: '文章をAIと一緒に編集。4人格が協力してリライトする。' },
-    { name: 'Fashion', emoji: '👔', description: '服の写真を撮ると、コーデのアドバイスをもらえる。' },
-    { name: 'Animal', emoji: '🐾', description: 'ペットの写真からAIが性格や気持ちを読み取る。' },
-    { name: 'Couple', emoji: '💑', description: 'パートナーとの関係を整理。対話のヒントを提案する。' },
-    { name: 'Buddy', emoji: '🤝', description: '友人関係の悩みを一緒に考える。距離感の調整をサポート。' },
-    { name: 'Philo', emoji: '🏛️', description: '哲学的な問いを投げかけ、思考を深める対話をする。' },
-    { name: 'Board', emoji: '📌', description: 'アイデアや気づきをボードに貼って整理する。' },
-    { name: 'Kami', emoji: '⛩️', description: 'おみくじ風の助言。直感的なメッセージを受け取る。' },
-    { name: 'Ponchi', emoji: '🎨', description: '4コマ漫画風にストーリーを可視化する。' },
-    { name: 'Browser', emoji: '🌐', description: 'ゲーセンノート風の掲示板。匿名で気持ちを書き込む。' },
-    { name: 'Wishlist', emoji: '⭐', description: 'やりたいこと・欲しいものリストを管理する。' },
+    { name: 'Talk', emoji: '💬', description: '気持ちや考えを話しかけるだけで、AIが応答します' },
+    { name: 'Zen', emoji: '🧘', description: '会話を深掘りして思考を整理します' },
+    { name: 'Note', emoji: '📝', description: '日記・メモ・記録を残せます' },
+    { name: 'Fashion', emoji: '👗', description: 'コーデを処方します' },
+    { name: 'Recipe', emoji: '🍳', description: '今週の献立を生成します' },
+    { name: 'Insight', emoji: '🔍', description: '作品のインパクトを分析します' },
+    { name: 'Writer', emoji: '✍️', description: '文章をモダンにレイアウトします' },
+    { name: 'Plan', emoji: '📋', description: '目標をタスクに分解します' },
+    { name: 'Browser', emoji: '🌐', description: '保存したNoteをタイムラインで見られます' },
+    { name: 'Couple', emoji: '❤️', description: 'パートナーへの相談・提案をします' },
+    { name: 'Buddy', emoji: '🎧', description: 'アイデアを一緒に広げます' },
+    { name: 'Philo', emoji: '💭', description: '哲学的な問いを探究します' },
+    { name: 'Board', emoji: '📊', description: '会議の進行を整理します' },
+    { name: 'Kami', emoji: '📄', description: '表やデータを整理します' },
+    { name: 'Ponchi', emoji: '🎨', description: 'コンセプトをスライド構成に変換します' },
+    { name: 'Animal', emoji: '🐾', description: '動物の気持ちを読み取ります' },
+    { name: 'Wishlist', emoji: '🌟', description: '欲しいものや行きたい場所を記録します' },
   ];
 
   const detectHelpIntent = (text: string): boolean => {
     const lower = text.toLowerCase();
     const helpPatterns = [
-      'kokoro os', 'ココロos', 'こころos',
+      'kokoro os', 'ココロos', 'こころos', 'kokoroos',
       '何ができる', 'なにができる', 'できること',
       'アプリ一覧', 'アプリを教え', '機能一覧', '機能を教え',
       'どんなアプリ', 'どんな機能', '使い方',
+      'kokoro osって', 'これって何', 'このアプリ', 'このosは',
     ];
     return helpPatterns.some(p => lower.includes(p.toLowerCase()));
   };
@@ -425,6 +427,23 @@ export default function KokoroChat() {
     setTurnCount(prev => prev + 1);
 
     try {
+      // ヘルプ検出：Kokoro OS についての質問は専用返答
+      if (detectHelpIntent(text)) {
+        const apps = getRandomApps(3);
+        const helpReply = 'Kokoro OSは、あなたの日常・創作・思考を静かに支えるAI OSです。\nテキストを入れてYoroshikuボタンを押すだけで使えます。\n\nいくつかのアプリを紹介しますね。';
+        const aiMsg: Message = {
+          role: 'ai',
+          content: helpReply,
+          talkPersona: 'gnome' as Persona,
+          talkResponse: helpReply,
+          helpApps: apps,
+        };
+        setMessages(prev => [...prev, aiMsg]);
+        setIsLoading(false);
+        setTimeout(() => textareaRef.current?.focus(), 100);
+        return;
+      }
+
       // Stay mode の場合
       if (stayState.active) {
         const res = await fetch('/api/chat-stay', {
@@ -554,9 +573,6 @@ export default function KokoroChat() {
         routingHistoryLong,
       };
 
-      // ヘルプ検出
-      const helpApps = detectHelpIntent(text) ? getRandomApps(3) : undefined;
-
       // 本音ログ保存
       if (data.honneLog) {
         const log = createHonneLog({
@@ -574,7 +590,6 @@ export default function KokoroChat() {
         talkPersona: (data.persona || 'gnome') as Persona,
         talkResponse: replyText,
         ...metaFields,
-        helpApps,
         imagePreview: savedPreview || undefined,
         imageBase64: savedImage || undefined,
         imageMediaType: savedMediaType || undefined,
