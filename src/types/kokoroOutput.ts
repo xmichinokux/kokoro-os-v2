@@ -1,4 +1,4 @@
-export type Persona = "gnome" | "shin" | "canon" | "dig";
+export type Persona = "gnome" | "shin" | "canon" | "dig" | "emi";
 export type OutputMode = "lite" | "core" | "deep";
 
 export type PersonaBlock = {

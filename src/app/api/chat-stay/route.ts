@@ -19,6 +19,10 @@ const PERSONA_DEFS: Record<Persona, { name: string; description: string }> = {
     name: 'ディグ',
     description: '逸脱・発見・可能性。率直で刺激的。制約を壊す。常識を疑い、新しい視点を提示する。',
   },
+  emi: {
+    name: 'エミ',
+    description: '共感・直感・波。感情の深い部分に寄り添う。言葉にならないものを言葉にする。矛盾や揺れをそのまま受け止める。',
+  },
 };
 
 /* ── Anthropic呼び出し ── */

@@ -13,22 +13,22 @@ type UserState = {
 
 // 問いの種類ごとの初期重み
 const BASE_WEIGHTS: Record<IntentType, PersonaWeights> = {
-  work:         { gnome: 0.6, shin: 1.0, canon: 0.4, dig: 0.5 },
-  relationship: { gnome: 0.8, shin: 0.6, canon: 1.0, dig: 0.4 },
-  creative:     { gnome: 0.4, shin: 0.6, canon: 0.9, dig: 1.0 },
-  mental:       { gnome: 1.0, shin: 0.4, canon: 0.7, dig: 0.2 },
-  decision:     { gnome: 0.8, shin: 0.9, canon: 0.7, dig: 0.6 },
-  review:       { gnome: 0.4, shin: 0.8, canon: 0.9, dig: 0.7 },
+  work:         { gnome: 0.6, shin: 1.0, canon: 0.4, dig: 0.5, emi: 0.3 },
+  relationship: { gnome: 0.8, shin: 0.6, canon: 1.0, dig: 0.4, emi: 0.9 },
+  creative:     { gnome: 0.4, shin: 0.6, canon: 0.9, dig: 1.0, emi: 0.5 },
+  mental:       { gnome: 1.0, shin: 0.4, canon: 0.7, dig: 0.2, emi: 0.8 },
+  decision:     { gnome: 0.8, shin: 0.9, canon: 0.7, dig: 0.6, emi: 0.5 },
+  review:       { gnome: 0.4, shin: 0.8, canon: 0.9, dig: 0.7, emi: 0.4 },
 };
 
 // 状態補正
 function getStateAdjustment(state: UserState): PersonaWeights {
-  const adj = { gnome: 0, shin: 0, canon: 0, dig: 0 };
+  const adj = { gnome: 0, shin: 0, canon: 0, dig: 0, emi: 0 };
   if (state.anxious || state.needsComfort) {
-    adj.gnome += 0.25; adj.canon += 0.1; adj.dig -= 0.15;
+    adj.gnome += 0.25; adj.canon += 0.1; adj.dig -= 0.15; adj.emi += 0.2;
   }
   if (state.tired) {
-    adj.gnome += 0.15; adj.shin -= 0.05; adj.dig -= 0.1;
+    adj.gnome += 0.15; adj.shin -= 0.05; adj.dig -= 0.1; adj.emi += 0.1;
   }
   if (state.exploratory) {
     adj.dig += 0.25; adj.canon += 0.1; adj.gnome -= 0.1;
@@ -51,13 +51,15 @@ function mergeAndNormalize(
     shin:  Math.min(MAX, Math.max(MIN, base.shin  + stateAdj.shin)),
     canon: Math.min(MAX, Math.max(MIN, base.canon + stateAdj.canon)),
     dig:   Math.min(MAX, Math.max(MIN, base.dig   + stateAdj.dig)),
+    emi:   Math.min(MAX, Math.max(MIN, base.emi   + stateAdj.emi)),
   };
-  const total = raw.gnome + raw.shin + raw.canon + raw.dig;
+  const total = raw.gnome + raw.shin + raw.canon + raw.dig + raw.emi;
   return {
     gnome: raw.gnome / total,
     shin:  raw.shin  / total,
     canon: raw.canon / total,
     dig:   raw.dig   / total,
+    emi:   raw.emi   / total,
   };
 }
 

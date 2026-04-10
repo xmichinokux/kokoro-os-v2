@@ -5,6 +5,7 @@ export const PERSONA_LABELS: Record<Persona, string> = {
   shin: "シン",
   canon: "カノン",
   dig: "ディグ",
+  emi: "エミ",
 };
 
 export const PERSONA_COLORS: Record<Persona, string> = {
@@ -12,6 +13,7 @@ export const PERSONA_COLORS: Record<Persona, string> = {
   shin: "#2563eb",
   canon: "#7c3aed",
   dig: "#059669",
+  emi: "#db2777",
 };
 
 export const PERSONA_EMOJIS: Record<Persona, string> = {
@@ -19,4 +21,5 @@ export const PERSONA_EMOJIS: Record<Persona, string> = {
   shin: "🔍",
   canon: "🌙",
   dig: "🎧",
+  emi: "🌊",
 };

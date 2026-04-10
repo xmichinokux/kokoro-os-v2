@@ -11,6 +11,7 @@ const STAY_LABELS: Record<Persona, string> = {
   shin: "シンに整理してもらう",
   canon: "カノンとこの気持ちを深掘る",
   dig: "ディグの視点で崩してみる",
+  emi: "エミに気持ちを聴いてもらう",
 };
 
 function inferPersonaFromNeeds(needs: string[]): Persona | null {

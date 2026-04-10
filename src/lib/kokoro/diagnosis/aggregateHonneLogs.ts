@@ -13,7 +13,7 @@ export function aggregateHonneLogs(logs: HonneLog[]): DiagnosisAggregate {
   const conflictCounts: CountMap = {};
   const riskCounts: CountMap = {};
   const emotionCounts: CountMap = {};
-  const personaCounts: PersonaCountMap = { gnome: 0, shin: 0, canon: 0, dig: 0 };
+  const personaCounts: PersonaCountMap = { gnome: 0, shin: 0, canon: 0, dig: 0, emi: 0 };
   const deepFeelingSamples: string[] = [];
   const subFeelingSamples: string[] = [];
 

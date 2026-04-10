@@ -4,19 +4,13 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@/lib/profile';
 import TalkResponse from '@/components/kokoro/TalkResponse';
-import type { Persona, PersonaStayState, IdentityState, ResponseStrategy } from '@/types/kokoroOutput';
+import type { Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
 import { appendHonneLog, clearHonneLogs, getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
-import { shouldTriggerEmi, buildEmiResponse, buildZenPromptFromEmi, type EmiState } from '@/lib/kokoro/emi';
+import { buildZenPromptFromEmi } from '@/lib/kokoro/emi';
 import { inferSessionState, calcEffectiveProfileWeight } from '@/lib/kokoro/sessionState';
-import { createNoteFromEmi } from '@/lib/kokoro/createNoteFromTalk';
-import { saveNote, createNoteId } from '@/lib/kokoro/noteStorage';
 import { consumeNoteForTalk, buildTalkPromptFromNote } from '@/lib/kokoro/noteLinkage';
-import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
-import type { KokoroNote } from '@/types/note';
-import type { KokoroNoteDraft } from '@/types/noteMeta';
-import type { InsightFlowState } from '@/lib/kokoro/shouldShowSaveToNoteButton';
 import { createRecipeInputFromTalk, setRecipeInput } from '@/lib/kokoro/recipeInput';
 import { saveToWishlist, type WishCategory, type WishIntensity } from '@/lib/wishlist';
 import PersonaLoading from '@/components/PersonaLoading';
@@ -41,18 +35,9 @@ type Message = {
   stayPersona?: Persona;
   stayWhispers?: StayWhisper[];
   showZen?: boolean;
-  isEmi?: boolean;        // エミの発言メッセージ
-  emiLine?: string;       // エミの発言内容
-  emiConflict?: string;
-  emiDeepFeeling?: string;
-  emiShowZenCta?: boolean; // ターン2後のZen CTA表示
-  identityState?: IdentityState;
-  gapIntensity?: number;
-  responseStrategy?: ResponseStrategy;
   topic?: string;
-  insightType?: 'contradiction' | 'emotion' | 'pattern' | 'desire' | 'avoidance';
-  insightFlowState?: InsightFlowState;
   userTextForNote?: string;
+  helpApps?: { name: string; emoji: string; description: string }[];
   showRecipe?: boolean;
   showInsight?: boolean;
   // meta 由来の追加バナー（spec: for_claude_code_routing.md）
@@ -117,11 +102,8 @@ export default function KokoroChat() {
     turnCount: 0,
   });
   const [whisperOpen, setWhisperOpen] = useState<Record<number, boolean>>({});
-  const [showDiagnosisBanner, setShowDiagnosisBanner] = useState(false);
-  const [emiState, setEmiState] = useState<EmiState>({ active: false, turnCount: 0, triggerCount: 0 });
   const [turnCount, setTurnCount] = useState(0);
-  const [linkedNote, setLinkedNote] = useState<Partial<KokoroNote> | null>(null);
-  const [savedNoteIds, setSavedNoteIds] = useState<Set<number>>(new Set());
+  const [linkedNote, setLinkedNote] = useState<{ id?: string; title?: string; body?: string; topic?: string; insightType?: string; emotionTone?: string } | null>(null);
   const [savedWishIds, setSavedWishIds] = useState<Set<number>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
 
@@ -173,14 +155,6 @@ export default function KokoroChat() {
       localStorage.setItem('talkMessages', JSON.stringify(messages));
     }
   }, [messages]);
-
-  // ページ読み込み時に診断バナー表示チェック
-  useEffect(() => {
-    const logs = getHonneLogs();
-    if (logs.length >= 3) {
-      setShowDiagnosisBanner(true);
-    }
-  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -284,61 +258,77 @@ export default function KokoroChat() {
     router.push('/kokoro-animal');
   };
 
-  const FASHION_WORDS = ['今日の服','コーデ','似合','服どう','これ見て','ファッション','着てる','コーディネート','どうかな','どうだろう','どう思う','見て','これ'];
-  const ANIMAL_TALK_WORDS = ['なんて言ってる','何て言ってる','なんて言ってるのかな','何て言ってるのかな','声を聞く','声を聞いて','鳴い','猫','犬','ねこ','いぬ','ペット','動物'];
+  /* ── 明示的アプリ名検出（パターンA）── */
+  const EXPLICIT_APP_NAMES: Record<string, string[]> = {
+    zen:        ['zen', 'ゼン'],
+    recipe:     ['recipe', 'レシピ'],
+    note:       ['note', 'ノート', 'メモ'],
+    insight:    ['insight', 'インサイト'],
+    plan:       ['plan', 'プラン'],
+    writer:     ['writer', 'ライター'],
+    fashion:    ['fashion', 'ファッション'],
+    animal:     ['animal', 'アニマル'],
+    couple:     ['couple', 'カップル'],
+    buddy:      ['buddy', 'バディ'],
+    philosophy: ['philosophy', 'フィロソフィ'],
+    board:      ['board', 'ボード'],
+    kami:       ['kami', 'カミ'],
+    ponchi:     ['ponchi', 'ポンチ'],
+    browser:    ['browser', 'ブラウザ'],
+    wishlist:   ['wishlist', 'ウィッシュ'],
+  };
 
-  const NOTE_WORDS = [
-    '書きたい', '書いておきたい', 'メモしたい', '残したい', '記録したい',
-    'まとめたい', '日記', 'ノート', '書き留め', '忘れたくない',
-    'メモ', 'note', '書いておく', '書き残したい',
+  const detectExplicitApps = (text: string): Set<string> => {
+    const lower = text.toLowerCase();
+    const result = new Set<string>();
+    for (const [app, names] of Object.entries(EXPLICIT_APP_NAMES)) {
+      if (names.some(n => lower.includes(n.toLowerCase()))) result.add(app);
+    }
+    return result;
+  };
+
+  /* ── ヘルプ機能：アプリ紹介 ── */
+  const APP_INTRODUCTIONS: { name: string; emoji: string; description: string }[] = [
+    { name: 'Zen', emoji: '🧘', description: '深掘り相談。複数の人格が対話しながら、あなたの本音に迫る。' },
+    { name: 'Recipe', emoji: '📋', description: '今週のアクションを具体的に提案。行動レシピとして保存できる。' },
+    { name: 'Note', emoji: '📝', description: '日記を書くと、AIが状態を読み解いてフィードバックする。' },
+    { name: 'Insight', emoji: '🔭', description: '好きな作品のレビューから、あなたへの影響を逆算する。' },
+    { name: 'Plan', emoji: '🗂️', description: 'やりたいことをタスクに分解。優先度と順番を整理する。' },
+    { name: 'Writer', emoji: '✍️', description: '文章をAIと一緒に編集。4人格が協力してリライトする。' },
+    { name: 'Fashion', emoji: '👔', description: '服の写真を撮ると、コーデのアドバイスをもらえる。' },
+    { name: 'Animal', emoji: '🐾', description: 'ペットの写真からAIが性格や気持ちを読み取る。' },
+    { name: 'Couple', emoji: '💑', description: 'パートナーとの関係を整理。対話のヒントを提案する。' },
+    { name: 'Buddy', emoji: '🤝', description: '友人関係の悩みを一緒に考える。距離感の調整をサポート。' },
+    { name: 'Philosophy', emoji: '🏛️', description: '哲学的な問いを投げかけ、思考を深める対話をする。' },
+    { name: 'Board', emoji: '📌', description: 'アイデアや気づきをボードに貼って整理する。' },
+    { name: 'Kami', emoji: '⛩️', description: 'おみくじ風の助言。直感的なメッセージを受け取る。' },
+    { name: 'Ponchi', emoji: '🎨', description: '4コマ漫画風にストーリーを可視化する。' },
+    { name: 'Browser', emoji: '🌐', description: 'ゲーセンノート風の掲示板。匿名で気持ちを書き込む。' },
+    { name: 'Wishlist', emoji: '⭐', description: 'やりたいこと・欲しいものリストを管理する。' },
   ];
 
-  const RECIPE_WORDS = [
-    '献立', '料理', '食事', 'レシピ', '生活', '今週',
-    '停滞', '整えたい', '処方箋', '変えたい', 'しんどい',
-  ];
+  const detectHelpIntent = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    const helpPatterns = [
+      'kokoro os', 'ココロos', 'こころos',
+      '何ができる', 'なにができる', 'できること',
+      'アプリ一覧', 'アプリを教え', '機能一覧', '機能を教え',
+      'どんなアプリ', 'どんな機能', '使い方',
+    ];
+    return helpPatterns.some(p => lower.includes(p.toLowerCase()));
+  };
 
-  const isNoteIntent = (text: string): boolean =>
-    NOTE_WORDS.some(w => text.includes(w));
-
-  const INSIGHT_WORDS = [
-    'レビュー', '感想', '評価', '分析', 'インパクト',
-    '作品', 'アルバム', '曲', '音楽', '聴いた',
-    '聴いて', '聴かせて', 'どう思う', 'どんな感じ',
-    '影響', '衝撃', '好き嫌い', '批評',
-  ];
-
-  const isRecipeIntent = (text: string): boolean =>
-    RECIPE_WORDS.some(w => text.includes(w));
-
-  const isInsightIntent = (text: string): boolean =>
-    INSIGHT_WORDS.some(w => text.includes(w));
-
-  const isFashionIntent = (text: string): boolean =>
-    FASHION_WORDS.some(w => text.includes(w));
-
-  const isAnimalTalkIntent = (text: string, hasImage: boolean): boolean =>
-    ANIMAL_TALK_WORDS.some(w => text.includes(w)) || (hasImage && !isFashionIntent(text));
-
-  const canShowFashionButton = (): boolean => {
-    const profile = getProfile();
-    const explicit = profile.explicit;
-    const hasAnyProfile =
-      !!explicit.age_range ||
-      (explicit.style_keywords != null && explicit.style_keywords.length > 0) ||
-      (explicit.favorite_things != null && explicit.favorite_things.length > 0);
-    return hasAnyProfile;
+  const getRandomApps = (count: number) => {
+    const shuffled = [...APP_INTRODUCTIONS].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
   };
 
   const openFashion = () => {
     const profile = getProfile();
-    const hasProfile = !!profile.explicit.age_range ||
-      (profile.explicit.style_keywords != null && profile.explicit.style_keywords.length > 0) ||
-      (profile.explicit.favorite_things != null && profile.explicit.favorite_things.length > 0);
     const lastImageMsg = [...messages].reverse().find(m => m.imageBase64);
     sessionStorage.setItem('fashionIntent', JSON.stringify({
       fromTalk: true,
-      autoAnalyze: hasProfile || !!(lastImageMsg?.imageBase64),
+      autoAnalyze: true,
       profile,
       imageBase64: lastImageMsg?.imageBase64 ?? null,
       imageMediaType: lastImageMsg?.imageMediaType ?? null,
@@ -348,16 +338,13 @@ export default function KokoroChat() {
 
   const getProfileQuestion = (text: string): string | null => {
     const profile = getProfile();
-    const isFashion = isFashionIntent(text);
     if (!profile.explicit.age_range && canAskQuestion('age_range')) return 'age_range';
-    if (isFashion && !profile.explicit.style_keywords?.length && canAskQuestion('style_keywords')) return 'style_keywords';
     if (!profile.explicit.favorite_things?.length && canAskQuestion('favorite_things')) return 'favorite_things';
     return null;
   };
 
   const PROFILE_QUESTIONS: Record<string, string> = {
     age_range: '\n\n---\nざっくりでいいんだけど、年齢どのくらい？',
-    style_keywords: '\n\n---\n普段どういう方向の服が好き？3語くらいで教えて',
     favorite_things: '\n\n---\n好きなもの、思いつく範囲で3つ教えて',
   };
 
@@ -375,11 +362,6 @@ export default function KokoroChat() {
       for (const [key, val] of Object.entries(ageMap)) {
         if (text.includes(key)) { updateExplicit('age_range', val); saved = true; break; }
       }
-    }
-
-    if (lastContent.includes('方向の服が好き') || lastContent.includes('3語くらいで教えて')) {
-      const keywords = text.split(/[、,，\s]+/).filter(Boolean);
-      if (keywords.length > 0) { updateExplicit('style_keywords', keywords); saved = true; }
     }
 
     if (lastContent.includes('好きなもの') || lastContent.includes('3つ教えて')) {
@@ -401,42 +383,6 @@ export default function KokoroChat() {
   const DECISION_KEYWORDS = /決断|決め|重要|大事な選択|人生|覚悟/;
   const shouldSuggestReturn = (text: string, turnCount: number): boolean => {
     return turnCount >= 5 || DECISION_KEYWORDS.test(text);
-  };
-
-  const hasRecentFashionContext = (msgs: Message[]): boolean => {
-    return msgs.slice(-5).some(m => FASHION_WORDS.some(kw => m.content.includes(kw)));
-  };
-
-  const handleSaveNoteFromTalk = (
-    msgIndex: number,
-    response: string,
-    persona: string,
-  ) => {
-    if (savedNoteIds.has(msgIndex)) return;
-
-    const draft: KokoroNoteDraft = {
-      source: 'talk',
-      body: response,
-      linkedPersona: persona as KokoroNoteDraft['linkedPersona'],
-    };
-    const meta = generateAutoNoteMeta(draft);
-    const now = new Date().toISOString();
-
-    const note: KokoroNote = {
-      id: createNoteId(),
-      createdAt: now,
-      updatedAt: now,
-      source: 'talk',
-      title: meta.title,
-      body: response,
-      tags: meta.tags,
-      topic: meta.topic,
-      linkedPersona: persona,
-      pinned: false,
-    };
-
-    saveNote(note);
-    setSavedNoteIds(prev => new Set(prev).add(msgIndex));
   };
 
   const handleZenClick = (opts?: { conflict?: string; deepFeeling?: string }) => {
@@ -514,7 +460,6 @@ export default function KokoroChat() {
       }
 
       // Talk（1人格返答）
-      const fashionCheck = isFashionIntent(text);
 
       // session_state推定とprofileWeight計算
       const recentTexts = messages.filter(m => m.role === 'user').slice(-5).map(m => m.content);
@@ -526,14 +471,12 @@ export default function KokoroChat() {
       });
       const profile = getProfile();
 
-      // Note連携: linkedNoteがある場合はnoteContextとして送信
+      // Note連携
       const noteContext = linkedNote ? {
         noteId: linkedNote.id,
         title: linkedNote.title,
         body: linkedNote.body,
         topic: linkedNote.topic,
-        insightType: linkedNote.insightType,
-        emotionTone: linkedNote.emotionTone,
       } : undefined;
 
       const res = await fetch('/api/kokoro-chat', {
@@ -541,7 +484,7 @@ export default function KokoroChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: fashionCheck ? [] : apiHistory,
+          history: apiHistory,
           imageBase64: attachedImage || undefined,
           mediaType: attachedMediaType || undefined,
           profile,
@@ -552,20 +495,11 @@ export default function KokoroChat() {
         }),
       });
 
-      // 初回送信後にlinkedNoteをクリア
       if (linkedNote) setLinkedNote(null);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      // 自己認識ズレ検出結果
-      const identityState: IdentityState = data.identityState ?? 'NO_GAP';
-      const gapIntensity: number = data.gapIntensity ?? 0;
-      const responseStrategy: ResponseStrategy = data.responseStrategy ?? 'normal';
-
-      // meta（spec: for_claude_code_routing.md）— AIが返す各アプリへの誘導フラグ
-      const meta = (data.meta ?? {}) as Record<string, boolean | number | string | null>;
-
-      // 履歴スナップショット（バナークリック時に sessionStorage に渡す素材）
+      // 履歴スナップショット（バナークリック時に渡す素材）
       const allTurns = [...messages, userMsg];
       const fmtHistory = (n: number) =>
         allTurns.slice(-n).map(m => `${m.role === 'user' ? 'ユーザー' : 'AI'}: ${m.content}`).join('\n');
@@ -578,88 +512,50 @@ export default function KokoroChat() {
       const savedPreview = attachedPreview;
       clearAttachment();
 
-      // Intent検出
-      const fashionDetected = fashionCheck;
-      const hasImage = !!(savedImage && savedMediaType);
-      const animalDetected = isAnimalTalkIntent(text, hasImage);
-
       // プロフィール質問追加（最初の3ターンは質問しない）
       let replyText = data.response || '';
-      let askedProfileQuestion = false;
-      if (!animalDetected && turnCount >= 3) {
-        if (fashionDetected) {
-          const questionField = getProfileQuestion(text);
-          if (questionField) {
-            replyText += PROFILE_QUESTIONS[questionField];
-            markQuestionAsked(questionField);
-            askedProfileQuestion = true;
-          }
-        } else {
-          const questionField = getProfileQuestion(text);
-          if (questionField) {
-            replyText += PROFILE_QUESTIONS[questionField];
-            markQuestionAsked(questionField);
-          }
+      if (turnCount >= 3) {
+        const questionField = getProfileQuestion(text);
+        if (questionField) {
+          replyText += PROFILE_QUESTIONS[questionField];
+          markQuestionAsked(questionField);
         }
       }
 
-      // エミがアクティブまたは発動直後はFashion/Animalボタンを非表示
-      const emiBlocking = emiState.active || emiState.turnCount >= 1;
+      // パターンA：明示的にアプリ名を指定した場合のみボタン表示
+      const explicitApps = detectExplicitApps(text);
+      const hasImage = !!(savedImage && savedMediaType);
 
-      let showAnimalBtn = !!(savedImage && savedMediaType) && !emiBlocking;
-      let showFashionBtn = false;
-      // 既存のキーワード検出 OR meta フラグ（AI 判定）の両対応
-      const showNoteBtn = isNoteIntent(text) || meta.need_note === true;
-      const showRecipeBtn = isRecipeIntent(text) || meta.need_recipe === true;
-      const showInsightBtn = isInsightIntent(text) || meta.need_insight === true;
-
-      if (!emiBlocking) {
-        if (fashionDetected) {
-          showFashionBtn = !askedProfileQuestion;
-          if (hasImage) showAnimalBtn = false;
-        } else if (profileUpdated && hasRecentFashionContext(messages)) {
-          showFashionBtn = true;
-        } else if (meta.need_fashion === true) {
-          showFashionBtn = true;
-        }
-        if (meta.need_animal_talk === true && hasImage) showAnimalBtn = true;
-      }
-
-      // meta 由来の新規バナー（plan / writer / browser / couple / buddy /
-      //   philosophy / board / kami / ponchi / wishlist）— エミ中は抑制
-      const showPlanBtn       = !emiBlocking && meta.need_plan === true;
-      const showWriterBtn     = !emiBlocking && meta.need_writer === true;
-      const showBrowserBtn    = !emiBlocking && meta.need_browser === true;
-      const showCoupleBtn     = !emiBlocking && meta.need_couple === true;
-      const showBuddyBtn      = !emiBlocking && meta.need_buddy === true;
-      const showPhilosophyBtn = !emiBlocking && meta.need_philosophy === true;
-      const showBoardBtn      = !emiBlocking && meta.need_board === true;
-      const showKamiBtn       = !emiBlocking && meta.need_kami === true;
-      const showPonchiBtn     = !emiBlocking && meta.need_ponchi === true;
-
-      // wishlist は wishlist_item が伴っている時だけ表示
+      // wishlist は meta から wishlist_item が必要
+      const meta = (data.meta ?? {}) as Record<string, boolean | number | string | null>;
       const wishItem = (meta as { wishlist_item?: { text: string; category: WishCategory; intensity: WishIntensity } | null }).wishlist_item ?? null;
-      const showWishlistBtn = !emiBlocking && meta.need_wishlist === true && !!wishItem && !!wishItem.text;
 
-      // 3つの aiMsg 構築箇所で共通して使う meta 由来のフィールド
       const metaFields: Partial<Message> = {
-        showPlan:       showPlanBtn       || undefined,
-        showWriter:     showWriterBtn     || undefined,
-        showBrowser:    showBrowserBtn    || undefined,
-        showCouple:     showCoupleBtn     || undefined,
-        showBuddy:      showBuddyBtn      || undefined,
-        showPhilosophy: showPhilosophyBtn || undefined,
-        showBoard:      showBoardBtn      || undefined,
-        showKami:       showKamiBtn       || undefined,
-        showPonchi:     showPonchiBtn     || undefined,
-        showWishlist:   showWishlistBtn   || undefined,
-        wishlistText:     showWishlistBtn ? wishItem!.text : undefined,
-        wishlistCategory: showWishlistBtn ? wishItem!.category : undefined,
-        wishlistIntensity: showWishlistBtn ? wishItem!.intensity : undefined,
+        showAnimal:     (explicitApps.has('animal') && hasImage) || undefined,
+        showFashion:    explicitApps.has('fashion') || undefined,
+        showNote:       explicitApps.has('note') || undefined,
+        showRecipe:     explicitApps.has('recipe') || undefined,
+        showInsight:    explicitApps.has('insight') || undefined,
+        showPlan:       explicitApps.has('plan') || undefined,
+        showWriter:     explicitApps.has('writer') || undefined,
+        showBrowser:    explicitApps.has('browser') || undefined,
+        showCouple:     explicitApps.has('couple') || undefined,
+        showBuddy:      explicitApps.has('buddy') || undefined,
+        showPhilosophy: explicitApps.has('philosophy') || undefined,
+        showBoard:      explicitApps.has('board') || undefined,
+        showKami:       explicitApps.has('kami') || undefined,
+        showPonchi:     explicitApps.has('ponchi') || undefined,
+        showWishlist:   (explicitApps.has('wishlist') && !!wishItem?.text) || undefined,
+        wishlistText:     explicitApps.has('wishlist') && wishItem ? wishItem.text : undefined,
+        wishlistCategory: explicitApps.has('wishlist') && wishItem ? wishItem.category : undefined,
+        wishlistIntensity: explicitApps.has('wishlist') && wishItem ? wishItem.intensity : undefined,
         routingUserText,
         routingHistoryShort,
         routingHistoryLong,
       };
+
+      // ヘルプ検出
+      const helpApps = detectHelpIntent(text) ? getRandomApps(3) : undefined;
 
       // 本音ログ保存
       if (data.honneLog) {
@@ -671,184 +567,21 @@ export default function KokoroChat() {
         appendHonneLog(log);
       }
 
-      // 診断バナー表示チェック（APIレスポンス後）
-      {
-        const logs = getHonneLogs();
-        if (logs.length >= 3) {
-          setShowDiagnosisBanner(true);
-        }
-      }
-
-      // エミ2ターン半人格モード
-      const recentUserTexts = messages
-        .filter(m => m.role === 'user')
-        .slice(-3)
-        .map(m => m.content);
-
-      const currentConflict = data.honneLog?.conflictAxes?.[0];
-      const currentDeepFeeling = data.honneLog?.deepFeeling;
-
-      if (emiState.active) {
-        // エミがアクティブ中
-        const nextTurn = (emiState.turnCount + 1) as 1 | 2;
-
-        if (nextTurn === 1) {
-          // ターン1: 通常人格 + エミの一言
-          const { line: emiLine, detection } = buildEmiResponse(text, recentUserTexts, emiState, 1);
-
-          const aiMsg: Message = {
-            role: 'ai',
-            content: replyText,
-            talkPersona: (data.persona || 'gnome') as Persona,
-            talkResponse: replyText,
-            identityState,
-            gapIntensity,
-            responseStrategy,
-            showAnimal: showAnimalBtn || undefined,
-            showFashion: showFashionBtn || undefined,
-            showNote: showNoteBtn || undefined,
-            showRecipe: showRecipeBtn || undefined,
-            showInsight: showInsightBtn || undefined,
-            ...metaFields,
-            imagePreview: savedPreview || undefined,
-            imageBase64: savedImage || undefined,
-            imageMediaType: savedMediaType || undefined,
-            emiLine,
-            emiConflict: currentConflict,
-            emiDeepFeeling: currentDeepFeeling,
-            topic: data.honneLog?.topic,
-            userTextForNote: text,
-          };
-          setMessages(prev => [...prev, aiMsg]);
-          setEmiState(prev => ({
-            ...prev,
-            turnCount: 1,
-            lastInsightType: detection.type,
-            lastInsightLevel: detection.level,
-            lastEmiLine: emiLine,
-            sharpUsedAt: detection.level === 'sharp' ? new Date().toISOString() : prev.sharpUsedAt,
-          }));
-
-        } else {
-          // ターン2: エミのみ（通常人格なし）+ Zen CTA
-          const { line: emiLine, detection } = buildEmiResponse(text, recentUserTexts, emiState, 2);
-
-          const emiMsg: Message = {
-            role: 'ai',
-            content: emiLine,
-            isEmi: true,
-            emiLine,
-            emiConflict: currentConflict,
-            emiDeepFeeling: currentDeepFeeling,
-            emiShowZenCta: true,
-          };
-          setMessages(prev => [...prev, emiMsg]);
-          setEmiState(prev => ({
-            ...prev,
-            active: false,
-            turnCount: 0,
-            lastInsightType: detection.type,
-            lastInsightLevel: detection.level,
-            lastEmiLine: emiLine,
-            sharpUsedAt: detection.level === 'sharp' ? new Date().toISOString() : prev.sharpUsedAt,
-          }));
-        }
-
-      } else {
-        // エミ非アクティブ: 新規トリガー判定
-        const emiTriggered = shouldTriggerEmi({
-          text,
-          recentUserTexts,
-          conflictAxes: data.honneLog?.conflictAxes,
-          deepFeeling: currentDeepFeeling,
-        });
-
-        let emiActivated = false;
-        if (emiTriggered) {
-          const now = Date.now();
-          const lastTriggered = emiState.lastTriggeredAt
-            ? new Date(emiState.lastTriggeredAt).getTime()
-            : 0;
-          const cooldownOk = now - lastTriggered > 60000;
-          if (cooldownOk) {
-            emiActivated = true;
-          }
-        }
-
-        if (emiActivated) {
-          // ターン1発火: 通常人格 + エミの一言
-          const { line: emiLine, detection } = buildEmiResponse(text, recentUserTexts, emiState, 1);
-
-          const aiMsg: Message = {
-            role: 'ai',
-            content: replyText,
-            talkPersona: (data.persona || 'gnome') as Persona,
-            talkResponse: replyText,
-            identityState,
-            gapIntensity,
-            responseStrategy,
-            showAnimal: showAnimalBtn || undefined,
-            showFashion: showFashionBtn || undefined,
-            showNote: showNoteBtn || undefined,
-            showRecipe: showRecipeBtn || undefined,
-            showInsight: showInsightBtn || undefined,
-            ...metaFields,
-            imagePreview: savedPreview || undefined,
-            imageBase64: savedImage || undefined,
-            imageMediaType: savedMediaType || undefined,
-            emiLine,
-            emiConflict: currentConflict,
-            emiDeepFeeling: currentDeepFeeling,
-            topic: data.honneLog?.topic,
-            userTextForNote: text,
-          };
-          setMessages(prev => [...prev, aiMsg]);
-          setEmiState({
-            active: true,
-            turnCount: 1,
-            lastTriggeredAt: new Date().toISOString(),
-            triggerCount: emiState.triggerCount + 1,
-            lastInsightType: detection.type,
-            lastInsightLevel: detection.level,
-            lastEmiLine: emiLine,
-            sharpUsedAt: detection.level === 'sharp' ? new Date().toISOString() : emiState.sharpUsedAt,
-          });
-
-          // エミ発火 + medium/sharp の場合にnoteを自動保存
-          if (detection.level !== 'soft') {
-            const emiNote = createNoteFromEmi(
-              emiLine,
-              detection.type,
-              data.honneLog?.topic
-            );
-            saveNote(emiNote);
-          }
-
-        } else {
-          // 通常応答（エミなし）
-          const aiMsg: Message = {
-            role: 'ai',
-            content: replyText,
-            talkPersona: (data.persona || 'gnome') as Persona,
-            talkResponse: replyText,
-            identityState,
-            gapIntensity,
-            responseStrategy,
-            showAnimal: showAnimalBtn || undefined,
-            showFashion: showFashionBtn || undefined,
-            showNote: showNoteBtn || undefined,
-            showRecipe: showRecipeBtn || undefined,
-            showInsight: showInsightBtn || undefined,
-            ...metaFields,
-            imagePreview: savedPreview || undefined,
-            imageBase64: savedImage || undefined,
-            imageMediaType: savedMediaType || undefined,
-            topic: data.honneLog?.topic,
-            userTextForNote: text,
-          };
-          setMessages(prev => [...prev, aiMsg]);
-        }
-      }
+      // 通常応答
+      const aiMsg: Message = {
+        role: 'ai',
+        content: replyText,
+        talkPersona: (data.persona || 'gnome') as Persona,
+        talkResponse: replyText,
+        ...metaFields,
+        helpApps,
+        imagePreview: savedPreview || undefined,
+        imageBase64: savedImage || undefined,
+        imageMediaType: savedMediaType || undefined,
+        topic: data.honneLog?.topic,
+        userTextForNote: text,
+      };
+      setMessages(prev => [...prev, aiMsg]);
     } catch (e) {
       setMessages(prev => [...prev, {
         role: 'ai', content: `エラーが発生しました: ${e instanceof Error ? e.message : '不明なエラー'}`,
@@ -890,29 +623,30 @@ export default function KokoroChat() {
         </div>
       </header>
 
-      {/* 人格選択バー */}
+      {/* 人格選択バー（アイコンのみ・5人格） */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'8px 20px', borderBottom:'1px solid #f3f4f6', background:'#fafafa' }}>
         {stayState.active && (
           <button onClick={exitStayMode}
+            title="全人格モードに戻る"
             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed', background:'#ede9fe', border:'1px solid #c4b5fd', borderRadius:4, padding:'4px 10px', cursor:'pointer', marginRight:8 }}>
-            4人格に戻る
+            ←
           </button>
         )}
-        {(['gnome', 'shin', 'canon', 'dig'] as Persona[]).map(p => {
+        {(['gnome', 'shin', 'canon', 'dig', 'emi'] as Persona[]).map(p => {
           const isActive = stayState.active && stayState.persona === p;
           const color = CORE_PERSONA_COLORS[p];
           return (
-            <button key={p} onClick={() => stayState.active && stayState.persona === p ? exitStayMode() : enterStayMode(p)}
+            <button key={p}
+              onClick={() => stayState.active && stayState.persona === p ? exitStayMode() : enterStayMode(p)}
+              title={PERSONA_LABELS[p]}
               style={{
-                display:'flex', alignItems:'center', gap:4, padding:'5px 12px',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                width: 36, height: 36, padding: 0,
                 border: isActive ? `2px solid ${color}` : '1px solid #e5e7eb',
-                borderRadius:20, cursor:'pointer', transition:'all .15s',
+                borderRadius: '50%', cursor:'pointer', transition:'all .15s',
                 background: isActive ? color + '15' : '#fff',
               }}>
-              <span style={{ fontSize:14 }}>{CORE_PERSONA_EMOJIS[p]}</span>
-              <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: isActive ? color : '#9ca3af', letterSpacing:'0.1em', fontWeight: isActive ? 600 : 400 }}>
-                {PERSONA_LABELS[p]}
-              </span>
+              <span style={{ fontSize: 16 }}>{CORE_PERSONA_EMOJIS[p]}</span>
             </button>
           );
         })}
@@ -924,12 +658,10 @@ export default function KokoroChat() {
         )}
       </div>
 
-      {/* Stay mode バナー */}
+      {/* Stay mode バナー（アイコンのみ） */}
       {stayState.active && (
         <div style={{ textAlign:'center', padding:'6px 20px', background: CORE_PERSONA_COLORS[stayState.persona] + '10', borderBottom: `1px solid ${CORE_PERSONA_COLORS[stayState.persona]}30` }}>
-          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color: CORE_PERSONA_COLORS[stayState.persona], letterSpacing:'0.12em' }}>
-            {CORE_PERSONA_EMOJIS[stayState.persona]} {PERSONA_LABELS[stayState.persona]}と対話中
-          </span>
+          <span style={{ fontSize: 16 }}>{CORE_PERSONA_EMOJIS[stayState.persona]}</span>
         </div>
       )}
 
@@ -966,11 +698,8 @@ export default function KokoroChat() {
                     /* Stay mode メッセージ */
                     <>
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                        <div style={{ width:28, height:28, borderRadius:'50%', background: CORE_PERSONA_COLORS[msg.stayPersona] + '22', border:`1.5px solid ${CORE_PERSONA_COLORS[msg.stayPersona]}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                        <div title={PERSONA_LABELS[msg.stayPersona]} style={{ width:28, height:28, borderRadius:'50%', background: CORE_PERSONA_COLORS[msg.stayPersona] + '22', border:`1.5px solid ${CORE_PERSONA_COLORS[msg.stayPersona]}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
                           {CORE_PERSONA_EMOJIS[msg.stayPersona]}
-                        </div>
-                        <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: CORE_PERSONA_COLORS[msg.stayPersona], letterSpacing:'0.15em', textTransform:'uppercase' }}>
-                          {PERSONA_LABELS[msg.stayPersona]}
                         </div>
                       </div>
                       <div style={{ borderLeft:`2px solid ${CORE_PERSONA_COLORS[msg.stayPersona]}`, paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151' }}>
@@ -990,9 +719,8 @@ export default function KokoroChat() {
                                 const wPersona = w.persona as Persona;
                                 return (
                                   <div key={wi} style={{ display:'flex', alignItems:'flex-start', gap:6, paddingLeft:8 }}>
-                                    <span style={{ fontSize:11, flexShrink:0 }}>{CORE_PERSONA_EMOJIS[wPersona] || '💬'}</span>
+                                    <span title={PERSONA_LABELS[wPersona] || w.persona} style={{ fontSize:11, flexShrink:0 }}>{CORE_PERSONA_EMOJIS[wPersona] || '💬'}</span>
                                     <span style={{ fontSize:11, color:'#9ca3af', lineHeight:1.6 }}>
-                                      <span style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color: CORE_PERSONA_COLORS[wPersona] || '#9ca3af', marginRight:4 }}>{PERSONA_LABELS[wPersona] || w.persona}</span>
                                       {w.text}
                                     </span>
                                   </div>
@@ -1003,55 +731,17 @@ export default function KokoroChat() {
                         </div>
                       )}
                     </>
-                  ) : msg.isEmi ? (
-                    /* エミ専用メッセージ（ターン2: エミのみ + Zen CTA） */
-                    <>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                        <div style={{ width:28, height:28, borderRadius:'50%', background:'#fef3c720', border:'1.5px solid #eab308', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
-                          ⚡
-                        </div>
-                        <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#eab308', letterSpacing:'0.15em', textTransform:'uppercase' }}>エミ</span>
-                      </div>
-                      <div style={{ borderLeft:'2px solid #eab308', paddingLeft:16, fontSize:14, lineHeight:2, color:'#374151', fontStyle:'italic' }}>
-                        {msg.emiLine}
-                      </div>
-                      {msg.emiShowZenCta && (
-                        <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                          <span style={{ fontSize:12, color:'#7c3aed' }}>内側を整理してみない？</span>
-                          <button onClick={() => handleZenClick({ conflict: msg.emiConflict, deepFeeling: msg.emiDeepFeeling })}
-                            title="Zen を開く"
-                            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                            Zen →
-                          </button>
-                        </div>
-                      )}
-                    </>
                   ) : msg.talkPersona && msg.talkResponse ? (
                     /* Talk 1人格返答 */
                     <TalkResponse
                       persona={msg.talkPersona}
                       response={msg.talkResponse}
-                      identityState={msg.identityState}
-                      gapIntensity={msg.gapIntensity}
-                      responseStrategy={msg.responseStrategy}
-                      onSaveNote={() => handleSaveNoteFromTalk(
-                        i,
-                        msg.talkResponse ?? '',
-                        msg.talkPersona ?? 'gnome',
-                      )}
-                      noteSaved={savedNoteIds.has(i)}
-                      topic={msg.topic}
-                      insightType={msg.insightType}
-                      emiLine={msg.emiLine}
-                      insightFlowState={msg.insightFlowState}
-                      userText={msg.userTextForNote}
                       showRecipe={msg.showRecipe}
                       onSaveRecipe={() => {
                         const recipeInput = createRecipeInputFromTalk({
                           summary: msg.talkResponse ?? '',
                           emotionTone: undefined,
                           topic: msg.topic,
-                          insightType: msg.insightType,
                         });
                         setRecipeInput(recipeInput);
                         router.push('/kokoro-recipe');
@@ -1062,12 +752,8 @@ export default function KokoroChat() {
                     <>
                       {msg.personaId && (
                         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
-                          <div style={{ width:28, height:28, borderRadius:'50%', background: PERSONA_COLORS[msg.personaId] + '22', border:`1.5px solid ${PERSONA_COLORS[msg.personaId] || '#7c3aed'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                          <div title={PERSONA_NAMES[msg.personaId] || msg.personaId} style={{ width:28, height:28, borderRadius:'50%', background: PERSONA_COLORS[msg.personaId] + '22', border:`1.5px solid ${PERSONA_COLORS[msg.personaId] || '#7c3aed'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
                             {PERSONA_EMOJIS[msg.personaId] || '💬'}
-                          </div>
-                          <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: PERSONA_COLORS[msg.personaId] || '#7c3aed', letterSpacing:'0.15em', textTransform:'uppercase' }}>
-                            {PERSONA_NAMES[msg.personaId] || msg.personaId}
-                            {msg.syncRate !== undefined && <span style={{ color:'#d1d5db', marginLeft:8 }}>sync {Math.round(msg.syncRate * 100)}%</span>}
                           </div>
                         </div>
                       )}
@@ -1076,207 +762,125 @@ export default function KokoroChat() {
                       </div>
                     </>
                   )}
-                  {/* エミの割り込み（ターン1: 通常人格の下に表示） */}
-                  {msg.emiLine && !msg.isEmi && (
-                    <div style={{ marginTop:12, paddingLeft:4 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                        <span style={{ fontSize:12, color:'#eab308' }}>⚡</span>
-                        <span style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#eab308', letterSpacing:'0.12em', textTransform:'uppercase' }}>エミ</span>
-                      </div>
-                      <div style={{ borderLeft:'2px solid #eab308', paddingLeft:14, fontSize:13, lineHeight:1.9, color:'#6b7280', fontStyle:'italic' }}>
-                        {msg.emiLine}
-                      </div>
+                  {/* アプリ誘導ボタン（ボタンのみ） */}
+                  {(msg.showZen || msg.showAnimal || msg.showFashion || msg.showNote || msg.showInsight || msg.showPlan || msg.showWriter || msg.showBrowser || msg.showCouple || msg.showBuddy || msg.showPhilosophy || msg.showBoard || msg.showKami || msg.showPonchi || msg.showWishlist) && (
+                    <div style={{ marginTop:10, display:'flex', flexWrap:'wrap', gap:6 }}>
+                      {msg.showZen && (
+                        <button onClick={msg.stayPersona ? exitStayMode : () => handleZenClick()}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          {msg.stayPersona ? '← Personas' : 'Zen →'}
+                        </button>
+                      )}
+                      {msg.showAnimal && (
+                        <button onClick={() => openAnimalTalk(msg)}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Animal →
+                        </button>
+                      )}
+                      {msg.showFashion && (
+                        <button onClick={openFashion}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Fashion →
+                        </button>
+                      )}
+                      {msg.showNote && (
+                        <button onClick={() => { window.location.href = '/kokoro-note?mode=create'; }}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Note →
+                        </button>
+                      )}
+                      {msg.showInsight && (
+                        <button onClick={() => router.push('/kokoro-insight')}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Insight →
+                        </button>
+                      )}
+                      {msg.showRecipe && (
+                        <button onClick={() => router.push('/kokoro-recipe')}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Recipe →
+                        </button>
+                      )}
+                      {msg.showPlan && (
+                        <button onClick={() => routeFromTalk('planFromTalk', '/kokoro-plan', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Plan →
+                        </button>
+                      )}
+                      {msg.showWriter && (
+                        <button onClick={() => routeFromTalk('writerFromTalk', '/kokoro-writer', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Writer →
+                        </button>
+                      )}
+                      {msg.showBrowser && (
+                        <button onClick={() => routeFromTalk('browserFromTalk', '/kokoro-browser', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Browser →
+                        </button>
+                      )}
+                      {msg.showCouple && (
+                        <button onClick={() => routeFromTalk('coupleFromTalk', '/kokoro-couple', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Couple →
+                        </button>
+                      )}
+                      {msg.showBuddy && (
+                        <button onClick={() => routeFromTalk('buddyFromTalk', '/kokoro-buddy', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Buddy →
+                        </button>
+                      )}
+                      {msg.showPhilosophy && (
+                        <button onClick={() => routeFromTalk('philosophyFromTalk', '/kokoro-philosophy', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Philosophy →
+                        </button>
+                      )}
+                      {msg.showBoard && (
+                        <button onClick={() => routeFromTalk('boardFromTalk', '/kokoro-board', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Board →
+                        </button>
+                      )}
+                      {msg.showKami && (
+                        <button onClick={() => routeFromTalk('kamiFromTalk', '/kokoro-kami', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Kami →
+                        </button>
+                      )}
+                      {msg.showPonchi && (
+                        <button onClick={() => routeFromTalk('ponchiFromTalk', '/kokoro-ponchi', { userText: msg.routingUserText })}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Ponchi →
+                        </button>
+                      )}
+                      {msg.showWishlist && msg.wishlistText && (
+                        <button onClick={() => handleAddToWishlist(i, msg)} disabled={savedWishIds.has(i)}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color: savedWishIds.has(i) ? '#9ca3af' : '#ec4899', background:'transparent', border:`1px solid ${savedWishIds.has(i) ? '#e5e7eb' : 'rgba(244,114,182,0.4)'}`, borderRadius:4, padding:'5px 12px', cursor: savedWishIds.has(i) ? 'default' : 'pointer' }}>
+                          {savedWishIds.has(i) ? 'Wish ✓' : 'Wish +'}
+                        </button>
+                      )}
                     </div>
                   )}
-                  {msg.showZen && !msg.emiLine && (
-                    <div style={{ marginTop:12, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                      <span style={{ fontSize:12, color:'#7c3aed' }}>
-                        {msg.stayPersona ? '他の視点も見てみる？' : '少しだけ、見方を変えてみる？'}
+                  {/* ヘルプ：アプリ紹介カード */}
+                  {msg.helpApps && msg.helpApps.length > 0 && (
+                    <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:6 }}>
+                      <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', letterSpacing:'0.1em' }}>
+                        KOKORO APPS
                       </span>
-                      <button onClick={msg.stayPersona ? exitStayMode : () => handleZenClick()}
-                        title={msg.stayPersona ? '4人格モードに戻る' : 'Zen を開く'}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        {msg.stayPersona ? '← Personas' : 'Zen →'}
-                      </button>
-                    </div>
-                  )}
-                  {msg.showAnimal && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'#f9f5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                      <span style={{ fontSize:12, color:'#7c3aed' }}>🐾 この子、何か言ってそう。声を聞いてみる？</span>
-                      <button onClick={() => openAnimalTalk(msg)}
-                        title="動物の声を聞く"
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        Animal →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showFashion && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                      <span style={{ fontSize:12, color:'#7c3aed' }}>👔 装いの奥を読んでみる？</span>
-                      <button onClick={openFashion}
-                        title="Fashion診断へ"
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-                        Fashion →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showNote && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(52,211,153,0.06)', border:'1px solid rgba(52,211,153,0.25)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#6ee7b7' }}>📝 書き留めておく？</span>
-                      <button onClick={() => {
-                        window.location.href = '/kokoro-note?mode=create';
-                      }}
-                        title="Note を開く"
-                        style={{ background:'transparent', border:'1px solid rgba(52,211,153,0.4)', color:'#6ee7b7', padding:'5px 14px', borderRadius:4, cursor:'pointer', fontSize:12, fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', whiteSpace:'nowrap' }}>
-                        Note →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showInsight && (
-                    <div style={{
-                      marginTop: 8,
-                      padding: '10px 14px',
-                      background: 'rgba(124,58,237,0.06)',
-                      border: '1px solid rgba(124,58,237,0.2)',
-                      borderRadius: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
-                    }}>
-                      <span style={{ fontSize: 13, color: '#a78bfa' }}>
-                        🔬 レビューからインパクトを逆算する？
-                      </span>
-                      <button
-                        onClick={() => router.push('/kokoro-insight')}
-                        style={{
-                          fontFamily: "'Space Mono', monospace",
-                          fontSize: 10,
-                          color: '#a78bfa',
-                          background: 'transparent',
-                          border: '1px solid rgba(124,58,237,0.4)',
-                          borderRadius: 4,
-                          padding: '5px 12px',
-                          cursor: 'pointer',
-                          letterSpacing: '0.08em',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Insight →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showPlan && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>📋 これ、タスクに分解できそう。</span>
-                      <button
-                        onClick={() => routeFromTalk('planFromTalk', '/kokoro-plan', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Plan →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showWriter && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>✍️ 文章として整えてみますか？</span>
-                      <button
-                        onClick={() => routeFromTalk('writerFromTalk', '/kokoro-writer', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Writer →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showBrowser && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>📚 Noteを見てみる？</span>
-                      <button
-                        onClick={() => routeFromTalk('browserFromTalk', '/kokoro-browser', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Browser →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showCouple && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>❤️ パートナーのことで使ってみる？</span>
-                      <button
-                        onClick={() => routeFromTalk('coupleFromTalk', '/kokoro-couple', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Couple →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showBuddy && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>🎧 アイデアを壁打ちしてみる？</span>
-                      <button
-                        onClick={() => routeFromTalk('buddyFromTalk', '/kokoro-buddy', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Buddy →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showPhilosophy && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>🧠 哲学的に掘り下げてみる？</span>
-                      <button
-                        onClick={() => routeFromTalk('philosophyFromTalk', '/kokoro-philosophy', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Philosophy →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showBoard && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>👥 会議の進行を整理する？</span>
-                      <button
-                        onClick={() => routeFromTalk('boardFromTalk', '/kokoro-board', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Board →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showKami && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>📄 表にまとめてみる？</span>
-                      <button
-                        onClick={() => routeFromTalk('kamiFromTalk', '/kokoro-kami', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Kami →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showPonchi && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(124,58,237,0.06)', border:'1px solid rgba(124,58,237,0.2)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#a78bfa' }}>🎨 プレゼン化してみる？</span>
-                      <button
-                        onClick={() => routeFromTalk('ponchiFromTalk', '/kokoro-ponchi', { userText: msg.routingUserText })}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#a78bfa', background:'transparent', border:'1px solid rgba(124,58,237,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        Ponchi →
-                      </button>
-                    </div>
-                  )}
-                  {msg.showWishlist && msg.wishlistText && (
-                    <div style={{ marginTop:8, padding:'10px 14px', background:'rgba(244,114,182,0.06)', border:'1px solid rgba(244,114,182,0.25)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-                      <span style={{ fontSize:13, color:'#ec4899' }}>
-                        ⭐ 「{msg.wishlistText}」をウィッシュリストに追加する？
-                      </span>
-                      <button
-                        onClick={() => handleAddToWishlist(i, msg)}
-                        disabled={savedWishIds.has(i)}
-                        style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color: savedWishIds.has(i) ? '#9ca3af' : '#ec4899', background:'transparent', border:`1px solid ${savedWishIds.has(i) ? '#e5e7eb' : 'rgba(244,114,182,0.4)'}`, borderRadius:4, padding:'5px 12px', cursor: savedWishIds.has(i) ? 'default' : 'pointer', letterSpacing:'0.08em', whiteSpace:'nowrap' }}
-                      >
-                        {savedWishIds.has(i) ? '追加済み' : '追加する'}
-                      </button>
+                      {msg.helpApps.map((app, ai) => (
+                        <div key={ai} style={{
+                          display:'flex', alignItems:'center', gap:10,
+                          padding:'8px 12px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8,
+                        }}>
+                          <span style={{ fontSize:18, flexShrink:0 }}>{app.emoji}</span>
+                          <div>
+                            <span style={{ fontFamily:"'Space Mono', monospace", fontSize:11, fontWeight:600, color:'#1a1a1a' }}>{app.name}</span>
+                            <span style={{ fontSize:12, color:'#6b7280', marginLeft:8 }}>{app.description}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1337,17 +941,6 @@ export default function KokoroChat() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#d1d5db', letterSpacing:'0.1em' }}>
             Enter で送信 // Shift+Enter で改行
           </span>
-          {showDiagnosisBanner ? (
-            <button onClick={() => router.push('/kokoro-diagnosis')}
-              style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed', background:'#ede9fe', border:'1px solid #c4b5fd', borderRadius:4, padding:'3px 10px', cursor:'pointer', letterSpacing:'0.05em' }}>
-              💡 今の状態を見る →
-            </button>
-          ) : (
-            <button onClick={() => router.push('/kokoro-diagnosis')}
-              style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'2px 8px', cursor:'pointer' }}>
-              今の状態を見る
-            </button>
-          )}
         </div>
       </div>
 
@@ -1364,9 +957,7 @@ export default function KokoroChat() {
       )}
 
       <style>{`
-        @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
         @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-        @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
       `}</style>
     </div>
   );

@@ -12,6 +12,7 @@ const GROWTH_EDGES: Record<Persona, string> = {
   dig: "小さく逸脱を試す余地",
   canon: "感情や意味の言語化",
   shin: "本音を現実の手順に落とすこと",
+  emi: "矛盾や揺れをそのまま受け入れること",
 };
 
 export function buildPersonalDiagnosis(logs: HonneLog[]): PersonalDiagnosis {
