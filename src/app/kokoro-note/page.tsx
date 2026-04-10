@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { KokoroNote } from '@/types/note';
 import type { KokoroNoteDraft } from '@/types/noteMeta';
@@ -86,7 +85,9 @@ export default function KokoroNotePage() {
   const [imageNotes, setImageNotes] = useState<NoteImageEntry[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [personaLoading, setPersonaLoading] = useState<PersonaKey | null>(null);
-  const [noteTab, setNoteTab] = useState<'text' | 'image'>('text');
+  const [noteTab, setNoteTab] = useState<'all' | 'text' | 'image'>('all');
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
 
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -212,6 +213,7 @@ export default function KokoroNotePage() {
         body: editBody,
         tags,
         pinned: false,
+        isPublic: editIsPublic,
       });
     }
     refresh();
@@ -336,104 +338,106 @@ export default function KokoroNotePage() {
   const renderList = () => (
     <>
       {/* タブ切り替え */}
-      <div className="flex gap-0 mb-6" style={{ borderBottom: '1px solid #e5e7eb' }}>
-        <button
-          onClick={() => setNoteTab('text')}
-          className="px-4 py-2 text-xs font-bold transition-colors"
-          style={{
-            color: noteTab === 'text' ? '#7c3aed' : '#9ca3af',
-            borderBottom: noteTab === 'text' ? '2px solid #7c3aed' : '2px solid transparent',
-            background: 'transparent',
-          }}
-        >
-          テキストNote ({notes.length})
-        </button>
-        <button
-          onClick={() => setNoteTab('image')}
-          className="px-4 py-2 text-xs font-bold transition-colors"
-          style={{
-            color: noteTab === 'image' ? '#7c3aed' : '#9ca3af',
-            borderBottom: noteTab === 'image' ? '2px solid #7c3aed' : '2px solid transparent',
-            background: 'transparent',
-          }}
-        >
-          画像Note ({imageNotes.length})
-        </button>
+      <div style={{ display:'flex', gap:0, marginBottom:24, borderBottom:'1px solid #e5e7eb' }}>
+        {([
+          { key: 'all' as const, label: `全てのNote (${notes.length + imageNotes.length})` },
+          { key: 'text' as const, label: `テキスト (${notes.length})` },
+          { key: 'image' as const, label: `画像 (${imageNotes.length})` },
+        ]).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => { setNoteTab(tab.key); setDeleteMode(false); setSelectedForDelete(new Set()); }}
+            style={{
+              fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+              padding:'8px 16px', background:'transparent', border:'none', cursor:'pointer',
+              color: noteTab === tab.key ? '#7c3aed' : '#9ca3af',
+              borderBottom: noteTab === tab.key ? '2px solid #7c3aed' : '2px solid transparent',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {noteTab === 'image' ? (
-        /* 画像ノート一覧 */
-        imageNotes.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="text-4xl mb-4 opacity-30">🖼️</div>
-            <p className="text-sm" style={{ color: '#9ca3af' }}>
-              画像noteはまだありません
-            </p>
-            <p className="text-xs mt-2" style={{ color: '#d1d5db' }}>
-              Animal Talk や Fashion で結果を保存すると表示されます
-            </p>
+      {/* 削除モードコントロール */}
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12, gap:8 }}>
+        {deleteMode ? (
+          <>
+            <button
+              onClick={() => {
+                if (selectedForDelete.size === 0) return;
+                if (!confirm(`${selectedForDelete.size}件のNoteを削除しますか？`)) return;
+                selectedForDelete.forEach(id => {
+                  deleteNote(id);
+                  deleteImageNote(id);
+                });
+                setSelectedForDelete(new Set());
+                setDeleteMode(false);
+                refresh();
+              }}
+              disabled={selectedForDelete.size === 0}
+              style={{ fontFamily:"'Space Mono', monospace", fontSize:9, padding:'4px 12px', borderRadius:4, background: selectedForDelete.size > 0 ? '#fef2f2' : '#f3f4f6', color: selectedForDelete.size > 0 ? '#dc2626' : '#9ca3af', border:'1px solid #e5e7eb', cursor:'pointer' }}
+            >
+              {selectedForDelete.size > 0 ? `${selectedForDelete.size}件を削除` : '削除'}
+            </button>
+            <button
+              onClick={() => { setDeleteMode(false); setSelectedForDelete(new Set()); }}
+              style={{ fontFamily:"'Space Mono', monospace", fontSize:9, padding:'4px 12px', borderRadius:4, background:'#f3f4f6', color:'#6b7280', border:'1px solid #e5e7eb', cursor:'pointer' }}
+            >
+              キャンセル
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setDeleteMode(true)}
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, padding:'4px 12px', borderRadius:4, background:'transparent', color:'#9ca3af', border:'1px solid #e5e7eb', cursor:'pointer' }}
+          >
+            選択して削除
+          </button>
+        )}
+      </div>
+
+      {/* 画像ノート一覧（image / all タブ） */}
+      {(noteTab === 'image' || noteTab === 'all') && (
+        imageNotes.length === 0 && noteTab === 'image' ? (
+          <div style={{ textAlign:'center', padding:'80px 20px' }}>
+            <div style={{ fontSize:36, marginBottom:16, opacity:0.3 }}>🖼️</div>
+            <p style={{ fontSize:13, color:'#9ca3af' }}>画像noteはまだありません</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom: noteTab === 'all' ? 24 : 0 }}>
             {imageNotes.map(note => (
-              <button
-                key={note.id}
-                onClick={() => openImageDetail(note.id)}
-                className="w-full text-left border rounded-xl p-4 transition-colors hover:border-purple-300"
-                style={{ borderColor: '#e5e7eb', background: '#ffffff' }}
-              >
-                <div className="flex items-start gap-3">
-                  {note.imageUrl && (
-                    <img
-                      src={note.imageUrl}
-                      alt=""
-                      className="rounded-lg flex-shrink-0"
-                      style={{ width: 56, height: 56, objectFit: 'cover' }}
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                        style={{
-                          background: IMAGE_SOURCE_COLORS[note.sourceType]?.bg ?? '#f3f4f6',
-                          color: IMAGE_SOURCE_COLORS[note.sourceType]?.text ?? '#6b7280',
-                        }}
-                      >
-                        {IMAGE_SOURCE_LABELS[note.sourceType] ?? note.sourceType}
+              <div key={note.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                {deleteMode && (
+                  <input type="checkbox" checked={selectedForDelete.has(note.id)}
+                    onChange={() => { const s = new Set(selectedForDelete); s.has(note.id) ? s.delete(note.id) : s.add(note.id); setSelectedForDelete(s); }}
+                    style={{ width:16, height:16, flexShrink:0, cursor:'pointer' }} />
+                )}
+                <button
+                  onClick={() => !deleteMode && openImageDetail(note.id)}
+                  style={{ flex:1, textAlign:'left', border:'1px solid #e5e7eb', borderRadius:12, padding:16, background:'#fff', cursor: deleteMode ? 'default' : 'pointer' }}
+                >
+                  <div style={{ display:'flex', alignItems:'start', gap:12 }}>
+                    {note.imageUrl && (
+                      <img src={note.imageUrl} alt="" style={{ width:48, height:48, borderRadius:8, objectFit:'cover', flexShrink:0 }} />
+                    )}
+                    <div style={{ minWidth:0, flex:1 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                        <span style={{ fontSize:10, color:'#9ca3af' }}>{formatDate(note.createdAt)}</span>
+                      </div>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#1a1a1a', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {note.autoTitle}
                       </span>
-                      <span className="text-[10px]" style={{ color: '#9ca3af' }}>
-                        {formatDate(note.createdAt)}
-                      </span>
-                      {note.selectedPersona && (
-                        <span className="text-[10px]" style={{ color: PERSONA_INFO[note.selectedPersona].color }}>
-                          {PERSONA_INFO[note.selectedPersona].emoji} {PERSONA_INFO[note.selectedPersona].label}
-                        </span>
-                      )}
                     </div>
-                    <span
-                      className="text-sm font-bold truncate block"
-                      style={{ color: '#1a1a1a', fontFamily: 'var(--font-noto-serif-jp), serif' }}
-                    >
-                      {note.autoTitle}
-                    </span>
-                    {note.sourceType === 'animal-talk' && (
-                      <p className="text-xs mt-1 line-clamp-1" style={{ color: '#6b7280' }}>
-                        {note.result.emotionText}
-                      </p>
-                    )}
-                    {note.sourceType === 'fashion' && (
-                      <p className="text-xs mt-1 line-clamp-1" style={{ color: '#6b7280' }}>
-                        {note.result.summary}
-                      </p>
-                    )}
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
             ))}
           </div>
         )
-      ) : (
+      )}
+
+      {(noteTab === 'text' || noteTab === 'all') && (
       <>
       {/* 検索バー */}
       <div className="mb-6">
@@ -535,61 +539,41 @@ export default function KokoroNotePage() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {displayNotes.map(note => (
-            <button
-              key={note.id}
-              onClick={() => openDetail(note.id)}
-              className="w-full text-left border rounded-xl p-4 transition-colors hover:border-purple-300"
-              style={{ borderColor: '#e5e7eb', background: '#ffffff' }}
-            >
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  {note.pinned && (
-                    <span className="text-xs" style={{ color: '#f59e0b' }}>📌</span>
-                  )}
-                  <span
-                    className="text-sm font-bold truncate"
-                    style={{ color: '#1a1a1a', fontFamily: 'var(--font-noto-serif-jp), serif' }}
-                  >
+            <div key={note.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {deleteMode && (
+                <input type="checkbox" checked={selectedForDelete.has(note.id)}
+                  onChange={() => { const s = new Set(selectedForDelete); s.has(note.id) ? s.delete(note.id) : s.add(note.id); setSelectedForDelete(s); }}
+                  style={{ width:16, height:16, flexShrink:0, cursor:'pointer' }} />
+              )}
+              <button
+                onClick={() => !deleteMode && openDetail(note.id)}
+                style={{ flex:1, textAlign:'left', border:'1px solid #e5e7eb', borderRadius:12, padding:16, background:'#fff', cursor: deleteMode ? 'default' : 'pointer' }}
+              >
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                  {note.pinned && <span style={{ fontSize:12, color:'#f59e0b' }}>📌</span>}
+                  <span style={{ fontSize:13, fontWeight:700, color:'#1a1a1a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {note.title}
                   </span>
                 </div>
-                <span
-                  className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"
-                  style={{
-                    background: SOURCE_COLORS[note.source]?.bg ?? '#f3f4f6',
-                    color: SOURCE_COLORS[note.source]?.text ?? '#6b7280',
-                  }}
-                >
-                  {SOURCE_LABELS[note.source] ?? note.source}
-                </span>
-              </div>
 
-              {note.body && (
-                <p
-                  className="text-xs leading-relaxed mb-2 line-clamp-2"
-                  style={{ color: '#6b7280', fontFamily: 'var(--font-noto-serif-jp), serif' }}
-                >
-                  {note.body}
-                </p>
-              )}
+                {note.body && (
+                  <p style={{ fontSize:12, color:'#6b7280', lineHeight:1.6, marginBottom:8, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                    {note.body}
+                  </p>
+                )}
 
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px]" style={{ color: '#9ca3af' }}>
-                  {formatDate(note.createdAt)}
-                </span>
-                {note.tags.map(tag => (
-                  <span
-                    key={tag}
-                    className="text-[10px] px-1.5 py-0.5 rounded"
-                    style={{ background: '#f3f4f6', color: '#6b7280' }}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </button>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  <span style={{ fontSize:10, color:'#9ca3af' }}>{formatDate(note.createdAt)}</span>
+                  {note.tags.map(tag => (
+                    <span key={tag} style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'#f3f4f6', color:'#6b7280' }}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            </div>
           ))}
         </div>
       )}
@@ -858,259 +842,187 @@ export default function KokoroNotePage() {
         </button>
 
         {/* メタ情報 */}
-        <div className="flex items-center gap-2 mb-4">
-          <span
-            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-            style={{
-              background: SOURCE_COLORS[selectedNote.source]?.bg ?? '#f3f4f6',
-              color: SOURCE_COLORS[selectedNote.source]?.text ?? '#6b7280',
-            }}
-          >
-            {SOURCE_LABELS[selectedNote.source] ?? selectedNote.source}
-          </span>
-          <span className="text-[10px]" style={{ color: '#9ca3af' }}>
-            {formatDate(selectedNote.createdAt)}
-          </span>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
+          <span style={{ fontSize:10, color:'#9ca3af' }}>{formatDate(selectedNote.createdAt)}</span>
           {selectedNote.updatedAt !== selectedNote.createdAt && (
-            <span className="text-[10px]" style={{ color: '#9ca3af' }}>
-              (更新: {formatDate(selectedNote.updatedAt)})
-            </span>
+            <span style={{ fontSize:10, color:'#9ca3af' }}>(更新: {formatDate(selectedNote.updatedAt)})</span>
           )}
         </div>
 
         {/* タイトル */}
-        <h2
-          className="text-lg font-bold mb-4"
-          style={{ color: '#1a1a1a', fontFamily: 'var(--font-noto-serif-jp), serif' }}
-        >
-          {selectedNote.pinned && <span className="mr-1">📌</span>}
+        <h2 style={{ fontSize:18, fontWeight:700, color:'#1a1a1a', marginBottom:16 }}>
+          {selectedNote.pinned && <span style={{ marginRight:4 }}>📌</span>}
           {selectedNote.title}
         </h2>
 
         {/* 本文 */}
-        <div
-          className="text-sm leading-relaxed mb-6 whitespace-pre-wrap"
-          style={{ color: '#374151', fontFamily: 'var(--font-noto-serif-jp), serif' }}
-        >
+        <div style={{ fontSize:14, lineHeight:2, color:'#374151', marginBottom:24, whiteSpace:'pre-wrap' }}>
           {selectedNote.body || '（本文なし）'}
         </div>
 
         {/* タグ */}
         {selectedNote.tags.length > 0 && (
-          <div className="flex gap-2 flex-wrap mb-6">
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:24 }}>
             {selectedNote.tags.map(tag => (
-              <span
-                key={tag}
-                className="text-xs px-2 py-1 rounded-lg"
-                style={{ background: '#f3f4f6', color: '#6b7280' }}
-              >
+              <span key={tag} style={{ fontSize:11, padding:'3px 10px', borderRadius:8, background:'#f3f4f6', color:'#6b7280' }}>
                 {tag}
               </span>
             ))}
           </div>
         )}
 
-        {/* アクションボタン */}
-        <div className="flex gap-3 pt-4 border-t" style={{ borderColor: '#e5e7eb' }}>
-          <button
-            onClick={() => openEdit(selectedNote)}
-            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors"
-            style={{ background: '#ede9fe', color: '#7c3aed' }}
-          >
-            編集
-          </button>
-          <button
-            onClick={() => handleTogglePin(selectedNote.id)}
-            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors"
-            style={{ background: '#f3f4f6', color: '#6b7280' }}
-          >
-            {selectedNote.pinned ? 'ピン解除' : 'ピン留め'}
-          </button>
-          <button
-            onClick={() => {
-              if (confirm('このメモを削除しますか？')) handleDelete(selectedNote.id);
-            }}
-            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors ml-auto"
-            style={{ background: '#fef2f2', color: '#dc2626' }}
-          >
-            削除
-          </button>
-        </div>
-
-        {/* 連携ボタン */}
-        <div className="flex gap-3 pt-3">
-          <button
-            onClick={() => {
-              setNoteForTalk(selectedNote);
-              router.push('/kokoro-chat');
-            }}
-            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors"
-            style={{ background: '#ede9fe', color: '#7c3aed' }}
-          >
-            💬 Talkで続ける
-          </button>
-          <button
-            onClick={() => {
-              setNoteForZen(selectedNote);
-              router.push('/kokoro-zen');
-            }}
-            className="text-xs font-bold px-4 py-2 rounded-lg transition-colors"
-            style={{ background: '#dbeafe', color: '#2563eb' }}
-          >
-            🧘 Zenで整理する
-          </button>
-          <button
-            onClick={() => {
-              if (!selectedNote) return;
-              const recipeInput = createRecipeInputFromNote({
-                title: selectedNote.title,
-                body: selectedNote.body,
-                topic: selectedNote.topic,
-                emotionTone: selectedNote.emotionTone ? [selectedNote.emotionTone] : undefined,
-              });
-              setRecipeInput(recipeInput);
-              router.push('/kokoro-recipe');
-            }}
-            className="text-xs font-bold px-3 py-2 rounded-lg transition-colors"
-            style={{ background: '#fff7ed', color: '#f97316' }}
-          >
-            🍳 このnoteからRecipeを作る
-          </button>
-        </div>
-
-        {/* Browser公開ボタン */}
-        <div className="pt-3">
+        {/* 公開/非公開トグル */}
+        <div style={{ paddingTop:16, borderTop:'1px solid #e5e7eb', marginBottom:16 }}>
           <button
             onClick={() => handleTogglePublic(selectedNote.id)}
-            className="text-xs font-bold px-3 py-2 rounded-lg transition-colors"
             style={{
+              fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+              padding:'8px 16px', borderRadius:6, cursor:'pointer',
               background: selectedNote.isPublic ? '#f0fdf4' : '#f3f4f6',
               color: selectedNote.isPublic ? '#16a34a' : '#6b7280',
               border: `1px solid ${selectedNote.isPublic ? '#bbf7d0' : '#e5e7eb'}`,
             }}
           >
-            {selectedNote.isPublic ? '🌐 Browserに公開中　→ 非公開にする' : '🌐 Browserに公開する'}
+            {selectedNote.isPublic ? '🌐 公開中 → 非公開にする' : '🌐 Browserに公開する'}
           </button>
-          {selectedNote.isPublic && (
-            <div className="text-xs mt-2" style={{ color: '#9ca3af', fontFamily: "'Space Mono', monospace" }}>
-              // Kokoro Browser のタイムラインに表示されます
-            </div>
-          )}
+        </div>
+
+        {/* AI自動判定の誘導ボタン（1つだけ） */}
+        <div style={{ marginBottom:16 }}>
+          {(() => {
+            const body = (selectedNote.body || '').toLowerCase();
+            // 内容からベストな誘導先を1つだけ選ぶ
+            if (/不安|つらい|悲しい|しんどい|疲れ|怖い|落ち込/.test(body)) {
+              return (
+                <button onClick={() => { setNoteForZen(selectedNote); router.push('/kokoro-zen'); }}
+                  style={{ fontFamily:"'Space Mono', monospace", fontSize:10, padding:'8px 16px', borderRadius:6, cursor:'pointer', background:'#dbeafe', color:'#2563eb', border:'none' }}>
+                  Zen で深掘りする →
+                </button>
+              );
+            }
+            if (/やりたい|目標|計画|始め|動きたい|変えたい/.test(body)) {
+              return (
+                <button onClick={() => { const ri = createRecipeInputFromNote({ title: selectedNote.title, body: selectedNote.body, topic: selectedNote.topic }); setRecipeInput(ri); router.push('/kokoro-recipe'); }}
+                  style={{ fontFamily:"'Space Mono', monospace", fontSize:10, padding:'8px 16px', borderRadius:6, cursor:'pointer', background:'#fff7ed', color:'#f97316', border:'none' }}>
+                  Recipe を作る →
+                </button>
+              );
+            }
+            // デフォルト: Talkで続ける
+            return (
+              <button onClick={() => { setNoteForTalk(selectedNote); router.push('/kokoro-chat'); }}
+                style={{ fontFamily:"'Space Mono', monospace", fontSize:10, padding:'8px 16px', borderRadius:6, cursor:'pointer', background:'#ede9fe', color:'#7c3aed', border:'none' }}>
+                Talk で続ける →
+              </button>
+            );
+          })()}
         </div>
       </>
     );
   };
 
   /* ── 作成・編集画面 ── */
+  const [editIsPublic, setEditIsPublic] = useState(false);
+
   const renderEdit = () => (
     <>
       {/* 戻る */}
       <button
         onClick={() => setView(editingId ? 'detail' : 'list')}
-        className="text-xs mb-6 flex items-center gap-1 transition-colors"
-        style={{ color: '#7c3aed' }}
+        style={{ fontFamily:"'Space Mono', monospace", fontSize:11, color:'#7c3aed', background:'transparent', border:'none', cursor:'pointer', marginBottom:24, display:'flex', alignItems:'center', gap:4 }}
       >
         ← {editingId ? '詳細へ戻る' : '一覧へ戻る'}
       </button>
 
-      <h2
-        className="text-sm font-bold mb-6"
-        style={{ color: '#1a1a1a' }}
-      >
-        {editingId ? 'メモを編集' : '新しいメモ'}
-      </h2>
-
-      {/* タイトル */}
-      <div className="mb-4">
-        <label className="text-[10px] font-bold mb-1 block" style={{ color: '#6b7280' }}>
-          タイトル
-        </label>
-        <input
-          type="text"
-          value={editTitle}
-          onChange={e => setEditTitle(e.target.value)}
-          placeholder="タイトルを入力（空ならAI生成可）"
-          className="w-full px-3 py-2 text-sm rounded-lg border outline-none"
-          style={{
-            borderColor: '#e5e7eb',
-            color: '#1a1a1a',
-            fontFamily: 'var(--font-noto-serif-jp), serif',
-          }}
-        />
-      </div>
+      {/* AI生成済みタイトル表示（本文の上） */}
+      {editTitle && (
+        <div style={{ marginBottom:12 }}>
+          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', letterSpacing:'0.1em' }}>TITLE</span>
+          <div style={{ fontSize:15, fontWeight:700, color:'#1a1a1a', marginTop:4 }}>{editTitle}</div>
+        </div>
+      )}
 
       {/* 本文 */}
-      <div className="mb-4">
-        <label className="text-[10px] font-bold mb-1 block" style={{ color: '#6b7280' }}>
-          本文
-        </label>
-        <textarea
-          ref={bodyRef}
-          value={editBody}
-          onChange={e => setEditBody(e.target.value)}
-          placeholder="思ったこと、気づいたことを書く..."
-          rows={8}
-          className="w-full px-3 py-2 text-sm rounded-lg border outline-none resize-y"
-          style={{
-            borderColor: '#e5e7eb',
-            color: '#1a1a1a',
-            fontFamily: 'var(--font-noto-serif-jp), serif',
-          }}
-        />
-      </div>
+      <textarea
+        ref={bodyRef}
+        value={editBody}
+        onChange={e => setEditBody(e.target.value)}
+        placeholder="思ったこと、気づいたことを書く..."
+        rows={10}
+        style={{
+          width:'100%', padding:'12px 16px', fontSize:14, borderRadius:8,
+          border:'1px solid #e5e7eb', color:'#1a1a1a', outline:'none', resize:'vertical',
+          fontFamily: 'var(--font-noto-serif-jp), serif', lineHeight:2, marginBottom:12,
+        }}
+      />
 
-      {/* タグ */}
-      <div className="mb-4">
-        <label className="text-[10px] font-bold mb-1 block" style={{ color: '#6b7280' }}>
-          タグ（カンマ区切り）
-        </label>
-        <input
-          type="text"
-          value={editTags}
-          onChange={e => setEditTags(e.target.value)}
-          placeholder="メンタル, 恋愛, 不安..."
-          className="w-full px-3 py-2 text-sm rounded-lg border outline-none"
-          style={{ borderColor: '#e5e7eb', color: '#1a1a1a' }}
-        />
-        <div className="flex gap-1.5 flex-wrap mt-2">
-          {SUGGESTED_TAGS.map(tag => (
-            <button
-              key={tag}
-              onClick={() => addSuggestedTag(tag)}
-              className="text-[10px] px-2 py-0.5 rounded-full border transition-colors hover:border-purple-300"
-              style={{ borderColor: '#e5e7eb', color: '#6b7280' }}
-            >
-              + {tag}
-            </button>
+      {/* AI生成済みタグ表示（本文の下） */}
+      {editTags && (
+        <div style={{ marginBottom:16, display:'flex', gap:6, flexWrap:'wrap' }}>
+          {editTags.split(/[,、]/).map(t => t.trim()).filter(Boolean).map(tag => (
+            <span key={tag} style={{ fontSize:10, padding:'2px 8px', borderRadius:12, background:'#f3f4f6', color:'#6b7280' }}>
+              {tag}
+            </span>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* AI補完ボタン */}
+      {/* AIでタイトル・タグを生成 */}
       <button
         onClick={handleAiSuggest}
         disabled={aiLoading || !editBody.trim()}
-        className="text-xs font-bold px-4 py-2 rounded-lg transition-colors mb-2 disabled:opacity-40"
-        style={{ background: '#f3f4f6', color: '#6b7280' }}
+        style={{
+          fontFamily:"'Space Mono', monospace", fontSize:11, fontWeight:700,
+          padding:'10px 20px', borderRadius:6, cursor:'pointer', marginBottom:8,
+          background: aiLoading ? '#f3f4f6' : '#7c3aed', color: aiLoading ? '#9ca3af' : '#fff',
+          border:'none', opacity: !editBody.trim() ? 0.4 : 1, width:'100%',
+        }}
       >
-        {aiLoading ? 'AI生成中...' : 'AIでタイトル・タグを補完'}
+        {aiLoading ? 'AI生成中...' : 'AIでタイトル・タグを生成'}
       </button>
       {aiLoading && <PersonaLoading />}
 
-      {/* 保存・キャンセル */}
-      <div className="flex gap-3 pt-4 border-t" style={{ borderColor: '#e5e7eb' }}>
+      {/* 公開設定 */}
+      <div style={{ marginTop:16, padding:'12px 16px', borderRadius:8, background:'#f9fafb', border:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#6b7280' }}>
+          {editIsPublic ? '🌐 Browserに公開' : '🔒 非公開'}
+        </span>
         <button
-          onClick={handleSave}
+          onClick={() => setEditIsPublic(v => !v)}
+          style={{
+            fontFamily:"'Space Mono', monospace", fontSize:9, padding:'4px 12px', borderRadius:4, cursor:'pointer',
+            background: editIsPublic ? '#f0fdf4' : '#f3f4f6',
+            color: editIsPublic ? '#16a34a' : '#9ca3af',
+            border: `1px solid ${editIsPublic ? '#bbf7d0' : '#e5e7eb'}`,
+          }}
+        >
+          {editIsPublic ? '公開中' : '非公開'}
+        </button>
+      </div>
+
+      {/* 保存・キャンセル */}
+      <div style={{ display:'flex', gap:12, paddingTop:20, marginTop:20, borderTop:'1px solid #e5e7eb' }}>
+        <button
+          onClick={() => {
+            handleSave();
+          }}
           disabled={!editBody.trim() && !editTitle.trim()}
-          className="text-xs font-bold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-40"
-          style={{ background: '#7c3aed', color: '#ffffff' }}
+          style={{
+            fontFamily:"'Space Mono', monospace", fontSize:11, fontWeight:700,
+            padding:'10px 24px', borderRadius:6, cursor:'pointer',
+            background:'#7c3aed', color:'#fff', border:'none',
+            opacity: (!editBody.trim() && !editTitle.trim()) ? 0.4 : 1,
+          }}
         >
           保存
         </button>
         <button
           onClick={() => setView(editingId ? 'detail' : 'list')}
-          className="text-xs font-bold px-4 py-2.5 rounded-lg transition-colors"
-          style={{ background: '#f3f4f6', color: '#6b7280' }}
+          style={{
+            fontFamily:"'Space Mono', monospace", fontSize:11,
+            padding:'10px 16px', borderRadius:6, cursor:'pointer',
+            background:'#f3f4f6', color:'#6b7280', border:'none',
+          }}
         >
           キャンセル
         </button>
@@ -1125,34 +1037,29 @@ export default function KokoroNotePage() {
       style={{ fontFamily: 'var(--font-space-mono), monospace' }}
     >
       {/* ヘッダー */}
-      <header
-        className="px-6 py-4 flex items-center justify-between border-b"
-        style={{ borderColor: '#e5e7eb' }}
-      >
-        <div className="flex items-center gap-3">
-          <Link
-            href="/kokoro-chat"
-            className="text-xs transition-colors"
-            style={{ color: '#9ca3af' }}
-          >
-            ← Talkへ戻る
-          </Link>
-          <span
-            className="text-xs font-bold tracking-widest"
-            style={{ color: '#7c3aed' }}
-          >
-            // Kokoro Note
-          </span>
+      <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 20px', borderBottom:'1px solid #e5e7eb', position:'sticky', top:0, background:'#fff', zIndex:10 }}>
+        <div>
+          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:13, fontWeight:700 }}>Kokoro</span>
+          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
+          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Note</span>
         </div>
-        {view === 'list' && (
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          {view === 'list' && (
+            <button
+              onClick={openNew}
+              style={{ fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700, padding:'6px 12px', borderRadius:4, background:'#7c3aed', color:'#fff', border:'none', cursor:'pointer' }}
+            >
+              + 新規 Note
+            </button>
+          )}
           <button
-            onClick={openNew}
-            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-            style={{ background: '#7c3aed', color: '#ffffff' }}
+            onClick={() => router.push('/kokoro-chat')}
+            title="Talk に戻る"
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}
           >
-            + 新規メモ
+            ← Talk
           </button>
-        )}
+        </div>
       </header>
 
       {/* メインコンテンツ */}
