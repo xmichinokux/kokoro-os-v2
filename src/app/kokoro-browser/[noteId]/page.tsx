@@ -5,7 +5,10 @@ import { useMemo } from 'react';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
+import { getAllNotes } from '@/lib/kokoro/noteStorage';
 import { setNoteForTalk } from '@/lib/kokoro/noteLinkage';
+import type { PublicNote } from '@/types/browser';
+import type { KokoroNote } from '@/types/note';
 
 const SOURCE_LABELS: Record<string, string> = {
   talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き',
@@ -17,17 +20,42 @@ export default function NoteDetailPage() {
   const noteId = params?.noteId as string;
   const mono = { fontFamily: "'Space Mono', monospace" };
 
+  // localStorageの公開NoteとモックNote両方から検索
+  const allPublicNotes: PublicNote[] = useMemo(() => {
+    const localNotes: PublicNote[] = (() => {
+      if (typeof window === 'undefined') return [];
+      try {
+        const all: KokoroNote[] = getAllNotes();
+        return all
+          .filter(n => n.isPublic)
+          .map(n => ({
+            id: n.id,
+            title: n.title,
+            body: n.body,
+            tags: n.tags,
+            topic: n.topic,
+            source: n.source as PublicNote['source'],
+            createdAt: n.createdAt,
+            isPublic: true as const,
+          }));
+      } catch {
+        return [];
+      }
+    })();
+    return [...localNotes, ...MOCK_PUBLIC_NOTES];
+  }, []);
+
   const note = useMemo(
-    () => MOCK_PUBLIC_NOTES.find(n => n.id === noteId),
-    [noteId]
+    () => allPublicNotes.find(n => n.id === noteId),
+    [noteId, allPublicNotes]
   );
 
   // このNoteが属するゲーセンノートを逆引き
   const belongsTo = useMemo(
     () => GAMESEN_NOTES.filter(g =>
-      matchNotesToGamesen(MOCK_PUBLIC_NOTES, g).some(n => n.id === noteId)
+      matchNotesToGamesen(allPublicNotes, g).some(n => n.id === noteId)
     ),
-    [noteId]
+    [noteId, allPublicNotes]
   );
 
   if (!note) {
@@ -45,23 +73,22 @@ export default function NoteDetailPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#fafaf9', color: '#1a1a1a' }}>
 
-      {/* ヘッダー */}
+      {/* ヘッダー（基本レイアウト） */}
       <header style={{
-        padding: '16px 24px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 20px',
         borderBottom: '1px solid #e5e7eb',
-        display: 'flex', alignItems: 'center', gap: 12,
         background: '#ffffff',
       }}>
-        <button
-          onClick={() => router.push('/kokoro-browser')}
-          title="Browserに戻る"
-          style={{ ...mono, fontSize: 9, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}
-        >
+        <div>
+          <span style={{ ...mono, fontSize: 13, fontWeight: 700 }}>Kokoro</span>
+          <span style={{ ...mono, fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
+          <span style={{ ...mono, fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Browser</span>
+        </div>
+        <button onClick={() => router.push('/kokoro-browser')} title="Browser に戻る"
+          style={{ ...mono, fontSize: 9, color: '#6b7280', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px', cursor: 'pointer' }}>
           ← Browser
         </button>
-        <span style={{ ...mono, fontSize: 11, color: '#7c3aed', letterSpacing: '0.15em' }}>
-          // Kokoro Browser
-        </span>
       </header>
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 24px' }}>

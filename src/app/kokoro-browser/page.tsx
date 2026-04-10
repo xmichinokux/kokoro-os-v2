@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
@@ -23,14 +23,52 @@ const SONOTA_GAMESEN: GamesenNote = {
   color: '#9ca3af',
 };
 
+const STORAGE_KEY = 'kokoroBrowserCustomGamesen';
+
+function loadCustomGamesen(): GamesenNote[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomGamesen(notes: GamesenNote[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+}
+
 export default function KokoroBrowserPage() {
   const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
+
+  const [customGamesen, setCustomGamesen] = useState<GamesenNote[]>([]);
   const [selectedId, setSelectedId] = useState<string>(GAMESEN_NOTES[0].id);
 
+  // ゲーセンノート作成フォーム
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newKeywords, setNewKeywords] = useState('');
+  const [newColor, setNewColor] = useState('#7c3aed');
+
+  // 編集モード
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editKeywords, setEditKeywords] = useState('');
+
+  useEffect(() => {
+    setCustomGamesen(loadCustomGamesen());
+  }, []);
+
+  const allGamesen = useMemo(
+    () => [...GAMESEN_NOTES, ...customGamesen],
+    [customGamesen]
+  );
+
   const selectedGamesen = useMemo(
-    () => GAMESEN_NOTES.find(g => g.id === selectedId) ?? GAMESEN_NOTES[0],
-    [selectedId]
+    () => allGamesen.find(g => g.id === selectedId) ?? GAMESEN_NOTES[0],
+    [selectedId, allGamesen]
   );
 
   // localStorageの公開Noteを取得してPublicNote形式に変換
@@ -68,58 +106,95 @@ export default function KokoroBrowserPage() {
   // どのゲーセンノートにも属さない公開Note
   const sonotaNotes = useMemo(() => {
     return allPublicNotes.filter(note => {
-      const belongsToAny = GAMESEN_NOTES.some(g =>
+      const belongsToAny = allGamesen.some(g =>
         matchNotesToGamesen([note], g).length > 0
       );
       return !belongsToAny;
     });
-  }, [allPublicNotes]);
+  }, [allPublicNotes, allGamesen]);
 
-  // 表示するNote（選択中タブに応じて切り替え）
   const displayedNotes = selectedId === SONOTA_ID ? sonotaNotes : matchedNotes;
-
-  // 選択中のゲーセンノート（その他タブ対応）
   const currentGamesen = selectedId === SONOTA_ID ? SONOTA_GAMESEN : selectedGamesen;
+
+  // ゲーセンノート作成
+  const handleCreateGamesen = () => {
+    const title = newTitle.trim();
+    const keywords = newKeywords.split(/[,、\s]+/).map(k => k.trim()).filter(Boolean);
+    if (!title || keywords.length === 0) return;
+
+    const newNote: GamesenNote = {
+      id: `custom_${Date.now()}`,
+      title,
+      description: `${keywords.slice(0, 3).join('・')} に関する記録。`,
+      keywords,
+      color: newColor,
+    };
+
+    const updated = [...customGamesen, newNote];
+    setCustomGamesen(updated);
+    saveCustomGamesen(updated);
+    setNewTitle('');
+    setNewKeywords('');
+    setShowCreateForm(false);
+    setSelectedId(newNote.id);
+  };
+
+  // ゲーセンノート削除
+  const handleDeleteGamesen = (id: string) => {
+    const updated = customGamesen.filter(g => g.id !== id);
+    setCustomGamesen(updated);
+    saveCustomGamesen(updated);
+    if (selectedId === id) setSelectedId(GAMESEN_NOTES[0].id);
+    setEditingId(null);
+  };
+
+  // ゲーセンノート編集保存
+  const handleSaveEdit = (id: string) => {
+    const title = editTitle.trim();
+    const keywords = editKeywords.split(/[,、\s]+/).map(k => k.trim()).filter(Boolean);
+    if (!title || keywords.length === 0) return;
+
+    const updated = customGamesen.map(g =>
+      g.id === id
+        ? { ...g, title, keywords, description: `${keywords.slice(0, 3).join('・')} に関する記録。` }
+        : g
+    );
+    setCustomGamesen(updated);
+    saveCustomGamesen(updated);
+    setEditingId(null);
+  };
+
+  const isCustom = (id: string) => customGamesen.some(g => g.id === id);
+
+  const COLOR_CHOICES = ['#7c3aed', '#c084fc', '#60a5fa', '#34d399', '#fb923c', '#f59e0b', '#ef4444', '#db2777'];
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8f8f7', color: '#1a1a1a' }}>
 
-      {/* ブラウザ枠ヘッダー */}
+      {/* ヘッダー（基本レイアウト） */}
       <header style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 20px',
+        borderBottom: '1px solid #e5e7eb',
+        position: 'sticky', top: 0, background: '#fff', zIndex: 20,
+      }}>
+        <div>
+          <span style={{ ...mono, fontSize: 13, fontWeight: 700 }}>Kokoro</span>
+          <span style={{ ...mono, fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
+          <span style={{ ...mono, fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Browser</span>
+        </div>
+        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
+          style={{ ...mono, fontSize: 9, color: '#6b7280', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px', cursor: 'pointer' }}>
+          ← Talk
+        </button>
+      </header>
+
+      {/* タブ行 */}
+      <div style={{
         background: '#ffffff',
         borderBottom: '1px solid #e5e7eb',
-        position: 'sticky', top: 0, zIndex: 20,
+        position: 'sticky', top: 45, zIndex: 15,
       }}>
-        {/* 上段：ナビゲーションバー */}
-        <div style={{
-          padding: '10px 20px',
-          display: 'flex', alignItems: 'center', gap: 12,
-          borderBottom: '1px solid #f3f4f6',
-        }}>
-          <button
-            onClick={() => router.push('/kokoro-chat')}
-            title="Talkに戻る"
-            style={{
-              ...mono, fontSize: 9, color: '#9ca3af',
-              background: 'none', border: 'none', cursor: 'pointer',
-            }}
-          >
-            ← Talk
-          </button>
-          {/* アドレスバー風 */}
-          <div style={{
-            flex: 1, maxWidth: 400,
-            background: '#f3f4f6', borderRadius: 20,
-            padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 6,
-          }}>
-            <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>🔒</span>
-            <span style={{ ...mono, fontSize: 10, color: '#6b7280', letterSpacing: '0.05em' }}>
-              kokoro://browser
-            </span>
-          </div>
-        </div>
-
-        {/* タブ行 */}
         <div style={{
           display: 'flex', overflowX: 'auto',
           padding: '0 12px',
@@ -127,7 +202,7 @@ export default function KokoroBrowserPage() {
           scrollbarWidth: 'none',
         }}>
           <style>{`.browser-tabs::-webkit-scrollbar { display: none }`}</style>
-          {GAMESEN_NOTES.map(g => {
+          {allGamesen.map(g => {
             const count = matchNotesToGamesen(allPublicNotes, g).length;
             return (
               <button
@@ -146,15 +221,12 @@ export default function KokoroBrowserPage() {
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}
               >
-                {/* カラードット */}
                 <span style={{
                   width: 6, height: 6, borderRadius: '50%',
                   background: selectedId === g.id ? g.color : '#d1d5db',
                   flexShrink: 0, display: 'inline-block',
                   transition: 'background 0.15s',
                 }} />
-
-                {/* タブ名 */}
                 <span style={{
                   ...mono, fontSize: 10,
                   color: selectedId === g.id ? '#1a1a1a' : '#9ca3af',
@@ -163,8 +235,6 @@ export default function KokoroBrowserPage() {
                 }}>
                   {g.title}
                 </span>
-
-                {/* 件数バッジ */}
                 {count > 0 && (
                   <span style={{
                     ...mono, fontSize: 8,
@@ -229,11 +299,113 @@ export default function KokoroBrowserPage() {
               </button>
             );
           })()}
+
+          {/* ＋ ゲーセンノート作成ボタン */}
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            title="ゲーセンノートを作る"
+            style={{
+              flexShrink: 0,
+              padding: '10px 14px',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: '2px solid transparent',
+              cursor: 'pointer',
+              ...mono, fontSize: 12,
+              color: showCreateForm ? '#7c3aed' : '#d1d5db',
+              transition: 'color 0.15s',
+            }}
+          >
+            +
+          </button>
         </div>
-      </header>
+      </div>
 
       {/* タイムライン本体 */}
       <main style={{ maxWidth: 680, margin: '0 auto', padding: '24px 20px' }}>
+
+        {/* ゲーセンノート作成フォーム */}
+        {showCreateForm && (
+          <div style={{
+            marginBottom: 20, padding: '20px',
+            background: '#ffffff',
+            border: '1px solid #e5e7eb',
+            borderRadius: 8,
+          }}>
+            <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginBottom: 12, letterSpacing: '0.12em' }}>
+              // ゲーセンノートを作る
+            </div>
+            <input
+              type="text"
+              value={newTitle}
+              onChange={e => setNewTitle(e.target.value)}
+              placeholder="ノート名（例：創作の種）"
+              style={{
+                width: '100%', padding: '8px 12px',
+                border: '1px solid #e5e7eb', borderRadius: 6,
+                fontSize: 14, color: '#1a1a1a', outline: 'none',
+                fontFamily: "'Noto Serif JP', serif",
+                boxSizing: 'border-box', marginBottom: 10,
+              }}
+            />
+            <input
+              type="text"
+              value={newKeywords}
+              onChange={e => setNewKeywords(e.target.value)}
+              placeholder="キーワード（カンマ区切り：創作、アイデア、表現）"
+              style={{
+                width: '100%', padding: '8px 12px',
+                border: '1px solid #e5e7eb', borderRadius: 6,
+                fontSize: 13, color: '#1a1a1a', outline: 'none',
+                fontFamily: "'Space Mono', monospace",
+                boxSizing: 'border-box', marginBottom: 10,
+              }}
+            />
+            {/* カラー選択 */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center' }}>
+              <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>色:</span>
+              {COLOR_CHOICES.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setNewColor(c)}
+                  style={{
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: c, border: newColor === c ? '2px solid #1a1a1a' : '1px solid #e5e7eb',
+                    cursor: 'pointer', padding: 0,
+                  }}
+                />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleCreateGamesen}
+                disabled={!newTitle.trim() || !newKeywords.trim()}
+                title="作成"
+                style={{
+                  ...mono, fontSize: 10, letterSpacing: '0.1em',
+                  padding: '8px 20px',
+                  background: (!newTitle.trim() || !newKeywords.trim()) ? '#f3f4f6' : '#7c3aed',
+                  color: (!newTitle.trim() || !newKeywords.trim()) ? '#9ca3af' : '#ffffff',
+                  border: 'none', borderRadius: 6,
+                  cursor: (!newTitle.trim() || !newKeywords.trim()) ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Yoroshiku
+              </button>
+              <button
+                onClick={() => { setShowCreateForm(false); setNewTitle(''); setNewKeywords(''); }}
+                title="キャンセル"
+                style={{
+                  ...mono, fontSize: 10, color: '#9ca3af',
+                  background: 'transparent', border: '1px solid #e5e7eb',
+                  borderRadius: 6, padding: '8px 16px', cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 選択中ゲーセンノートの説明 */}
         <div style={{
@@ -243,12 +415,88 @@ export default function KokoroBrowserPage() {
           borderLeft: `3px solid ${currentGamesen.color}`,
           borderRadius: 6,
         }}>
-          <div style={{ ...mono, fontSize: 9, color: currentGamesen.color, marginBottom: 4 }}>
-            // {currentGamesen.title}
-          </div>
-          <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
-            {currentGamesen.description}
-          </div>
+          {editingId === currentGamesen.id ? (
+            /* 編集モード */
+            <div>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                style={{
+                  width: '100%', padding: '6px 10px',
+                  border: '1px solid #e5e7eb', borderRadius: 4,
+                  fontSize: 14, color: '#1a1a1a', outline: 'none',
+                  fontFamily: "'Noto Serif JP', serif",
+                  boxSizing: 'border-box', marginBottom: 8,
+                }}
+              />
+              <input
+                type="text"
+                value={editKeywords}
+                onChange={e => setEditKeywords(e.target.value)}
+                placeholder="キーワード（カンマ区切り）"
+                style={{
+                  width: '100%', padding: '6px 10px',
+                  border: '1px solid #e5e7eb', borderRadius: 4,
+                  fontSize: 12, color: '#6b7280', outline: 'none',
+                  ...mono, boxSizing: 'border-box', marginBottom: 8,
+                }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => handleSaveEdit(currentGamesen.id)} title="保存"
+                  style={{ ...mono, fontSize: 9, color: '#7c3aed', background: 'transparent', border: '1px solid #c4b5fd', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}>
+                  Save
+                </button>
+                <button onClick={() => setEditingId(null)} title="キャンセル"
+                  style={{ ...mono, fontSize: 9, color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 12px', cursor: 'pointer' }}>
+                  Cancel
+                </button>
+                <button onClick={() => handleDeleteGamesen(currentGamesen.id)} title="削除"
+                  style={{ ...mono, fontSize: 9, color: '#ef4444', background: 'transparent', border: '1px solid #fca5a5', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', marginLeft: 'auto' }}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* 表示モード */
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ ...mono, fontSize: 9, color: currentGamesen.color, marginBottom: 4 }}>
+                  // {currentGamesen.title}
+                </div>
+                {isCustom(currentGamesen.id) && (
+                  <button
+                    onClick={() => {
+                      setEditingId(currentGamesen.id);
+                      setEditTitle(currentGamesen.title);
+                      setEditKeywords(currentGamesen.keywords.join('、'));
+                    }}
+                    title="編集"
+                    style={{ ...mono, fontSize: 8, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                  >
+                    edit
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+                {currentGamesen.description}
+              </div>
+              {/* キーワード表示 */}
+              {currentGamesen.keywords.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
+                  {currentGamesen.keywords.map(kw => (
+                    <span key={kw} style={{
+                      ...mono, fontSize: 8, color: currentGamesen.color,
+                      border: `1px solid ${currentGamesen.color}33`,
+                      padding: '1px 6px', borderRadius: 8,
+                    }}>
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Note件数 */}
