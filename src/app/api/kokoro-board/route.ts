@@ -29,27 +29,36 @@ export async function POST(req: NextRequest) {
     const valueInject = KokoroValueEngine.forBoard();
     const system = BOARD_SYSTEM + (valueInject ? '\n' + valueInject : '');
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1200,
-        system,
-        messages: [{ role: 'user', content: input }],
-      }),
-    });
+    const MAX_RETRIES = 3;
+    let res: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1200,
+          system,
+          messages: [{ role: 'user', content: input }],
+        }),
+      });
+      if (res.status !== 529 || attempt === MAX_RETRIES) break;
+      await new Promise(r => setTimeout(r, 3000));
+    }
 
-    if (!res.ok) {
-      const err = await res.json();
+    if (!res!.ok) {
+      if (res!.status === 529) {
+        return NextResponse.json({ error: 'overloaded' }, { status: 529 });
+      }
+      const err = await res!.json();
       throw new Error(err.error?.message || 'Anthropic API error');
     }
 
-    const data = await res.json();
+    const data = await res!.json();
     const raw = data.content[0].text as string;
 
     const match = raw.match(/\{[\s\S]*\}/);

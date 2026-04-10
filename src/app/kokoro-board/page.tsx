@@ -25,6 +25,7 @@ export default function KokoroBoardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [retryMsg, setRetryMsg] = useState('');
 
   const canSubmit = agenda.trim().length > 0 && !isLoading;
 
@@ -35,21 +36,38 @@ export default function KokoroBoardPage() {
     setResult(null);
     setSaved(false);
 
-    try {
-      const res = await fetch('/api/kokoro-board', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agenda: agenda.trim(), members: members.trim() }),
-      });
-      if (!res.ok) throw new Error('会議台本の生成に失敗しました');
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResult(data.data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'エラーが発生しました');
-    } finally {
-      setIsLoading(false);
+    const MAX_RETRIES = 5;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const res = await fetch('/api/kokoro-board', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agenda: agenda.trim(), members: members.trim() }),
+        });
+        const data = await res.json();
+        if (res.status === 529 || data.error === 'overloaded') {
+          if (attempt < MAX_RETRIES) {
+            setRetryMsg(`混雑中…自動リトライします（${attempt + 1}/${MAX_RETRIES}）`);
+            await new Promise(r => setTimeout(r, 3000));
+            continue;
+          }
+          setError('サーバーが混雑しています。しばらく待ってからお試しください。');
+          break;
+        }
+        if (!res.ok || data.error) throw new Error(data.error || '会議台本の生成に失敗しました');
+        setResult(data.data);
+        break;
+      } catch (e) {
+        if (attempt < MAX_RETRIES && retryMsg) {
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        setError(e instanceof Error ? e.message : 'エラーが発生しました');
+        break;
+      }
     }
+    setRetryMsg('');
+    setIsLoading(false);
   }, [agenda, members]);
 
   const handleSaveToNote = () => {
@@ -170,6 +188,12 @@ export default function KokoroBoardPage() {
         </button>
 
         {isLoading && <PersonaLoading />}
+
+        {retryMsg && (
+          <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#f59e0b', lineHeight: 1.8 }}>
+            // {retryMsg}
+          </div>
+        )}
 
         {error && (
           <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8 }}>
