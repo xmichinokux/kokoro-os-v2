@@ -6,8 +6,25 @@ import { saveToNote } from '@/lib/saveToNote';
 import { saveStrategyInput } from '@/lib/strategyInputs';
 import PersonaLoading from '@/components/PersonaLoading';
 
+type WriterMode = 'lite' | 'deep' | 'spark';
+
+const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = {
+  lite: {
+    label: 'Lite',
+    placeholder: '整えたい文章を入力してください...',
+  },
+  deep: {
+    label: 'Deep',
+    placeholder: '構造化・リライトしたい文章を入力してください...',
+  },
+  spark: {
+    label: 'Spark',
+    placeholder: 'キーワードや断片的なメモを並べてください。\n例：シューティング スクロール 駆け引き スコア 緊張感',
+  },
+};
+
 /**
- * Core モードのXMLフォーマット出力をパースして、
+ * Deep/Spark モードのXMLフォーマット出力をパースして、
  * 描画用HTML・コピー/保存用プレーンテキスト・memos/suggestionを取り出す
  */
 function parseWriterXml(raw: string): {
@@ -24,7 +41,6 @@ function parseWriterXml(raw: string): {
   if (editedMatch) {
     html = editedMatch[1].trim();
   } else {
-    // XMLタグが無かった場合のフォールバック：そのままwpで包む
     const escaped = raw
       .trim()
       .replace(/&/g, '&amp;')
@@ -33,7 +49,6 @@ function parseWriterXml(raw: string): {
     html = `<p class="wp">${escaped.replace(/\n/g, '<br>')}</p>`;
   }
 
-  // プレーンテキスト化（Note保存・コピー用）
   const plain = html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|h1|h2|h3|h4|li|blockquote|ul|ol|hr|div)\s*>/gi, '\n')
@@ -57,7 +72,7 @@ export default function KokoroWriterPage() {
   const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
 
-  const mode = 'core' as const;
+  const [mode, setMode] = useState<WriterMode>('deep');
   const [inputText, setInputText] = useState('');
   const [outputText, setOutputText] = useState('');
   const [outputHtml, setOutputHtml] = useState('');
@@ -69,8 +84,9 @@ export default function KokoroWriterPage() {
 
   const canSubmit = inputText.trim().length > 0 && !isLoading;
 
-  const handleRun = useCallback(async (text?: string) => {
+  const handleRun = useCallback(async (text?: string, overrideMode?: WriterMode) => {
     const t = text ?? inputText;
+    const m = overrideMode ?? mode;
     if (!t.trim()) return;
     setIsLoading(true);
     setError('');
@@ -82,22 +98,22 @@ export default function KokoroWriterPage() {
       const res = await fetch('/api/kokoro-writer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: t, mode }),
+        body: JSON.stringify({ text: t, mode: m }),
       });
       if (!res.ok) throw new Error('編集に失敗しました');
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
       const raw = (data.result ?? '') as string;
-      if (mode === 'core') {
-        // Core モード: XMLパース → HTML描画 + プレーンテキスト化
+      if (m === 'lite') {
+        // Lite: プレーンテキストのみ
+        setOutputText(raw);
+        setOutputHtml('');
+      } else {
+        // Deep / Spark: XMLパース → HTML描画
         const parsed = parseWriterXml(raw);
         setOutputHtml(parsed.html);
         setOutputText(parsed.plain);
-      } else {
-        // Lite モード: 既存通りプレーンテキストのまま
-        setOutputText(raw);
-        setOutputHtml('');
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました');
@@ -140,12 +156,11 @@ export default function KokoroWriterPage() {
       userText = raw;
     }
     if (!userText || !userText.trim()) return;
-    // 遷移コマンドだけの場合は自動処理しない
     const navOnly = /^(writer|ライター).{0,8}(開|行|使|起動|見|やり)/i.test(userText.trim());
     if (navOnly) return;
     setInputText(userText);
     setTimeout(() => {
-      handleRun(userText);
+      handleRun(userText, 'deep');
     }, 300);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -169,13 +184,34 @@ export default function KokoroWriterPage() {
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 28px 100px' }}>
 
+        {/* モード切替タブ */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
+          {(Object.keys(MODE_CONFIG) as WriterMode[]).map(m => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setOutputText(''); setOutputHtml(''); setError(''); }}
+              style={{
+                ...mono, fontSize: 10, letterSpacing: '.1em',
+                padding: '8px 20px', borderRadius: 2, cursor: 'pointer',
+                border: `1px solid ${mode === m ? accentColor : '#d1d5db'}`,
+                color: mode === m ? '#fff' : '#9ca3af',
+                background: mode === m ? accentColor : 'transparent',
+                fontWeight: mode === m ? 600 : 400,
+                transition: 'all 0.15s',
+              }}
+            >
+              {MODE_CONFIG[m].label}
+            </button>
+          ))}
+        </div>
+
         {/* 入力 */}
         <textarea
           value={inputText}
           onChange={e => setInputText(e.target.value)}
-          placeholder="編集したい文章を入力してください..."
+          placeholder={MODE_CONFIG[mode].placeholder}
           style={{
-            width: '100%', minHeight: 200, background: '#f8f9fa',
+            width: '100%', minHeight: mode === 'spark' ? 120 : 200, background: '#f8f9fa',
             border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
             padding: 16, fontSize: 14, color: '#111827',
             resize: 'vertical', outline: 'none', lineHeight: 1.8,
@@ -186,29 +222,46 @@ export default function KokoroWriterPage() {
           onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
         />
 
-        {/* 出力（HTML描画） */}
+        {/* 出力 */}
         {(outputHtml || outputText) && (
           <div style={{ marginTop: 24 }}>
-            <div
-              className="edited-text-zone"
-              style={{
-                minHeight: 200,
-                border: '1px solid #e5e7eb',
-                borderLeft: '2px solid #d1d5db',
-                borderRadius: 2,
-              }}
-            >
-              {outputHtml ? (
-                <div
-                  className="edited-text"
-                  dangerouslySetInnerHTML={{ __html: outputHtml }}
-                />
-              ) : (
-                <div style={{ padding: 24, fontSize: 14, lineHeight: 1.8, color: '#374151', whiteSpace: 'pre-wrap' }}>
-                  {outputText}
-                </div>
-              )}
-            </div>
+            {mode === 'lite' ? (
+              /* Lite: readOnly テキストエリア */
+              <textarea
+                readOnly
+                value={outputText}
+                style={{
+                  width: '100%', minHeight: 200, background: '#f9fafb',
+                  border: '1px solid #e5e7eb', borderLeft: '2px solid #d1d5db',
+                  padding: 16, fontSize: 14, color: '#374151',
+                  resize: 'vertical', outline: 'none', lineHeight: 1.8,
+                  fontFamily: "'Noto Serif JP', serif",
+                  boxSizing: 'border-box', borderRadius: '0 4px 4px 0',
+                }}
+              />
+            ) : (
+              /* Deep / Spark: HTML描画 */
+              <div
+                className="edited-text-zone"
+                style={{
+                  minHeight: 200,
+                  border: '1px solid #e5e7eb',
+                  borderLeft: '2px solid #d1d5db',
+                  borderRadius: 2,
+                }}
+              >
+                {outputHtml ? (
+                  <div
+                    className="edited-text"
+                    dangerouslySetInnerHTML={{ __html: outputHtml }}
+                  />
+                ) : (
+                  <div style={{ padding: 24, fontSize: 14, lineHeight: 1.8, color: '#374151', whiteSpace: 'pre-wrap' }}>
+                    {outputText}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -226,7 +279,7 @@ export default function KokoroWriterPage() {
             borderRadius: 2, marginTop: 8,
           }}
         >
-          {isLoading ? '// 編集中...' : 'Yoroshiku'}
+          Yoroshiku
         </button>
 
         {/* ローディング */}
@@ -241,7 +294,7 @@ export default function KokoroWriterPage() {
 
         {/* アクションボタン行 */}
         {outputText && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             {/* Note保存 */}
             <button
               onClick={handleSaveToNote}

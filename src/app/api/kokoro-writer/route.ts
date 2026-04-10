@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
-const LITE_SYSTEM = `あなたはKokoro OSのWriterアシスタント（Liteモード）です。
-入力された文章を以下の観点で軽く整形してください：
-・読点の調整・段落整理・言い換え・自然な流れに修正
-改変は最小限に。元の意図を尊重する。整形後の文章のみ返してください。`;
+const LITE_SYSTEM = `あなたはKokoro OSのWriterエンジン（Liteモード）です。
+入力された文章を最小限の変更で整えてください。
+
+【ルール】
+・語尾の統一（です・ます調 or だ・である調を統一）
+・読点の調整（読みやすい位置に）
+・明らかな誤字・脱字の修正
+・段落の整理（必要な場合のみ）
+
+【禁止】
+・内容の追加・削除
+・文章構造の大幅変更
+・リライト・言い換え
+・見出しの追加
+
+整形後のテキストのみ返してください。HTMLタグは使わない。`;
 
 const CORE_SYSTEM = `あなたはKokoro OSの「Writerエンジン」です。
 4つの人格（ノーム・シン・カノン・ディグ）が協力して、
@@ -60,17 +72,62 @@ const CORE_SYSTEM = `あなたはKokoro OSの「Writerエンジン」です。
 改善提案（任意）
 </suggestion>`;
 
+const SPARK_SYSTEM = `あなたはKokoro OSのWriterエンジン（Sparkモード）です。
+入力されたキーワード・断片・メモを、一つの文章として展開してください。
+
+【ルール】
+・入力はキーワードの羅列・箇条書き・断片的なメモでOK
+・それらを繋いで、一つの可能性ある文章を生成する
+・正解の文章である必要はない。AIの解釈による「一つの解釈」でよい
+・読んだ人が「あ、こういう意味だったのか」という発見を生む文章を目指す
+・元のキーワードの意味・雰囲気を尊重する
+・長さは入力量に応じて自然な長さに
+
+【禁止】
+・入力にない概念の大量追加
+・説明的・説教的な文章
+・箇条書きのまま返すこと
+
+Deepモードと同じHTMLレイアウト形式で返してください。
+以下のXMLフォーマットのみで返答してください：
+
+<edited>
+<!-- HTMLをここに -->
+</edited>
+<memos>
+展開の意図を簡潔に
+</memos>
+<suggestion>
+改善提案（任意）
+</suggestion>
+
+HTMLクラス：
+タイトル：      <h1 class="wt">タイトル</h1>
+リード文：      <p class="wlead">リード文</p>
+大見出し：      <h2 class="wh2">見出し</h2>
+小見出し：      <h3 class="wh3">小見出し</h3>
+通常段落：      <p class="wp">本文</p>
+強調：          <strong class="wstrong">重要</strong>
+箇条書き：      <ul class="wul"><li>項目</li></ul>
+番号リスト：    <ol class="wol"><li>手順</li></ol>
+区切り線：      <hr class="whr">
+引用：          <blockquote class="wbq">引用</blockquote>`;
+
 function buildSystem(mode: string): string {
-  return mode === 'core' ? CORE_SYSTEM : LITE_SYSTEM;
+  if (mode === 'deep') return CORE_SYSTEM;
+  if (mode === 'spark') return SPARK_SYSTEM;
+  // core (legacy) も deep として扱う
+  if (mode === 'core') return CORE_SYSTEM;
+  return LITE_SYSTEM;
 }
 
 export async function POST(req: NextRequest) {
   const { text, mode } = await req.json();
 
   const baseSystem = buildSystem(mode);
-  // Coreモードのみ MECE_CORE + REVO_CYCLE を注入
-  // valueInjectは先頭に置き、baseSystemの「〜のみ返してください」を最後の指示として残す
-  const valueInject = mode === 'core' ? KokoroValueEngine.forWriterCore() : '';
+  // Deep/Spark モードのみ MECE_CORE + REVO_CYCLE を注入
+  const useValueEngine = mode === 'core' || mode === 'deep' || mode === 'spark';
+  const valueInject = useValueEngine ? KokoroValueEngine.forWriterCore() : '';
   const system = (valueInject ? valueInject + '\n\n' : '') + baseSystem;
 
   try {
@@ -88,7 +145,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: mode === 'core' ? 2500 : 1500,
+        max_tokens: mode === 'lite' ? 1500 : 2500,
         system,
         messages: [{ role: 'user', content: text }],
       }),
