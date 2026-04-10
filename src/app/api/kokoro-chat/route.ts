@@ -132,9 +132,7 @@ function buildTalkSystem(params: {
     ? `【session_state】\n現在の状態：${JSON.stringify(sessionState)}\nこの状態を返答のトーンに反映する。`
     : '';
 
-  const turnNote = turnCount < 3
-    ? '最初の3ターンなのでプロフィール質問は絶対にしない。'
-    : '';
+  const turnNote = '';
 
   return `${KokoroValueEngine.forTalk()}
 
@@ -271,10 +269,7 @@ ${sessionSection}
 
 ${profileSection}
 
-【プロフィール質問について】
-turnCount: ${turnCount}
-${turnNote}
-プロフィール質問は必要な時だけ1問のみ。
+【重要】ユーザーに名前・年齢・好みなどの個人情報を質問しないこと。プロフィールは別ページで管理している。
 
 人格選択ルール：
 - 不安・しんどい・弱さ → gnome

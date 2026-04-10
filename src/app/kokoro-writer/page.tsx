@@ -130,12 +130,14 @@ export default function KokoroWriterPage() {
     } catch {
       userText = raw;
     }
-    if (userText) {
-      setInputText(userText);
-      setTimeout(() => {
-        handleRun(userText);
-      }, 300);
-    }
+    if (!userText || !userText.trim()) return;
+    // 遷移コマンドだけの場合は自動処理しない
+    const navOnly = /^(writer|ライター).{0,8}(開|行|使|起動|見|やり)/i.test(userText.trim());
+    if (navOnly) return;
+    setInputText(userText);
+    setTimeout(() => {
+      handleRun(userText);
+    }, 300);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const accentColor = '#a855f7';

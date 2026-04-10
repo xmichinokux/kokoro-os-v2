@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getProfile, updateExplicit, canAskQuestion, markQuestionAsked } from '@/lib/profile';
+import { getProfile } from '@/lib/profile';
 import TalkResponse from '@/components/kokoro/TalkResponse';
 import type { Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
@@ -250,7 +250,11 @@ export default function KokoroChat() {
   const openAnimalTalk = (msg?: Message) => {
     const imgData = msg?.imageBase64 || attachedImage;
     const imgType = msg?.imageMediaType || attachedMediaType;
-    if (!imgData || !imgType) return;
+    if (!imgData || !imgType) {
+      // 画像なしの場合は直接遷移（Animal側でアップロード待ち）
+      router.push('/kokoro-animal');
+      return;
+    }
     sessionStorage.setItem('animalTalkImage', JSON.stringify({
       base64: imgData,
       mediaType: imgType,
@@ -283,6 +287,29 @@ export default function KokoroChat() {
     const result = new Set<string>();
     for (const [app, names] of Object.entries(EXPLICIT_APP_NAMES)) {
       if (names.some(n => lower.includes(n.toLowerCase()))) result.add(app);
+    }
+    return result;
+  };
+
+  // 文脈からのアプリ推定
+  const CONTEXT_PATTERNS: Record<string, RegExp> = {
+    buddy:      /企画|アイデア|ブレスト|壁打ち|発想|思いつ/,
+    plan:       /タスク|目標|やること|計画|段取り|スケジュール|to.?do/i,
+    zen:        /悩み|モヤモヤ|もやもや|しんどい|つらい|不安|苦しい|落ち込/,
+    writer:     /文章.*(書|整|直|編集)|書きたい|整えたい|リライト|推敲/,
+    recipe:     /料理|献立|食事|ご飯|レシピ|作り置き|晩ご飯|昼ご飯/,
+    fashion:    /ファッション|服|コーデ|着こなし|コーディネート|何着/,
+    insight:    /作品|音楽|映画|本|漫画|アニメ|ドラマ|レビュー|感想|評価/,
+    note:       /メモ|記録|残し|書き留|日記/,
+    couple:     /パートナー|彼氏|彼女|恋人|夫|妻|カップル|恋愛|付き合/,
+    philosophy: /哲学|思想|深い問い|人生の意味|存在|本質/,
+    board:      /会議|ミーティング|アジェンダ|議題|進行|ファシリ/,
+  };
+
+  const detectContextApps = (text: string): Set<string> => {
+    const result = new Set<string>();
+    for (const [app, pattern] of Object.entries(CONTEXT_PATTERNS)) {
+      if (pattern.test(text)) result.add(app);
     }
     return result;
   };
@@ -338,41 +365,7 @@ export default function KokoroChat() {
     router.push('/kokoro-fashion');
   };
 
-  const getProfileQuestion = (text: string): string | null => {
-    const profile = getProfile();
-    if (!profile.explicit.age_range && canAskQuestion('age_range')) return 'age_range';
-    if (!profile.explicit.favorite_things?.length && canAskQuestion('favorite_things')) return 'favorite_things';
-    return null;
-  };
-
-  const PROFILE_QUESTIONS: Record<string, string> = {
-    age_range: '\n\n---\nざっくりでいいんだけど、年齢どのくらい？',
-    favorite_things: '\n\n---\n好きなもの、思いつく範囲で3つ教えて',
-  };
-
-  const parseProfileAnswer = (text: string): boolean => {
-    const lastAiMsg = [...messages].reverse().find(m => m.role === 'ai');
-    if (!lastAiMsg) return false;
-    const lastContent = lastAiMsg.content;
-    let saved = false;
-
-    if (lastContent.includes('年齢') || lastContent.includes('何歳')) {
-      const ageMap: Record<string, string> = {
-        '10': 'teens', '20': '20s', '30': '30s',
-        '40': '40s', '50': '50s', '60': '60+',
-      };
-      for (const [key, val] of Object.entries(ageMap)) {
-        if (text.includes(key)) { updateExplicit('age_range', val); saved = true; break; }
-      }
-    }
-
-    if (lastContent.includes('好きなもの') || lastContent.includes('3つ教えて')) {
-      const things = text.split(/[、,，\s]+/).filter(Boolean);
-      if (things.length > 0) { updateExplicit('favorite_things', things); saved = true; }
-    }
-
-    return saved;
-  };
+  // プロフィール収集は /kokoro-profile で管理するため Talk では行わない
 
   const enterStayMode = (persona: Persona) => {
     setStayState({ active: true, persona, style: 'balanced', turnCount: 0 });
@@ -417,8 +410,6 @@ export default function KokoroChat() {
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
-
-    const profileUpdated = parseProfileAnswer(text);
 
     const userMsg: Message = { role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
@@ -531,40 +522,38 @@ export default function KokoroChat() {
       const savedPreview = attachedPreview;
       clearAttachment();
 
-      // プロフィール質問追加（最初の3ターンは質問しない）
-      let replyText = data.response || '';
-      if (turnCount >= 3) {
-        const questionField = getProfileQuestion(text);
-        if (questionField) {
-          replyText += PROFILE_QUESTIONS[questionField];
-          markQuestionAsked(questionField);
-        }
-      }
+      const replyText = data.response || '';
 
-      // パターンA：明示的にアプリ名を指定した場合のみボタン表示
+      // 明示的なアプリ名指定
       const explicitApps = detectExplicitApps(text);
       const hasImage = !!(savedImage && savedMediaType);
+
+      // 文脈からのアプリ推定
+      const contextApps = detectContextApps(text);
 
       // wishlist は meta から wishlist_item が必要
       const meta = (data.meta ?? {}) as Record<string, boolean | number | string | null>;
       const wishItem = (meta as { wishlist_item?: { text: string; category: WishCategory; intensity: WishIntensity } | null }).wishlist_item ?? null;
 
+      const has = (app: string) => explicitApps.has(app) || contextApps.has(app);
+
       const metaFields: Partial<Message> = {
-        showAnimal:     (explicitApps.has('animal') && hasImage) || undefined,
-        showFashion:    explicitApps.has('fashion') || undefined,
-        showNote:       explicitApps.has('note') || undefined,
-        showRecipe:     explicitApps.has('recipe') || undefined,
-        showInsight:    explicitApps.has('insight') || undefined,
-        showPlan:       explicitApps.has('plan') || undefined,
-        showWriter:     explicitApps.has('writer') || undefined,
-        showBrowser:    explicitApps.has('browser') || undefined,
-        showCouple:     explicitApps.has('couple') || undefined,
-        showBuddy:      explicitApps.has('buddy') || undefined,
-        showPhilosophy: explicitApps.has('philosophy') || undefined,
-        showBoard:      explicitApps.has('board') || undefined,
-        showKami:       explicitApps.has('kami') || undefined,
-        showPonchi:     explicitApps.has('ponchi') || undefined,
-        showWishlist:   (explicitApps.has('wishlist') && !!wishItem?.text) || undefined,
+        showZen:        has('zen') || undefined,
+        showAnimal:     has('animal') || undefined,
+        showFashion:    has('fashion') || undefined,
+        showNote:       has('note') || undefined,
+        showRecipe:     has('recipe') || undefined,
+        showInsight:    has('insight') || undefined,
+        showPlan:       has('plan') || undefined,
+        showWriter:     has('writer') || undefined,
+        showBrowser:    has('browser') || undefined,
+        showCouple:     has('couple') || undefined,
+        showBuddy:      has('buddy') || undefined,
+        showPhilosophy: has('philosophy') || undefined,
+        showBoard:      has('board') || undefined,
+        showKami:       has('kami') || undefined,
+        showPonchi:     has('ponchi') || undefined,
+        showWishlist:   (has('wishlist') && !!wishItem?.text) || undefined,
         wishlistText:     explicitApps.has('wishlist') && wishItem ? wishItem.text : undefined,
         wishlistCategory: explicitApps.has('wishlist') && wishItem ? wishItem.category : undefined,
         wishlistIntensity: explicitApps.has('wishlist') && wishItem ? wishItem.intensity : undefined,

@@ -81,13 +81,17 @@ export default function KokoroPlanPage() {
     } catch {
       userText = raw;
     }
-    if (userText) {
-      setGoal(userText);
-      // 少し遅延して自動実行
-      setTimeout(() => {
-        handleGenerate(userText);
-      }, 300);
+    if (!userText || !userText.trim()) return;
+    // 遷移コマンドだけの場合は自動処理しない（テキストだけセット）
+    const navOnly = /^(plan|プラン).{0,8}(開|行|使|起動|見|やり)/i.test(userText.trim());
+    if (navOnly) {
+      // テキスト欄は空のまま、ユーザーの入力を待つ
+      return;
     }
+    setGoal(userText);
+    setTimeout(() => {
+      handleGenerate(userText);
+    }, 300);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
