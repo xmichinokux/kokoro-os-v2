@@ -6,6 +6,7 @@ import {
   getProfile, createEmptyProfile, PROFILE_FIELDS, PROFILE_STORAGE_KEY,
   type KokoroUserProfile,
 } from '@/lib/getProfile';
+import PersonaLoading from '@/components/PersonaLoading';
 
 type ProfileKey = keyof Omit<KokoroUserProfile, 'updatedAt'>;
 
@@ -455,19 +456,7 @@ export default function KokoroProfilePage() {
             </button>
           </div>
 
-          {analyzing && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ width: '100%', height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden', marginBottom: 8 }}>
-                <div style={{
-                  position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%',
-                  background: accentColor, animation: 'kokoroSweep 1.4s ease-in-out infinite',
-                }} />
-              </div>
-              <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.1em' }}>
-                // AIが分析しています...
-              </div>
-            </div>
-          )}
+          {analyzing && <PersonaLoading />}
 
           {(analysisSummary || analysisError) && (
             <div style={{

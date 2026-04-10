@@ -19,6 +19,7 @@ import {
 } from '@/lib/kokoro-note/imageNoteStorage';
 import { createRecipeInputFromNote, setRecipeInput } from '@/lib/kokoro/recipeInput';
 import type { KokoroRecipeInput } from '@/types/recipe';
+import PersonaLoading from '@/components/PersonaLoading';
 
 /* ── 定数 ── */
 const SOURCE_LABELS: Record<string, string> = {
@@ -1089,11 +1090,12 @@ export default function KokoroNotePage() {
       <button
         onClick={handleAiSuggest}
         disabled={aiLoading || !editBody.trim()}
-        className="text-xs font-bold px-4 py-2 rounded-lg transition-colors mb-6 disabled:opacity-40"
+        className="text-xs font-bold px-4 py-2 rounded-lg transition-colors mb-2 disabled:opacity-40"
         style={{ background: '#f3f4f6', color: '#6b7280' }}
       >
         {aiLoading ? 'AI生成中...' : 'AIでタイトル・タグを補完'}
       </button>
+      {aiLoading && <PersonaLoading />}
 
       {/* 保存・キャンセル */}
       <div className="flex gap-3 pt-4 border-t" style={{ borderColor: '#e5e7eb' }}>

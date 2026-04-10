@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getProfile, updateInferred } from '@/lib/profile';
 import type { KokoroProfile } from '@/lib/profile';
 import { saveToNote } from '@/lib/saveToNote';
+import PersonaLoading from '@/components/PersonaLoading';
 import {
   getProfile as getKokoroProfile,
   hasProfileData,
@@ -213,14 +214,7 @@ export default function KokoroFashion() {
         </div>
 
         {/* loading */}
-        {isLoading && (
-          <div style={{ textAlign: 'center', padding: '40px 0' }}>
-            <div style={{ height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden', marginBottom: 16 }}>
-              <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: '#7c3aed', animation: 'sweep 1.4s ease-in-out infinite' }} />
-            </div>
-            <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', letterSpacing: '0.15em' }}>// 装いを読み取り中...</div>
-          </div>
-        )}
+        {isLoading && <PersonaLoading />}
 
         {/* result */}
         {result && (

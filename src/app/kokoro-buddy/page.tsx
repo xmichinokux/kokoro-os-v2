@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import PersonaLoading from '@/components/PersonaLoading';
 
 type BuddyMessage = { role: 'user' | 'assistant'; content: string };
 
@@ -238,28 +239,7 @@ export default function KokoroBuddyPage() {
           ))}
 
           {/* タイピングインジケーター */}
-          {isLoading && (
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: '50%',
-                border: `1px solid ${accentColor}`, background: 'rgba(0,0,0,0.04)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 14, flexShrink: 0,
-              }}>
-                🎧
-              </div>
-              <div style={{
-                display: 'flex', gap: 4,
-                padding: '10px 14px',
-                background: '#f8f9fa', border: '1px solid #e5e7eb',
-                borderRadius: '4px 16px 16px 4px',
-              }}>
-                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#9ca3af', animation: 'bounce 0.8s ease-in-out infinite' }} />
-                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#9ca3af', animation: 'bounce 0.8s ease-in-out 0.15s infinite' }} />
-                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#9ca3af', animation: 'bounce 0.8s ease-in-out 0.3s infinite' }} />
-              </div>
-            </div>
-          )}
+          {isLoading && <PersonaLoading />}
         </div>
 
         {/* エラー */}

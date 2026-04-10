@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveToNote } from '@/lib/saveToNote';
+import PersonaLoading from '@/components/PersonaLoading';
 
 type PhilMode = 'multi' | 'socratic' | 'eastern' | 'modern';
 
@@ -240,13 +241,7 @@ export default function KokoroPhilosophyPage() {
         </button>
 
         {/* ローディング */}
-        {isLoading && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ width: '100%', height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: accentColor, animation: 'sweep 1.4s ease-in-out infinite' }} />
-            </div>
-          </div>
-        )}
+        {isLoading && <PersonaLoading />}
 
         {/* エラー */}
         {error && (

@@ -19,6 +19,7 @@ import type { KokoroNoteDraft } from '@/types/noteMeta';
 import type { InsightFlowState } from '@/lib/kokoro/shouldShowSaveToNoteButton';
 import { createRecipeInputFromTalk, setRecipeInput } from '@/lib/kokoro/recipeInput';
 import { saveToWishlist, type WishCategory, type WishIntensity } from '@/lib/wishlist';
+import PersonaLoading from '@/components/PersonaLoading';
 
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
@@ -1284,12 +1285,7 @@ export default function KokoroChat() {
           ))}
 
           {/* ローディング */}
-          {isLoading && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0' }}>
-              <div style={{ width:6, height:6, borderRadius:'50%', background:'#7c3aed', animation:'pulse 1s infinite' }} />
-              <span style={{ fontSize:12, color:'#9ca3af' }}>考えています...</span>
-            </div>
-          )}
+          {isLoading && <PersonaLoading />}
 
           <div ref={bottomRef} />
         </div>

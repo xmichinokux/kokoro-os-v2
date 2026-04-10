@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { saveImageNote, createImageNoteId } from '@/lib/kokoro-note/imageNoteStorage';
 import type { AnimalTalkNoteEntry } from '@/types/noteImage';
+import PersonaLoading from '@/components/PersonaLoading';
 
 export default function KokoroAnimal() {
   const [preview, setPreview] = useState<string | null>(null);
@@ -326,14 +327,7 @@ export default function KokoroAnimal() {
             )}
 
             {/* ローディング */}
-            {isLoading && (
-              <div style={{ textAlign:'center', padding:'20px 0' }}>
-                <div style={{ height:1, background:'#e5e7eb', position:'relative', overflow:'hidden', marginBottom:16 }}>
-                  <div style={{ position:'absolute', left:'-40%', top:0, width:'40%', height:'100%', background:'#1a1a1a', animation:'sweep 1.4s ease-in-out infinite' }} />
-                </div>
-                <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', letterSpacing:'0.15em' }}>// 読み取り中...</div>
-              </div>
-            )}
+            {isLoading && <PersonaLoading />}
 
             {/* 結果 */}
             {mainText && (

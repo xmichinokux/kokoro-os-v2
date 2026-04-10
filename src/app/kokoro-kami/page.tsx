@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveToNote } from '@/lib/saveToNote';
+import PersonaLoading from '@/components/PersonaLoading';
 
 type KamiResult = {
   title: string;
@@ -182,13 +183,7 @@ export default function KokoroKamiPage() {
           {isLoading ? '// 生成中...' : 'Yoroshiku'}
         </button>
 
-        {isLoading && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ width: '100%', height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: accentColor, animation: 'sweep 1.4s ease-in-out infinite' }} />
-            </div>
-          </div>
-        )}
+        {isLoading && <PersonaLoading />}
 
         {error && (
           <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8 }}>

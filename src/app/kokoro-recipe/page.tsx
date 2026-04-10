@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { consumeRecipeInput } from '@/lib/kokoro/recipeInput';
 import type { KokoroRecipeInput, KokoroRecipeResult, DayRecipe } from '@/types/recipe';
 import { saveToNote } from '@/lib/saveToNote';
+import PersonaLoading from '@/components/PersonaLoading';
 import {
   getProfile as getKokoroProfile,
   hasProfileData,
@@ -199,16 +200,7 @@ export default function KokoroRecipePage() {
               </button>
             )}
 
-            {isLoading && (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <div style={{ height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden', marginBottom: 16 }}>
-                  <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: '#7c3aed', animation: 'sweep 1.4s ease-in-out infinite' }} />
-                </div>
-                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.15em' }}>
-                  // 1週間のRecipeを生成中...
-                </div>
-              </div>
-            )}
+            {isLoading && <PersonaLoading />}
           </>
         )}
 

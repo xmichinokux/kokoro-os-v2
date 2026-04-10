@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { consumeNoteForZen, buildZenPromptFromNoteData } from '@/lib/kokoro/noteLinkage';
 import { saveToNote } from '@/lib/saveToNote';
+import PersonaLoading from '@/components/PersonaLoading';
 import { createRecipeInputFromZen, setRecipeInput } from '@/lib/kokoro/recipeInput';
 
 type PersonaResult = { id: string; name: string; text: string };
@@ -212,18 +213,7 @@ export default function KokoroZen() {
         )}
 
         {/* ローディング */}
-        {isLoading && (
-          <div style={{ marginBottom:32 }}>
-            <div style={{ height:1, background:'#e5e7eb', position:'relative', overflow:'hidden', marginBottom:20 }}>
-              <div style={{ position:'absolute', left:'-40%', top:0, width:'40%', height:'100%', background:'#7c3aed', animation:'sweep 1.4s ease-in-out infinite' }} />
-            </div>
-            {stepLabels.map((label, i) => (
-              <div key={i} style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.14em', color: i < loadStep ? '#7c3aed' : '#d1d5db', marginBottom:8, transition:'color .3s' }}>
-                {i < loadStep ? '✓ ' : '○ '}{label}
-              </div>
-            ))}
-          </div>
-        )}
+        {isLoading && <PersonaLoading />}
 
         {/* 結果 */}
         {result && (

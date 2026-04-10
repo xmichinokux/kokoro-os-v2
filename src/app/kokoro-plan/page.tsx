@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveToNote } from '@/lib/saveToNote';
+import PersonaLoading from '@/components/PersonaLoading';
 
 type Task = {
   text: string;
@@ -186,17 +187,7 @@ export default function KokoroPlanPage() {
         </button>
 
         {/* ローディング */}
-        {isLoading && (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ ...mono, fontSize: 9, letterSpacing: '.2em', color: '#9ca3af', marginBottom: 32 }}>
-              // 生成中...
-            </div>
-            <div style={{ width: '100%', height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: '#10b981', animation: 'sweep 1.4s ease-in-out infinite' }} />
-            </div>
-            <style>{`@keyframes sweep{0%{left:-40%}100%{left:140%}}`}</style>
-          </div>
-        )}
+        {isLoading && <PersonaLoading />}
 
         {/* エラー */}
         {error && (

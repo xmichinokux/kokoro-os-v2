@@ -11,6 +11,7 @@ import { buildDiagnosisActions, type DiagnosisAction } from '@/lib/kokoro/diagno
 import { buildStayPromptFromDiagnosis } from '@/lib/kokoro/diagnosis/buildStayPromptFromDiagnosis';
 import { buildMultiPromptFromDiagnosis } from '@/lib/kokoro/diagnosis/buildMultiPromptFromDiagnosis';
 import { PERSONA_LABELS, PERSONA_COLORS, PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
+import PersonaLoading from '@/components/PersonaLoading';
 
 type ZenPersona = { id: string; name: string; text: string };
 type ZenInlineResult = {
@@ -329,16 +330,7 @@ export default function KokoroDiagnosis() {
             </div>
 
             {/* ⑪ インラインZen分析結果 */}
-            {zenLoading && (
-              <div style={{ marginBottom: 32 }}>
-                <div style={{ height: 1, background: '#e5e7eb', position: 'relative', overflow: 'hidden', marginBottom: 20 }}>
-                  <div style={{ position: 'absolute', left: '-40%', top: 0, width: '40%', height: '100%', background: '#7c3aed', animation: 'sweep 1.4s ease-in-out infinite' }} />
-                </div>
-                <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.14em', color: '#9ca3af' }}>
-                  // 4つの視点で整理しています...
-                </div>
-              </div>
-            )}
+            {zenLoading && <PersonaLoading />}
 
             {zenResult && (
               <div ref={zenResultRef} style={{ marginBottom: 32 }}>

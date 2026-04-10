@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { InsightResult } from '@/types/insight';
 import { saveToNote } from '@/lib/saveToNote';
+import PersonaLoading from '@/components/PersonaLoading';
 
 /* ─── 定数 ─── */
 const DOT_COLORS = ['#7c3aed','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16'];
@@ -678,21 +679,7 @@ export default function KokoroInsightPage() {
         </button>
 
         {/* ローディング */}
-        {isLoading && (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-              {LOAD_STEPS.map((step, i) => (
-                <div key={i} style={{ ...mono, fontSize: 9, letterSpacing: '.1em', color: i === loadStep ? '#7c3aed' : '#9ca3af' }}>
-                  {step}
-                </div>
-              ))}
-            </div>
-            <div style={{ width: 100, height: 2, background: '#e5e7eb', margin: '0 auto', overflow: 'hidden', borderRadius: 1 }}>
-              <div style={{ width: '100%', height: '100%', background: '#7c3aed', animation: 'slideBar 1.2s linear infinite' }} />
-            </div>
-            <style>{`@keyframes slideBar { from{transform:translateX(-100%)} to{transform:translateX(100%)} }`}</style>
-          </div>
-        )}
+        {isLoading && <PersonaLoading />}
 
         {error && (
           <div style={{ ...mono, fontSize: 10, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', padding: '10px 14px', borderRadius: 3, marginBottom: 16 }}>
