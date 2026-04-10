@@ -13,7 +13,7 @@ import { buildTagCloud }    from '@/lib/kokoro-note/buildTagCloud';
 import { findRelatedTags }  from '@/lib/kokoro-note/findRelatedTags';
 import { filterNotesByTag } from '@/lib/kokoro-note/filterNotesByTag';
 import {
-  getAllImageNotes, deleteImageNote,
+  getAllImageNotes, deleteImageNote, saveImageNote, createImageNoteId,
   addPersonaInterpretation, setSelectedPersona,
 } from '@/lib/kokoro-note/imageNoteStorage';
 import { createRecipeInputFromNote, setRecipeInput } from '@/lib/kokoro/recipeInput';
@@ -37,10 +37,12 @@ const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
 const IMAGE_SOURCE_LABELS: Record<string, string> = {
   'animal-talk': 'Animal Talk',
   fashion: 'Fashion',
+  manual: '手動',
 };
 const IMAGE_SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
   'animal-talk': { bg: '#fef3c7', text: '#92400e' },
   fashion: { bg: '#fce7f3', text: '#9d174d' },
+  manual: { bg: '#f3f4f6', text: '#6b7280' },
 };
 
 const PERSONA_INFO: Record<PersonaKey, { label: string; emoji: string; color: string }> = {
@@ -90,6 +92,9 @@ export default function KokoroNotePage() {
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
 
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const editImageRef = useRef<HTMLInputElement>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const [editImageBase64, setEditImageBase64] = useState<string | null>(null);
 
   const tagCloud = useMemo(
     () => buildTagCloud(notes, { maxItems: 20 }),
@@ -173,8 +178,35 @@ export default function KokoroNotePage() {
     setEditTitle('');
     setEditBody('');
     setEditTags('');
+    setEditImagePreview(null);
+    setEditImageBase64(null);
     setView('edit');
     setTimeout(() => bodyRef.current?.focus(), 100);
+  };
+
+  const handleEditImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 1024;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = (h / w) * MAX; w = MAX; }
+          else { w = (w / h) * MAX; h = MAX; }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        setEditImagePreview(dataUrl);
+        setEditImageBase64(dataUrl.split(',')[1]);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const openEdit = (note: KokoroNote) => {
@@ -203,7 +235,7 @@ export default function KokoroNotePage() {
         });
       }
     } else {
-      // 新規
+      // 新規テキストNote
       saveNote({
         id: createNoteId(),
         createdAt: now,
@@ -215,7 +247,22 @@ export default function KokoroNotePage() {
         pinned: false,
         isPublic: editIsPublic,
       });
+
+      // 画像が添付されていれば画像Noteも作成
+      if (editImageBase64 && editImagePreview) {
+        const imgEntry = {
+          id: createImageNoteId(),
+          createdAt: now,
+          sourceType: 'manual' as const,
+          imageUrl: editImagePreview,
+          autoTitle: editTitle || editBody.slice(0, 20) || '画像メモ',
+          result: { emotionText: editBody },
+        } satisfies NoteImageEntry;
+        saveImageNote(imgEntry);
+      }
     }
+    setEditImagePreview(null);
+    setEditImageBase64(null);
     refresh();
     setView('list');
   };
@@ -397,15 +444,15 @@ export default function KokoroNotePage() {
         )}
       </div>
 
-      {/* 画像ノート一覧（image / all タブ） */}
-      {(noteTab === 'image' || noteTab === 'all') && (
-        imageNotes.length === 0 && noteTab === 'image' ? (
+      {/* 画像ノート一覧（image タブのみ） */}
+      {noteTab === 'image' && (
+        imageNotes.length === 0 ? (
           <div style={{ textAlign:'center', padding:'80px 20px' }}>
             <div style={{ fontSize:36, marginBottom:16, opacity:0.3 }}>🖼️</div>
             <p style={{ fontSize:13, color:'#9ca3af' }}>画像noteはまだありません</p>
           </div>
         ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom: noteTab === 'all' ? 24 : 0 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             {imageNotes.map(note => (
               <div key={note.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
                 {deleteMode && (
@@ -521,62 +568,118 @@ export default function KokoroNotePage() {
         </div>
       )}
 
-      {/* ノート一覧 */}
-      {displayNotes.length === 0 ? (
-        <div className="text-center py-20">
-          <div className="text-4xl mb-4 opacity-30">📓</div>
-          <p className="text-sm" style={{ color: '#9ca3af' }}>
-            {searchQuery ? '検索結果がありません' : 'まだメモがありません'}
-          </p>
-          {!searchQuery && (
-            <button
-              onClick={openNew}
-              className="mt-4 text-xs font-bold px-4 py-2 rounded-lg transition-colors"
-              style={{ background: '#ede9fe', color: '#7c3aed' }}
-            >
-              最初のメモを書く
-            </button>
-          )}
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {displayNotes.map(note => (
-            <div key={note.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
-              {deleteMode && (
-                <input type="checkbox" checked={selectedForDelete.has(note.id)}
-                  onChange={() => { const s = new Set(selectedForDelete); s.has(note.id) ? s.delete(note.id) : s.add(note.id); setSelectedForDelete(s); }}
-                  style={{ width:16, height:16, flexShrink:0, cursor:'pointer' }} />
+      {/* ノート一覧（allタブ時は画像noteも混在） */}
+      {(() => {
+        // allタブ時は画像noteも混ぜて時間順ソート
+        type UnifiedItem = { type: 'text'; note: KokoroNote } | { type: 'image'; note: NoteImageEntry };
+        let unifiedList: UnifiedItem[] = displayNotes.map(n => ({ type: 'text' as const, note: n }));
+        if (noteTab === 'all') {
+          const imgItems: UnifiedItem[] = imageNotes.map(n => ({ type: 'image' as const, note: n }));
+          unifiedList = [...unifiedList, ...imgItems];
+          // ピン留めテキストを上に、それ以外は時間降順
+          unifiedList.sort((a, b) => {
+            const aPinned = a.type === 'text' && a.note.pinned;
+            const bPinned = b.type === 'text' && b.note.pinned;
+            if (aPinned && !bPinned) return -1;
+            if (!aPinned && bPinned) return 1;
+            return new Date(b.note.createdAt).getTime() - new Date(a.note.createdAt).getTime();
+          });
+        }
+
+        if (unifiedList.length === 0) {
+          return (
+            <div className="text-center py-20">
+              <div className="text-4xl mb-4 opacity-30">📓</div>
+              <p className="text-sm" style={{ color: '#9ca3af' }}>
+                {searchQuery ? '検索結果がありません' : 'まだメモがありません'}
+              </p>
+              {!searchQuery && (
+                <button
+                  onClick={openNew}
+                  className="mt-4 text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+                  style={{ background: '#ede9fe', color: '#7c3aed' }}
+                >
+                  最初のメモを書く
+                </button>
               )}
-              <button
-                onClick={() => !deleteMode && openDetail(note.id)}
-                style={{ flex:1, textAlign:'left', border:'1px solid #e5e7eb', borderRadius:12, padding:16, background:'#fff', cursor: deleteMode ? 'default' : 'pointer' }}
-              >
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-                  {note.pinned && <span style={{ fontSize:12, color:'#f59e0b' }}>📌</span>}
-                  <span style={{ fontSize:13, fontWeight:700, color:'#1a1a1a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {note.title}
-                  </span>
-                </div>
-
-                {note.body && (
-                  <p style={{ fontSize:12, color:'#6b7280', lineHeight:1.6, marginBottom:8, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
-                    {note.body}
-                  </p>
-                )}
-
-                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:10, color:'#9ca3af' }}>{formatDate(note.createdAt)}</span>
-                  {note.tags.map(tag => (
-                    <span key={tag} style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'#f3f4f6', color:'#6b7280' }}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </button>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        }
+
+        return (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {unifiedList.map(item => {
+              if (item.type === 'image') {
+                const imgNote = item.note;
+                return (
+                  <div key={imgNote.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    {deleteMode && (
+                      <input type="checkbox" checked={selectedForDelete.has(imgNote.id)}
+                        onChange={() => { const s = new Set(selectedForDelete); s.has(imgNote.id) ? s.delete(imgNote.id) : s.add(imgNote.id); setSelectedForDelete(s); }}
+                        style={{ width:16, height:16, flexShrink:0, cursor:'pointer' }} />
+                    )}
+                    <button
+                      onClick={() => !deleteMode && openImageDetail(imgNote.id)}
+                      style={{ flex:1, textAlign:'left', border:'1px solid #e5e7eb', borderRadius:12, padding:16, background:'#fff', cursor: deleteMode ? 'default' : 'pointer' }}
+                    >
+                      <div style={{ display:'flex', alignItems:'start', gap:12 }}>
+                        {imgNote.imageUrl && (
+                          <img src={imgNote.imageUrl} alt="" style={{ width:48, height:48, borderRadius:8, objectFit:'cover', flexShrink:0 }} />
+                        )}
+                        <div style={{ minWidth:0, flex:1 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                            <span style={{ fontSize:10, color:'#9ca3af' }}>{formatDate(imgNote.createdAt)}</span>
+                          </div>
+                          <span style={{ fontSize:13, fontWeight:700, color:'#1a1a1a', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                            {imgNote.autoTitle}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                );
+              }
+
+              const note = item.note;
+              return (
+                <div key={note.id} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  {deleteMode && (
+                    <input type="checkbox" checked={selectedForDelete.has(note.id)}
+                      onChange={() => { const s = new Set(selectedForDelete); s.has(note.id) ? s.delete(note.id) : s.add(note.id); setSelectedForDelete(s); }}
+                      style={{ width:16, height:16, flexShrink:0, cursor:'pointer' }} />
+                  )}
+                  <button
+                    onClick={() => !deleteMode && openDetail(note.id)}
+                    style={{ flex:1, textAlign:'left', border:'1px solid #e5e7eb', borderRadius:12, padding:16, background:'#fff', cursor: deleteMode ? 'default' : 'pointer' }}
+                  >
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                      {note.pinned && <span style={{ fontSize:12, color:'#f59e0b' }}>📌</span>}
+                      <span style={{ fontSize:13, fontWeight:700, color:'#1a1a1a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {note.title}
+                      </span>
+                    </div>
+
+                    {note.body && (
+                      <p style={{ fontSize:12, color:'#6b7280', lineHeight:1.6, marginBottom:8, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                        {note.body}
+                      </p>
+                    )}
+
+                    <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                      <span style={{ fontSize:10, color:'#9ca3af' }}>{formatDate(note.createdAt)}</span>
+                      {note.tags.map(tag => (
+                        <span key={tag} style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'#f3f4f6', color:'#6b7280' }}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </>
     )}
     </>
@@ -586,6 +689,8 @@ export default function KokoroNotePage() {
   const renderImageDetail = () => {
     if (!selectedImageNote) return null;
     const isAnimal = selectedImageNote.sourceType === 'animal-talk';
+    const isFashion = selectedImageNote.sourceType === 'fashion';
+    const isManual = selectedImageNote.sourceType === 'manual';
     const interpretations = selectedImageNote.personaInterpretations || [];
 
     return (
@@ -660,14 +765,14 @@ export default function KokoroNotePage() {
               </div>
             )}
           </div>
-        ) : (
+        ) : isFashion && selectedImageNote.sourceType === 'fashion' ? (
           <div className="mb-6 space-y-4">
             <div className="text-center mb-4">
               <div className="text-lg font-medium" style={{ color: '#1a1a1a' }}>
                 {selectedImageNote.result.styleName}
               </div>
               <div className="flex flex-wrap gap-1.5 justify-center mt-2">
-                {selectedImageNote.result.tags.map((tag, i) => (
+                {selectedImageNote.result.tags.map((tag: string, i: number) => (
                   <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ border: '1px solid #e5e7eb', color: '#6b7280' }}>
                     {tag}
                   </span>
@@ -680,7 +785,17 @@ export default function KokoroNotePage() {
               </div>
             </div>
           </div>
-        )}
+        ) : isManual && selectedImageNote.sourceType === 'manual' ? (
+          <div className="mb-6">
+            {selectedImageNote.result.emotionText && (
+              <div style={{ borderLeft: '2px solid #9ca3af', paddingLeft: 16 }}>
+                <div className="text-sm leading-relaxed" style={{ color: '#374151', fontFamily: 'var(--font-noto-serif-jp), serif', whiteSpace: 'pre-wrap' }}>
+                  {selectedImageNote.result.emotionText}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {/* 人格解釈セクション */}
         <div className="mb-6 p-4 rounded-xl" style={{ background: '#f9fafb', border: '1px solid #e5e7eb' }}>
@@ -794,7 +909,9 @@ export default function KokoroNotePage() {
             onClick={() => {
               const summary = selectedImageNote.sourceType === 'animal-talk'
                 ? `${selectedImageNote.result.emotionText} / ${selectedImageNote.result.trueVoice}`
-                : `${selectedImageNote.result.styleName}: ${selectedImageNote.result.summary}`;
+                : selectedImageNote.sourceType === 'fashion'
+                  ? `${selectedImageNote.result.styleName}: ${selectedImageNote.result.summary}`
+                  : selectedImageNote.autoTitle;
 
               const recipeInput: KokoroRecipeInput = {
                 source: 'note',
@@ -955,6 +1072,36 @@ export default function KokoroNotePage() {
           fontFamily: 'var(--font-noto-serif-jp), serif', lineHeight:2, marginBottom:12,
         }}
       />
+
+      {/* 画像アップロード（新規作成時のみ） */}
+      {!editingId && (
+        <div style={{ marginBottom:12 }}>
+          {editImagePreview ? (
+            <div style={{ position:'relative', display:'inline-block', marginBottom:8 }}>
+              <img src={editImagePreview} alt="添付画像" style={{ maxHeight:120, borderRadius:8, display:'block', objectFit:'cover' }} />
+              <button
+                onClick={() => { setEditImagePreview(null); setEditImageBase64(null); }}
+                style={{ position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:'50%', background:'#1a1a1a', color:'#fff', border:'none', cursor:'pointer', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => editImageRef.current?.click()}
+              style={{
+                fontFamily:"'Space Mono', monospace", fontSize:10, color:'#9ca3af',
+                background:'transparent', border:'1px dashed #d1d5db', borderRadius:6,
+                padding:'8px 16px', cursor:'pointer', display:'flex', alignItems:'center', gap:6,
+              }}
+            >
+              📷 画像を追加
+            </button>
+          )}
+          <input ref={editImageRef} type="file" accept="image/*" style={{ display:'none' }}
+            onChange={e => { if (e.target.files?.[0]) handleEditImageFile(e.target.files[0]); e.target.value = ''; }} />
+        </div>
+      )}
 
       {/* AI生成済みタグ表示（本文の下） */}
       {editTags && (

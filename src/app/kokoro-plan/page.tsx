@@ -161,7 +161,7 @@ export default function KokoroPlanPage() {
             borderRadius: 2,
           }}
         >
-          {isLoading ? '// 生成中...' : 'Yoroshiku'}
+          Yoroshiku
         </button>
 
         {/* ローディング */}

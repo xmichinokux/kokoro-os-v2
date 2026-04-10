@@ -2,9 +2,9 @@ export type PersonaKey = 'gnome' | 'shin' | 'canon' | 'dig';
 
 export type NoteImageBase = {
   id: string;
-  sourceType: 'animal-talk' | 'fashion';
+  sourceType: 'animal-talk' | 'fashion' | 'manual';
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
   imageUrl: string;        // base64またはpreview URL
   userPrompt?: string;
   autoTitle: string;
@@ -61,4 +61,11 @@ export type PersonaInterpretation = {
   mood?: string;
 };
 
-export type NoteImageEntry = AnimalTalkNoteEntry | FashionNoteEntry;
+export type ManualImageNoteEntry = NoteImageBase & {
+  sourceType: 'manual';
+  result: {
+    emotionText?: string;
+  };
+};
+
+export type NoteImageEntry = AnimalTalkNoteEntry | FashionNoteEntry | ManualImageNoteEntry;

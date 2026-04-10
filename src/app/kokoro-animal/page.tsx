@@ -330,7 +330,7 @@ export default function KokoroAnimal() {
             {!mainText && !isLoading && (
               <button onClick={analyze}
                 style={{ width:'100%', background:'#1a1a1a', color:'#fff', border:'none', borderRadius:8, padding:'14px', fontSize:14, cursor:'pointer', fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em' }}>
-                ▸ 情念を読む
+                Yoroshiku
               </button>
             )}
 
