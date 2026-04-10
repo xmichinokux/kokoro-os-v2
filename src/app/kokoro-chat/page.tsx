@@ -270,7 +270,7 @@ export default function KokoroChat() {
     animal:     ['animal', 'アニマル'],
     couple:     ['couple', 'カップル'],
     buddy:      ['buddy', 'バディ'],
-    philosophy: ['philosophy', 'フィロソフィ'],
+    philosophy: ['philosophy', 'フィロソフィ', 'philo', 'フィロ'],
     board:      ['board', 'ボード'],
     kami:       ['kami', 'カミ'],
     ponchi:     ['ponchi', 'ポンチ'],
@@ -299,7 +299,7 @@ export default function KokoroChat() {
     { name: 'Animal', emoji: '🐾', description: 'ペットの写真からAIが性格や気持ちを読み取る。' },
     { name: 'Couple', emoji: '💑', description: 'パートナーとの関係を整理。対話のヒントを提案する。' },
     { name: 'Buddy', emoji: '🤝', description: '友人関係の悩みを一緒に考える。距離感の調整をサポート。' },
-    { name: 'Philosophy', emoji: '🏛️', description: '哲学的な問いを投げかけ、思考を深める対話をする。' },
+    { name: 'Philo', emoji: '🏛️', description: '哲学的な問いを投げかけ、思考を深める対話をする。' },
     { name: 'Board', emoji: '📌', description: 'アイデアや気づきをボードに貼って整理する。' },
     { name: 'Kami', emoji: '⛩️', description: 'おみくじ風の助言。直感的なメッセージを受け取る。' },
     { name: 'Ponchi', emoji: '🎨', description: '4コマ漫画風にストーリーを可視化する。' },
@@ -832,9 +832,9 @@ export default function KokoroChat() {
                         </button>
                       )}
                       {msg.showPhilosophy && (
-                        <button onClick={() => routeFromTalk('philosophyFromTalk', '/kokoro-philosophy', { userText: msg.routingUserText })}
+                        <button onClick={() => routeFromTalk('philoFromTalk', '/kokoro-philo', { userText: msg.routingUserText })}
                           style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
-                          Philosophy →
+                          Philo →
                         </button>
                       )}
                       {msg.showBoard && (

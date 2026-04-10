@@ -84,9 +84,9 @@ const APPS: App[] = [
   },
   {
     icon: "🧠",
-    name: "Kokoro Philosophy",
+    name: "Kokoro Philo",
     desc: "哲学的な問いを多角視点で照らす。",
-    href: "/kokoro-philosophy",
+    href: "/kokoro-philo",
     ready: true,
   },
   {
