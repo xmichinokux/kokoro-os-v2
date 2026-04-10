@@ -50,6 +50,7 @@ type Message = {
   showBoard?: boolean;
   showKami?: boolean;
   showPonchi?: boolean;
+  showStrategy?: boolean;
   // ウィッシュリスト追加バナー
   showWishlist?: boolean;
   wishlistText?: string;
@@ -280,6 +281,7 @@ export default function KokoroChat() {
     ponchi:     ['ponchi', 'ポンチ'],
     browser:    ['browser', 'ブラウザ'],
     wishlist:   ['wishlist', 'ウィッシュ'],
+    strategy:   ['strategy', 'ストラテジー'],
   };
 
   const detectExplicitApps = (text: string): Set<string> => {
@@ -304,6 +306,7 @@ export default function KokoroChat() {
     couple:     /パートナー|彼氏|彼女|恋人|夫|妻|カップル|恋愛|付き合/,
     philosophy: /哲学|思想|深い問い|人生の意味|存在|本質/,
     board:      /会議|ミーティング|アジェンダ|議題|進行|ファシリ/,
+    strategy:   /企画書|提案書|報告書|資料.*(統合|まとめ)|一本.*(まとめ|統合)/,
   };
 
   const detectContextApps = (text: string): Set<string> => {
@@ -332,6 +335,7 @@ export default function KokoroChat() {
     { name: 'Kami', emoji: '📄', description: '表やデータを整理します' },
     { name: 'Ponchi', emoji: '🎨', description: 'コンセプトをスライド構成に変換します' },
     { name: 'Animal', emoji: '🐾', description: '動物の気持ちを読み取ります' },
+    { name: 'Strategy', emoji: '⚡', description: 'Writer・Kami・Ponchiの出力を統合して企画書を生成します' },
     { name: 'Wishlist', emoji: '🌟', description: '欲しいものや行きたい場所を記録します' },
   ];
 
@@ -553,6 +557,7 @@ export default function KokoroChat() {
         showBoard:      has('board') || undefined,
         showKami:       has('kami') || undefined,
         showPonchi:     has('ponchi') || undefined,
+        showStrategy:   has('strategy') || undefined,
         showWishlist:   (has('wishlist') && !!wishItem?.text) || undefined,
         wishlistText:     explicitApps.has('wishlist') && wishItem ? wishItem.text : undefined,
         wishlistCategory: explicitApps.has('wishlist') && wishItem ? wishItem.category : undefined,
@@ -767,7 +772,7 @@ export default function KokoroChat() {
                     </>
                   )}
                   {/* アプリ誘導ボタン（ボタンのみ） */}
-                  {(msg.showZen || msg.showAnimal || msg.showFashion || msg.showNote || msg.showInsight || msg.showPlan || msg.showWriter || msg.showBrowser || msg.showCouple || msg.showBuddy || msg.showPhilosophy || msg.showBoard || msg.showKami || msg.showPonchi || msg.showWishlist) && (
+                  {(msg.showZen || msg.showAnimal || msg.showFashion || msg.showNote || msg.showInsight || msg.showPlan || msg.showWriter || msg.showBrowser || msg.showCouple || msg.showBuddy || msg.showPhilosophy || msg.showBoard || msg.showKami || msg.showPonchi || msg.showStrategy || msg.showWishlist) && (
                     <div style={{ marginTop:10, display:'flex', flexWrap:'wrap', gap:6 }}>
                       {msg.showZen && (
                         <button onClick={msg.stayPersona ? exitStayMode : () => handleZenClick()}
@@ -859,6 +864,12 @@ export default function KokoroChat() {
                           Ponchi →
                         </button>
                       )}
+                      {msg.showStrategy && (
+                        <button onClick={() => router.push('/kokoro-strategy')}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#f59e0b', background:'transparent', border:'1px solid rgba(245,158,11,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Strategy →
+                        </button>
+                      )}
                       {msg.showWishlist && msg.wishlistText && (
                         <button onClick={() => handleAddToWishlist(i, msg)} disabled={savedWishIds.has(i)}
                           style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color: savedWishIds.has(i) ? '#9ca3af' : '#ec4899', background:'transparent', border:`1px solid ${savedWishIds.has(i) ? '#e5e7eb' : 'rgba(244,114,182,0.4)'}`, borderRadius:4, padding:'5px 12px', cursor: savedWishIds.has(i) ? 'default' : 'pointer' }}>
@@ -937,6 +948,7 @@ export default function KokoroChat() {
             { emoji: '📊', name: 'Board', href: '/kokoro-board' },
             { emoji: '📄', name: 'Kami', href: '/kokoro-kami' },
             { emoji: '🎨', name: 'Ponchi', href: '/kokoro-ponchi' },
+            { emoji: '⚡', name: 'Strategy', href: '/kokoro-strategy' },
             { emoji: '🐾', name: 'Animal', href: '/kokoro-animal' },
             { emoji: '🌟', name: 'Wishlist', href: '/kokoro-wishlist' },
           ] as const).map(app => (

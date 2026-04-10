@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveToNote } from '@/lib/saveToNote';
+import { saveStrategyInput } from '@/lib/strategyInputs';
 import PersonaLoading from '@/components/PersonaLoading';
 
 /**
@@ -64,6 +65,7 @@ export default function KokoroWriterPage() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [strategySaved, setStrategySaved] = useState(false);
 
   const canSubmit = inputText.trim().length > 0 && !isLoading;
 
@@ -116,6 +118,13 @@ export default function KokoroWriterPage() {
     saveToNote(outputText, 'Writer');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSaveToStrategy = () => {
+    if (!outputText) return;
+    saveStrategyInput('writer', outputHtml || outputText);
+    setStrategySaved(true);
+    setTimeout(() => setStrategySaved(false), 2000);
   };
 
   // sessionStorage から writerFromTalk を読み取り
@@ -288,6 +297,23 @@ export default function KokoroWriterPage() {
               }}
             >
               ↓
+            </button>
+
+            {/* Strategy保存 */}
+            <button
+              onClick={handleSaveToStrategy}
+              disabled={strategySaved}
+              title="Strategyに送る"
+              style={{
+                background: 'transparent',
+                border: `1px solid ${strategySaved ? '#f59e0b' : '#d1d5db'}`,
+                color: strategySaved ? '#f59e0b' : '#9ca3af',
+                ...mono, fontSize: 9, letterSpacing: '.12em',
+                padding: '8px 16px', cursor: strategySaved ? 'default' : 'pointer',
+                borderRadius: 2,
+              }}
+            >
+              {strategySaved ? 'Strategy ✓' : 'Strategy →'}
             </button>
           </div>
         )}

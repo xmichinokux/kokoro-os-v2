@@ -111,6 +111,13 @@ const APPS: App[] = [
     ready: true,
   },
   {
+    icon: "⚡",
+    name: "Kokoro Strategy",
+    desc: "Writer・Kami・Ponchiの出力を統合して企画書を生成。",
+    href: "/kokoro-strategy",
+    ready: true,
+  },
+  {
     icon: "🍳",
     name: "Kokoro Recipe",
     desc: "7日間の献立を生成する。",

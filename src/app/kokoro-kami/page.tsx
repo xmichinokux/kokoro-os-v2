@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveToNote } from '@/lib/saveToNote';
+import { saveStrategyInput } from '@/lib/strategyInputs';
 import PersonaLoading from '@/components/PersonaLoading';
 
 type KamiResult = {
@@ -26,6 +27,7 @@ export default function KokoroKamiPage() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [strategySaved, setStrategySaved] = useState(false);
 
   const canSubmit = inputText.trim().length > 0 && !isLoading;
   const hasTable = columns.length > 0;
@@ -89,6 +91,16 @@ export default function KokoroKamiPage() {
     saveToNote(text, 'Kami');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSaveToStrategy = () => {
+    if (!hasTable) return;
+    const header = columns.join('\t');
+    const bodyRows = rows.map(r => r.join('\t')).join('\n');
+    const text = `${title}\n${description}\n\n${header}\n${bodyRows}`;
+    saveStrategyInput('kami', text);
+    setStrategySaved(true);
+    setTimeout(() => setStrategySaved(false), 2000);
   };
 
   useEffect(() => {
@@ -285,6 +297,20 @@ export default function KokoroKamiPage() {
                 }}
               >
                 {saved ? 'Note ✓' : 'Note +'}
+              </button>
+              <button
+                onClick={handleSaveToStrategy}
+                disabled={strategySaved}
+                title={strategySaved ? 'Strategyに保存しました' : 'Strategyに送る'}
+                style={{
+                  ...mono, fontSize: 8, letterSpacing: '.1em',
+                  padding: '6px 14px',
+                  border: `1px solid ${strategySaved ? '#f59e0b' : '#d1d5db'}`,
+                  borderRadius: 3, cursor: strategySaved ? 'default' : 'pointer',
+                  color: strategySaved ? '#f59e0b' : '#9ca3af', background: 'transparent',
+                }}
+              >
+                {strategySaved ? 'Strategy ✓' : 'Strategy →'}
               </button>
             </div>
           </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveToNote } from '@/lib/saveToNote';
+import { saveStrategyInput } from '@/lib/strategyInputs';
 import PersonaLoading from '@/components/PersonaLoading';
 
 type Slide = {
@@ -24,6 +25,7 @@ export default function KokoroPonchiPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [strategySaved, setStrategySaved] = useState(false);
 
   const canSubmit = inputText.trim().length > 0 && !isLoading;
 
@@ -58,6 +60,14 @@ export default function KokoroPonchiPage() {
     saveToNote(body, 'Ponchi');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSaveToStrategy = () => {
+    if (slides.length === 0) return;
+    const body = slides.map(s => `// ${s.num} ${s.title}\n${s.body}`).join('\n\n');
+    saveStrategyInput('ponchi', body);
+    setStrategySaved(true);
+    setTimeout(() => setStrategySaved(false), 2000);
   };
 
   const formatBody = (body: string) =>
@@ -212,22 +222,39 @@ export default function KokoroPonchiPage() {
               })}
             </div>
 
-            {/* Note保存ボタン */}
-            <button
-              onClick={handleSaveToNote}
-              disabled={saved}
-              title={saved ? 'Noteに保存しました' : 'Noteに保存'}
-              style={{
-                marginTop: 16, background: 'transparent',
-                border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
-                color: saved ? '#10b981' : '#9ca3af',
-                ...mono, fontSize: 8, letterSpacing: '.12em',
-                padding: '8px 16px', cursor: saved ? 'default' : 'pointer',
-                borderRadius: 3,
-              }}
-            >
-              {saved ? 'Note ✓' : 'Note +'}
-            </button>
+            {/* アクションボタン */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button
+                onClick={handleSaveToNote}
+                disabled={saved}
+                title={saved ? 'Noteに保存しました' : 'Noteに保存'}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
+                  color: saved ? '#10b981' : '#9ca3af',
+                  ...mono, fontSize: 8, letterSpacing: '.12em',
+                  padding: '8px 16px', cursor: saved ? 'default' : 'pointer',
+                  borderRadius: 3,
+                }}
+              >
+                {saved ? 'Note ✓' : 'Note +'}
+              </button>
+              <button
+                onClick={handleSaveToStrategy}
+                disabled={strategySaved}
+                title={strategySaved ? 'Strategyに保存しました' : 'Strategyに送る'}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${strategySaved ? '#f59e0b' : '#d1d5db'}`,
+                  color: strategySaved ? '#f59e0b' : '#9ca3af',
+                  ...mono, fontSize: 8, letterSpacing: '.12em',
+                  padding: '8px 16px', cursor: strategySaved ? 'default' : 'pointer',
+                  borderRadius: 3,
+                }}
+              >
+                {strategySaved ? 'Strategy ✓' : 'Strategy →'}
+              </button>
+            </div>
           </>
         )}
 
