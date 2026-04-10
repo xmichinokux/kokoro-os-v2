@@ -96,7 +96,14 @@ async function callAnthropicVision(
 
   if (!res.ok) {
     const err = await res.json();
-    throw new Error(err.error?.message || 'API error');
+    const message = err.error?.message || 'API error';
+    // Overloaded (529) を識別可能にする
+    if (res.status === 529 || /overloaded/i.test(message)) {
+      const e = new Error(message);
+      (e as Error & { isOverloaded: boolean }).isOverloaded = true;
+      throw e;
+    }
+    throw new Error(message);
   }
   const data = await res.json();
   return data.content[0].text as string;
@@ -132,7 +139,11 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (err) {
+    const isOverloaded = (err as Error & { isOverloaded?: boolean })?.isOverloaded === true;
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: message, overloaded: isOverloaded },
+      { status: isOverloaded ? 529 : 500 }
+    );
   }
 }

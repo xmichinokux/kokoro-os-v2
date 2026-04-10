@@ -18,14 +18,27 @@ export default function KokoroAnimal() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [autoStarted, setAutoStarted] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
+  const [retryMsg, setRetryMsg] = useState('');
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const MAX_RETRIES = 5;
 
-  const analyzeWithData = useCallback(async (base64: string, type: string) => {
+  // リトライタイマーのクリーンアップ
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, []);
+
+  const analyzeWithData = useCallback(async (base64: string, type: string, retryCount = 0) => {
     setIsLoading(true);
     setError('');
-    setMainText('');
-    setQuestion('');
-    setInstinctWhisper('');
-    setScores(null);
+    setRetryMsg('');
+    if (retryCount === 0) {
+      setMainText('');
+      setQuestion('');
+      setInstinctWhisper('');
+      setScores(null);
+    }
     try {
       const res = await fetch('/api/kokoro-animal', {
         method: 'POST',
@@ -33,13 +46,26 @@ export default function KokoroAnimal() {
         body: JSON.stringify({ imageBase64: base64, mediaType: type }),
       });
       const data = await res.json();
+      if (data.overloaded || res.status === 529) {
+        if (retryCount < MAX_RETRIES) {
+          setRetryMsg(`しばらくお待ちください...（${retryCount + 1}/${MAX_RETRIES}）`);
+          setIsLoading(false);
+          retryTimerRef.current = setTimeout(() => {
+            analyzeWithData(base64, type, retryCount + 1);
+          }, 3000);
+          return;
+        }
+        throw new Error('サーバーが混雑しています。時間をおいて再度お試しください。');
+      }
       if (data.error) throw new Error(data.error);
       setMainText(data.mainText);
       setQuestion(data.question);
       setInstinctWhisper(data.instinctWhisper || '');
       setScores(data.scores || null);
+      setRetryMsg('');
     } catch (e) {
       setError(e instanceof Error ? e.message : '不明なエラー');
+      setRetryMsg('');
     } finally {
       setIsLoading(false);
     }
@@ -119,6 +145,7 @@ export default function KokoroAnimal() {
   };
 
   const reset = () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     setPreview(null);
     setImageBase64('');
     setMediaType('');
@@ -127,6 +154,7 @@ export default function KokoroAnimal() {
     setInstinctWhisper('');
     setError('');
     setScores(null);
+    setRetryMsg('');
   };
 
   const handleSaveToNote = () => {
@@ -401,6 +429,13 @@ export default function KokoroAnimal() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {retryMsg && (
+          <div style={{ marginTop:16, textAlign:'center', padding:'20px 0' }}>
+            <div style={{ fontSize:13, color:'#7c3aed', marginBottom:8 }}>{retryMsg}</div>
+            <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', letterSpacing:'0.12em' }}>// auto-retry in 3s</div>
           </div>
         )}
 
