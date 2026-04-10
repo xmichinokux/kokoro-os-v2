@@ -152,6 +152,13 @@ const APPS: App[] = [
     href: "/kokoro-wishlist",
     ready: true,
   },
+  {
+    icon: "🎮",
+    name: "Kokoro Play",
+    desc: "スクロール速度と駆け引きするシューティング。",
+    href: "/kokoro-play",
+    ready: true,
+  },
 ];
 
 export default function Home() {
