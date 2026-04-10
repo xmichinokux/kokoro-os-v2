@@ -84,24 +84,16 @@ export default function KokoroRecipePage() {
   return (
     <div style={{ minHeight: '100vh', background: '#fafaf9', color: '#1a1a1a' }}>
       {/* ヘッダー */}
-      <header style={{
-        padding: '16px 24px',
-        borderBottom: '1px solid #e5e7eb',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: '#ffffff',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            onClick={() => router.push('/kokoro-chat')}
-            title="Talkに戻る"
-            style={{ ...mono, fontSize: 9, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            ← Talk
-          </button>
-          <span style={{ ...mono, fontSize: 11, color: '#7c3aed', letterSpacing: '0.15em' }}>
-            // Kokoro Recipe
-          </span>
+      <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 20px', borderBottom:'1px solid #e5e7eb', position:'sticky', top:0, background:'#fff', zIndex:10 }}>
+        <div>
+          <span style={{ ...mono, fontSize:13, fontWeight:700 }}>Kokoro</span>
+          <span style={{ ...mono, fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
+          <span style={{ ...mono, fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Recipe</span>
         </div>
+        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
+          style={{ ...mono, fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
+          ← Talk
+        </button>
       </header>
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 24px' }}>
@@ -344,59 +336,33 @@ export default function KokoroRecipePage() {
               ))}
             </div>
 
-            {/* 再生成 */}
-            <div style={{ marginTop: 32, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {/* アクション */}
+            <div style={{ marginTop: 32, display: 'flex', gap: 10 }}>
               <button
                 onClick={() => { setResult(null); setOpenDay(null); setNoteSaved(false); }}
                 title="もう一度作る"
                 style={{
-                  flex: 1, minWidth: 120, padding: '12px',
+                  padding: '12px 20px',
                   background: 'transparent',
                   border: '1px solid #e5e7eb',
-                  borderRadius: 8, cursor: 'pointer',
-                  ...mono, fontSize: 11, color: '#6b7280',
+                  borderRadius: 6, cursor: 'pointer',
+                  ...mono, fontSize: 10, color: '#6b7280',
                 }}
               >
                 Reset ×
-              </button>
-              <button
-                onClick={() => router.push('/kokoro-chat')}
-                title="Talkで続きを話す"
-                style={{
-                  flex: 1, minWidth: 120, padding: '12px',
-                  background: 'rgba(124,58,237,0.06)',
-                  border: '1px solid rgba(124,58,237,0.3)',
-                  borderRadius: 8, cursor: 'pointer',
-                  ...mono, fontSize: 11, color: '#7c3aed',
-                }}
-              >
-                Talk →
-              </button>
-              <button
-                onClick={() => router.push('/kokoro-note')}
-                title="noteへ行く"
-                style={{
-                  flex: 1, minWidth: 120, padding: '12px',
-                  background: 'rgba(52,211,153,0.06)',
-                  border: '1px solid rgba(52,211,153,0.3)',
-                  borderRadius: 8, cursor: 'pointer',
-                  ...mono, fontSize: 11, color: '#34d399',
-                }}
-              >
-                Note →
               </button>
               <button
                 onClick={handleSaveToNote}
                 disabled={noteSaved}
                 title={noteSaved ? 'noteに保存しました' : 'noteに残す'}
                 style={{
-                  width: '100%', padding: '12px',
-                  background: noteSaved ? 'rgba(52,211,153,0.06)' : 'rgba(249,115,22,0.06)',
-                  border: `1px solid ${noteSaved ? 'rgba(52,211,153,0.3)' : 'rgba(249,115,22,0.3)'}`,
-                  borderRadius: 8,
+                  padding: '12px 20px',
+                  background: noteSaved ? 'rgba(52,211,153,0.06)' : 'rgba(124,58,237,0.06)',
+                  border: `1px solid ${noteSaved ? 'rgba(52,211,153,0.3)' : 'rgba(124,58,237,0.3)'}`,
+                  borderRadius: 6,
                   cursor: noteSaved ? 'default' : 'pointer',
-                  ...mono, fontSize: 11,
-                  color: noteSaved ? '#34d399' : '#f97316',
+                  ...mono, fontSize: 10,
+                  color: noteSaved ? '#34d399' : '#7c3aed',
                 }}
               >
                 {noteSaved ? 'Note ✓' : 'Note +'}
@@ -406,9 +372,6 @@ export default function KokoroRecipePage() {
         )}
       </div>
 
-      <style>{`
-        @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
-      `}</style>
     </div>
   );
 }

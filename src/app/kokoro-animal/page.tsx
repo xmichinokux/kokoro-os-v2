@@ -292,19 +292,27 @@ export default function KokoroAnimal() {
 
         {/* アップロードエリア */}
         {!preview ? (
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onClick={() => fileRef.current?.click()}
-            style={{ border:'2px dashed #e5e7eb', borderRadius:12, padding:'60px 20px', textAlign:'center', cursor:'pointer', transition:'border-color .2s', background:'#f9fafb' }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
-          >
-            <div style={{ fontSize:40, marginBottom:12 }}>📷</div>
-            <div style={{ fontSize:14, color:'#6b7280', marginBottom:6 }}>動物の画像をドロップ</div>
-            <div style={{ fontSize:11, color:'#9ca3af' }}>またはクリックして選択</div>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
-              onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+          <div>
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onClick={() => fileRef.current?.click()}
+              style={{ border:'2px dashed #e5e7eb', borderRadius:12, padding:'60px 20px', textAlign:'center', cursor:'pointer', transition:'border-color .2s', background:'#f9fafb', marginBottom:16 }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+            >
+              <div style={{ fontSize:40, marginBottom:12 }}>📷</div>
+              <div style={{ fontSize:14, color:'#6b7280', marginBottom:6 }}>動物の画像をドロップ</div>
+              <div style={{ fontSize:11, color:'#9ca3af' }}>またはクリックして選択</div>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
+                onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+            </div>
+            {imageBase64 && !isLoading && (
+              <button onClick={analyze}
+                style={{ width:'100%', background:'transparent', border:'1px solid #7c3aed', color:'#7c3aed', borderRadius:4, padding:'13px', fontSize:10, cursor:'pointer', fontFamily:"'Space Mono', monospace", letterSpacing:'0.2em' }}>
+                Yoroshiku
+              </button>
+            )}
           </div>
         ) : (
           <div>
@@ -365,58 +373,31 @@ export default function KokoroAnimal() {
                 )}
 
                 {/* アクション */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {noteSaved ? (
-                    <a
-                      href="/kokoro-note"
-                      style={{
-                        fontFamily: "'Space Mono', monospace",
-                        fontSize: 11,
-                        color: '#34d399',
-                        border: '1px solid rgba(52,211,153,0.4)',
-                        borderRadius: 6,
-                        padding: '8px 18px',
-                        cursor: 'pointer',
-                        letterSpacing: '0.1em',
-                        textDecoration: 'none',
-                        display: 'block',
-                        textAlign: 'center',
-                      }}
-                    >
-                      ✓ noteに保存しました　→ 確認する
-                    </a>
-                  ) : (
-                    <button
-                      onClick={handleSaveToNote}
-                      style={{
-                        width: '100%',
-                        background: 'transparent',
-                        color: '#6b7280',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: 8,
-                        padding: '12px',
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        fontFamily: "'Space Mono', monospace",
-                        letterSpacing: '0.1em',
-                        transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={e => {
-                        (e.target as HTMLButtonElement).style.borderColor = '#7c3aed';
-                        (e.target as HTMLButtonElement).style.color = '#7c3aed';
-                      }}
-                      onMouseLeave={e => {
-                        (e.target as HTMLButtonElement).style.borderColor = '#e5e7eb';
-                        (e.target as HTMLButtonElement).style.color = '#6b7280';
-                      }}
-                    >
-                      noteに残す
-                    </button>
-                  )}
-                  <a href="/kokoro-chat"
-                    style={{ display:'block', width:'100%', background:'#7c3aed', color:'#fff', border:'none', borderRadius:8, padding:'12px', fontSize:12, cursor:'pointer', fontFamily:"'Space Mono', monospace", letterSpacing:'0.1em', textAlign:'center', textDecoration:'none', boxSizing:'border-box' }}>
-                    Talkに戻る →
-                  </a>
+                <div style={{ display:'flex', gap:10, marginTop:8 }}>
+                  <button
+                    onClick={handleSaveToNote}
+                    disabled={noteSaved}
+                    style={{
+                      fontFamily:"'Space Mono', monospace", fontSize:10,
+                      color: noteSaved ? '#34d399' : '#7c3aed',
+                      background:'transparent',
+                      border: `1px solid ${noteSaved ? 'rgba(52,211,153,0.4)' : 'rgba(124,58,237,0.3)'}`,
+                      borderRadius:6, padding:'8px 18px', cursor: noteSaved ? 'default' : 'pointer',
+                      letterSpacing:'0.1em',
+                    }}
+                  >
+                    {noteSaved ? 'Note ✓' : 'Note +'}
+                  </button>
+                  <button onClick={reset}
+                    style={{
+                      fontFamily:"'Space Mono', monospace", fontSize:10,
+                      color:'#6b7280', background:'transparent',
+                      border:'1px solid #e5e7eb', borderRadius:6,
+                      padding:'8px 18px', cursor:'pointer', letterSpacing:'0.1em',
+                    }}
+                  >
+                    Reset ×
+                  </button>
                 </div>
               </div>
             )}
@@ -428,9 +409,6 @@ export default function KokoroAnimal() {
         )}
       </div>
 
-      <style>{`
-        @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
-      `}</style>
     </div>
   );
 }

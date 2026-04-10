@@ -64,7 +64,6 @@ export default function KokoroInsightPage() {
   const [cfMode, setCfMode] = useState(false);
   const [reviews, setReviews] = useState<ReviewItem[]>([
     { id: 1, text: '', isNegative: false },
-    { id: 2, text: '', isNegative: false },
   ]);
   const [nextId, setNextId] = useState(3);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -476,33 +475,25 @@ export default function KokoroInsightPage() {
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#1a1a1a', fontFamily: "'Noto Serif JP', serif", fontWeight: 300 }}>
 
       {/* ヘッダー */}
-      <div style={{ position: 'fixed', top: 14, right: 16, zIndex: 100 }}>
-        <button
-          onClick={() => router.push('/kokoro-chat')}
-          style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', padding: '5px 12px', borderRadius: 2, cursor: 'pointer' }}
-        >
+      <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 20px', borderBottom:'1px solid #e5e7eb', position:'sticky', top:0, background:'#fff', zIndex:10 }}>
+        <div>
+          <span style={{ ...mono, fontSize:13, fontWeight:700 }}>Kokoro</span>
+          <span style={{ ...mono, fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
+          <span style={{ ...mono, fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Insight</span>
+        </div>
+        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
+          style={{ ...mono, fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
           ← Talk
         </button>
-      </div>
+      </header>
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '40px 24px 80px' }}>
 
-        {/* タイトル */}
-        <div style={{ marginBottom: 36 }}>
-          <span style={{ ...mono, fontSize: 9, letterSpacing: '.2em', color: '#7c3aed', display: 'block', marginBottom: 14 }}>
-            Kokoro OS // 影響の読解
-          </span>
-          <h1 style={{ fontSize: 'clamp(24px,4vw,40px)', fontWeight: 300, letterSpacing: '.1em', color: '#111827', marginBottom: 10 }}>
-            Kokoro <span style={{ color: '#7c3aed', fontStyle: 'normal' }}>Insight</span>
-          </h1>
+        {/* 説明 */}
+        <div style={{ marginBottom: 28 }}>
           <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.9 }}>
-            レビューを「要約」しない。<br />言葉の歪み・崩壊・矛盾から、作品の本当の影響を逆算する。
+            レビューの歪み・崩壊・矛盾から、作品の影響を逆算する。
           </p>
-          <div style={{ ...mono, fontSize: 9, color: '#6b7280', marginTop: 10, borderLeft: '2px solid #e5e7eb', paddingLeft: 12, lineHeight: 1.8 }}>
-            // <span style={{ color: '#7c3aed' }}>語彙が崩壊しているほど、インパクトは高い。</span><br />
-            // 「意味わからないけど何回も聴いてる」は最高評価に値する。<br />
-            // 点数が高い ≠ 右上。制度に飼われた名盤は左下に沈む。それがKokoroの正義。
-          </div>
         </div>
 
         {/* Context Filter */}
@@ -515,12 +506,12 @@ export default function KokoroInsightPage() {
         }}>
           <div style={{ flex: 1 }}>
             <div style={{ ...mono, fontSize: 9, letterSpacing: '.14em', color: cfMode ? '#ef4444' : '#6b7280' }}>
-              // Context-Filter // 伝説の去勢モード
+              // Context-Filter
             </div>
             <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, ...mono, lineHeight: 1.6 }}>
               {cfMode
-                ? 'ON：歴史・伝説・神格化・悲劇性を全てノイズとして排除。純粋な音・熱・歪みだけで裁く。容赦なし。'
-                : 'OFF：通常判定 / ON：歴史・神格化・悲劇性を全てノイズとして排除し、純粋な音・熱・歪みだけで裁く'}
+                ? 'ON：文脈を排して作品を評価するモード'
+                : 'OFF：通常判定'}
             </div>
           </div>
           <label style={{ position: 'relative', width: 44, height: 24, flexShrink: 0, cursor: 'pointer' }}>

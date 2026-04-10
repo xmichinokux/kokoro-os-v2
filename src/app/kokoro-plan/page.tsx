@@ -23,8 +23,8 @@ export default function KokoroPlanPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
 
   const [goal, setGoal] = useState('');
-  const [heat, setHeat] = useState(3);
-  const [grain, setGrain] = useState(3);
+  const [heat] = useState(3);
+  const [grain] = useState(3);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -142,32 +142,6 @@ export default function KokoroPlanPage() {
           onFocus={e => e.currentTarget.style.borderLeftColor = '#10b981'}
           onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
         />
-
-        {/* 熱量スライダー */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span>// 熱量</span>
-            <span style={{ color: '#10b981' }}>{heat}</span>
-          </div>
-          <input
-            type="range" min={1} max={5} value={heat}
-            onChange={e => setHeat(Number(e.target.value))}
-            style={{ width: '100%', accentColor: '#10b981' }}
-          />
-        </div>
-
-        {/* 粒度スライダー */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span>// タスクの粒度</span>
-            <span style={{ color: '#10b981' }}>{grain}</span>
-          </div>
-          <input
-            type="range" min={1} max={5} value={grain}
-            onChange={e => setGrain(Number(e.target.value))}
-            style={{ width: '100%', accentColor: '#10b981' }}
-          />
-        </div>
 
         {/* 実行ボタン */}
         <button
