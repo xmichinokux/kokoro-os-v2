@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { consumeNoteForZen, buildZenPromptFromNoteData } from '@/lib/kokoro/noteLinkage';
 import { saveToNote } from '@/lib/saveToNote';
 import PersonaLoading from '@/components/PersonaLoading';
-import { createRecipeInputFromZen, setRecipeInput } from '@/lib/kokoro/recipeInput';
+// Recipe import removed — bottom buttons simplified
 
 type PersonaResult = { id: string; name: string; text: string };
 type Core = {
@@ -25,7 +25,10 @@ type ZenResult = {
 type DeepResult = { emiMain: string; emiQuestion: string };
 
 const PERSONA_COLORS: Record<string, string> = {
-  norm:'#d97706', shin:'#2563eb', canon:'#7c3aed', digg:'#059669',
+  norm:'#d97706', shin:'#2563eb', canon:'#7c3aed', digg:'#059669', emi:'#db2777',
+};
+const PERSONA_ICONS: Record<string, string> = {
+  norm:'🌱', shin:'🔍', canon:'🌙', digg:'🎧', emi:'🌊',
 };
 
 export default function KokoroZen() {
@@ -221,7 +224,9 @@ export default function KokoroZen() {
 
             {/* ① エミ（短・刺す） */}
             <div style={{ borderLeft:'2px solid #7c3aed', paddingLeft:24, marginBottom:28, animation:'fadeUp .5s ease-out' }}>
-              <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#7c3aed', textTransform:'uppercase', marginBottom:16 }}>// エミより</div>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:16 }}>
+                <span style={{ fontSize:14 }}>🌊</span>
+              </div>
               <div style={{ fontSize:16, lineHeight:2.4, color:'#1a1a1a', fontWeight:300 }}>
                 {formatEmi(result.emiMain)}
               </div>
@@ -236,19 +241,20 @@ export default function KokoroZen() {
             <button onClick={loadDeepEmi}
               title={deepOpen && deepData ? '閉じる' : 'もっと深く見てみる'}
               style={{ width:'100%', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, color:'#6b7280', fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', padding:'13px 20px', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4, transition:'all .2s' }}>
-              <span>{deepLoading ? '// 深部に降りています...' : deepOpen && deepData ? '▲' : 'Deep ▼'}</span>
-              <span style={{ fontSize:8, color:'#9ca3af', letterSpacing:'0.05em' }}>エミ（深）</span>
+              <span>{deepOpen && deepData ? '▲' : 'Deep ▼'}</span>
+              <span style={{ fontSize:14 }}>🌊</span>
             </button>
 
             {deepOpen && (
               <div style={{ marginBottom:20, animation:'fadeUp .4s ease-out' }}>
                 {deepLoading ? (
-                  <div style={{ height:1, background:'#e5e7eb', position:'relative', overflow:'hidden', margin:'16px 0' }}>
-                    <div style={{ position:'absolute', left:'-40%', top:0, width:'40%', height:'100%', background:'#7c3aed', animation:'sweep 1.4s ease-in-out infinite' }} />
-                  </div>
+                  <PersonaLoading />
                 ) : deepData && (
                   <div style={{ borderLeft:'2px solid #e5e7eb', paddingLeft:24, marginTop:16 }}>
-                    <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.18em', color:'#9ca3af', textTransform:'uppercase', marginBottom:16 }}>// エミより（深）</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:16 }}>
+                      <span style={{ fontSize:14 }}>🌊</span>
+                      <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.15em', color:'#9ca3af', textTransform:'uppercase' }}>DEEP</span>
+                    </div>
                     <div style={{ fontSize:15, lineHeight:2.2, color:'#374151', fontWeight:300 }}>
                       {formatEmi(deepData.emiMain)}
                     </div>
@@ -267,14 +273,14 @@ export default function KokoroZen() {
               title={personasOpen ? '閉じる' : '他の視点を見る'}
               style={{ width:'100%', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, color:'#6b7280', fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.14em', textTransform:'uppercase', padding:'13px 20px', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4, transition:'all .2s' }}>
               <span>{personasOpen ? '▲' : 'Details ▼'}</span>
-              <span style={{ fontSize:8, color:'#9ca3af' }}>// 4つの人格</span>
+              <span style={{ fontSize:12, display:'flex', gap:4 }}>🌱🔍🌙🎧</span>
             </button>
 
             {personasOpen && (
               <div className="zen-personas-grid" style={{ marginBottom:20, display:'grid', gap:10, animation:'fadeUp .35s ease-out' }}>
                 {result.personas.map(p => (
                   <div key={p.id} style={{ background:'#f8f9fa', border:'1px solid #e5e7eb', borderTop:`2px solid ${PERSONA_COLORS[p.id] || '#7c3aed'}`, padding:20 }}>
-                    <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.15em', color: PERSONA_COLORS[p.id] || '#7c3aed', textTransform:'uppercase', marginBottom:12 }}>{p.name}</div>
+                    <div style={{ fontSize:16, marginBottom:10 }} title={p.name}>{PERSONA_ICONS[p.id] || '💬'}</div>
                     <div style={{ fontSize:13, color:'#374151', lineHeight:2 }}>{p.text}</div>
                   </div>
                 ))}
@@ -291,7 +297,7 @@ export default function KokoroZen() {
 
             {coreOpen && (
               <div style={{ marginBottom:20, background:'#f8f9fa', border:'1px solid #e5e7eb', padding:24, animation:'fadeUp .35s ease-out' }}>
-                <div style={{ fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.15em', color:'#7c3aed', textTransform:'uppercase', marginBottom:16 }}>// 意味構造マップ</div>
+                <div style={{ fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.15em', color:'#7c3aed', textTransform:'uppercase', marginBottom:16 }}>// Structure Map</div>
                 <div style={{ marginBottom:12 }}>
                   <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', display:'inline-block', width:80 }}>主な流れ</span>
                   <span style={{ fontSize:13, color:'#374151' }}>{result.core.main_story}</span>
@@ -376,45 +382,6 @@ export default function KokoroZen() {
                   Note +
                 </button>
               )}
-              <button
-                onClick={() => {
-                  const recipeInput = createRecipeInputFromZen({
-                    headline: result.emiMain ?? '',
-                    emotionTone: result.core.tensions.length > 0
-                      ? [result.core.tensions[0]] : undefined,
-                  });
-                  setRecipeInput(recipeInput);
-                  router.push('/kokoro-recipe');
-                }}
-                title="生活に落とす - Recipeを開く"
-                style={{
-                  fontFamily: "'Space Mono', monospace",
-                  fontSize: 11, color: '#f97316',
-                  background: 'rgba(249,115,22,0.06)',
-                  border: '1px solid rgba(249,115,22,0.3)',
-                  borderRadius: 6, padding: '8px 16px',
-                  cursor: 'pointer', letterSpacing: '0.1em',
-                }}
-              >
-                Recipe →
-              </button>
-              <button
-                onClick={() => router.push('/kokoro-chat')}
-                title="Talkで続きを話す"
-                style={{
-                  fontFamily: "'Space Mono', monospace",
-                  fontSize: 11,
-                  color: '#9ca3af',
-                  background: 'transparent',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 6,
-                  padding: '8px 16px',
-                  cursor: 'pointer',
-                  letterSpacing: '0.1em',
-                }}
-              >
-                ← Talk
-              </button>
             </div>
 
           </div>
@@ -423,7 +390,6 @@ export default function KokoroZen() {
 
       <style>{`
         @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
         .zen-personas-grid { grid-template-columns: 1fr 1fr; }
         @media (max-width:768px) { .zen-personas-grid { grid-template-columns: 1fr !important; } }
       `}</style>
