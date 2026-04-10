@@ -910,6 +910,54 @@ export default function KokoroChat() {
             </div>
           </div>
         )}
+        {/* クイックアクセスアイコン */}
+        <div style={{
+          maxWidth: 680, margin: '0 auto 6px',
+          display: 'flex', gap: 2, overflowX: 'auto',
+          scrollbarWidth: 'none', msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+        }}>
+          <style>{`.quick-access::-webkit-scrollbar{display:none}`}</style>
+          {([
+            { emoji: '🧘', name: 'Zen', href: '/kokoro-zen' },
+            { emoji: '📝', name: 'Note', href: '/kokoro-note' },
+            { emoji: '👗', name: 'Fashion', href: '/kokoro-fashion' },
+            { emoji: '🍳', name: 'Recipe', href: '/kokoro-recipe' },
+            { emoji: '🔍', name: 'Insight', href: '/kokoro-insight' },
+            { emoji: '✍️', name: 'Writer', href: '/kokoro-writer' },
+            { emoji: '📋', name: 'Plan', href: '/kokoro-plan' },
+            { emoji: '🌐', name: 'Browser', href: '/kokoro-browser' },
+            { emoji: '❤️', name: 'Couple', href: '/kokoro-couple' },
+            { emoji: '🎧', name: 'Buddy', href: '/kokoro-buddy' },
+            { emoji: '💭', name: 'Philo', href: '/kokoro-philo' },
+            { emoji: '📊', name: 'Board', href: '/kokoro-board' },
+            { emoji: '📄', name: 'Kami', href: '/kokoro-kami' },
+            { emoji: '🎨', name: 'Ponchi', href: '/kokoro-ponchi' },
+            { emoji: '🐾', name: 'Animal', href: '/kokoro-animal' },
+            { emoji: '🌟', name: 'Wishlist', href: '/kokoro-wishlist' },
+          ] as const).map(app => (
+            <button
+              key={app.href}
+              onClick={() => router.push(app.href)}
+              title={app.name}
+              className="quick-access"
+              style={{
+                flexShrink: 0, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: 1,
+                width: 42, padding: '4px 0',
+                background: 'transparent', border: 'none',
+                borderRadius: 8, cursor: 'pointer',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>{app.emoji}</span>
+              <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 7, color: '#9ca3af', lineHeight: 1, whiteSpace: 'nowrap' }}>{app.name}</span>
+            </button>
+          ))}
+        </div>
+
         <div style={{ maxWidth:680, margin:'0 auto', display:'flex', gap:10, alignItems:'flex-end' }}>
           <textarea
             ref={textareaRef}
