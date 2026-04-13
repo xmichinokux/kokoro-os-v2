@@ -1,27 +1,12 @@
 import { createBrowserClient } from '@supabase/ssr';
 
-let _supabase: ReturnType<typeof createBrowserClient> | null = null;
-
 /**
- * Supabaseクライアント（遅延初期化）。
- * ビルド時に環境変数がなくてもエラーにならない。
+ * Supabaseブラウザクライアント
+ *
+ * ビルド時に環境変数がない場合はダミー値で初期化（実行時には正しい値が入る）。
+ * createBrowserClientは環境変数が空でもエラーにならない（API呼び出し時に失敗する）。
  */
-export function getSupabase() {
-  if (!_supabase) {
-    _supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }
-  return _supabase;
-}
-
-// 後方互換: import { supabase } で使えるように
-// ただしビルド時ではなく実行時に初期化
-export const supabase = new Proxy({} as ReturnType<typeof createBrowserClient>, {
-  get(_target, prop, receiver) {
-    const client = getSupabase();
-    const value = Reflect.get(client, prop, receiver);
-    return typeof value === 'function' ? value.bind(client) : value;
-  },
-});
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
+);
