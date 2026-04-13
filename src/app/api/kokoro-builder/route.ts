@@ -1,5 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const KOKORO_PAGE_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
+以下の仕様書を読んで、Kokoro OSのNext.jsページとして動作するコンポーネントを生成してください。
+
+【仕様書】
+${spec}
+
+【技術仕様】
+・Next.js 14 App Router
+・TypeScript
+・Tailwind CSS
+・必要なnpmパッケージはコメントで明記する（// npm install xxx）
+・'use client'ディレクティブを適切に使用する
+・Kokoro OSの既存スタイル（Space Mono・Noto Sans JP）に合わせる
+・ファイルパス：src/app/kokoro-[機能名]/page.tsx
+
+【ルール】
+・1ファイルで完結させる（可能な限り）
+・外部ライブラリはimport文で明記する
+・コメントを適切に入れる
+・仕様書の機能を忠実に実装する
+・仕様書にない機能を勝手に追加しない
+
+1行目にファイルパスをコメントで記載し、その後にコードを続けてください。
+例: // src/app/kokoro-example/page.tsx
+マークダウンのコードブロックは使わない。`;
+
 const HTML_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
 以下の仕様書を読んで、動作するシングルHTMLファイルを生成してください。
 
@@ -18,71 +44,36 @@ ${spec}
 HTMLコードのみを返してください。
 マークダウンのコードブロックは使わない。`;
 
-const NEXTJS_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
-以下の仕様書を読んで、Next.jsプロジェクトのファイル構成とコードを生成してください。
-
-【仕様書】
-${spec}
-
-【ルール】
-・Next.js 14 App Router構成
-・TypeScript使用
-・Tailwind CSS使用
-・仕様書の機能を忠実に実装する
-・小さく作る：まず最小限の動くものを作る
-・各ファイルのパスとコードを明示する
-
-以下のJSON形式で返してください：
-{
-  "files": [
-    {
-      "path": "src/app/page.tsx",
-      "content": "コード内容"
-    }
-  ],
-  "instructions": "セットアップ手順"
-}`;
-
-const REACT_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
-以下の仕様書を読んで、Reactコンポーネントを生成してください。
-
-【仕様書】
-${spec}
-
-【ルール】
-・関数コンポーネント + Hooks
-・TypeScript使用
-・props・stateを適切に設計する
-・仕様書の機能を忠実に実装する
-
-コンポーネントのコードのみを返してください。`;
-
 const AUTO_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
 以下の仕様書を読んで、最適な形式でコードを生成してください。
 
 【仕様書】
 ${spec}
 
+【判断基準】
+・Kokoro OS内で動かすもの → Next.jsページコンポーネント（1ファイル、'use client'）
+・スタンドアロンで動かすもの → シングルHTML
+
+Next.jsページの場合：
+・1行目にファイルパスをコメントで記載（// src/app/kokoro-xxx/page.tsx）
+・TypeScript + Tailwind CSS
+・'use client'ディレクティブを使用
+
+シングルHTMLの場合：
+・完全に動作する1ファイルのHTML
+・外部ライブラリはCDN経由
+
 【ルール】
-・仕様書の内容から最適な実装形式を判断する
-・シンプルなものはシングルHTMLで、複雑なものはNext.jsプロジェクトで生成する
 ・仕様書の機能を忠実に実装する
 ・仕様書にない機能を勝手に追加しない
+・マークダウンのコードブロックは使わない`;
 
-シングルHTMLの場合：HTMLコードのみを返す（マークダウンのコードブロックは使わない）
-Next.jsの場合：以下のJSON形式で返す
-{
-  "files": [{ "path": "ファイルパス", "content": "コード" }],
-  "instructions": "セットアップ手順"
-}`;
-
-type BuildType = 'html' | 'nextjs' | 'react' | 'auto';
+type BuildType = 'kokoro' | 'html' | 'auto';
 
 function getSystem(type: BuildType, spec: string): string {
   switch (type) {
+    case 'kokoro': return KOKORO_PAGE_SYSTEM(spec);
     case 'html': return HTML_SYSTEM(spec);
-    case 'nextjs': return NEXTJS_SYSTEM(spec);
-    case 'react': return REACT_SYSTEM(spec);
     case 'auto': return AUTO_SYSTEM(spec);
   }
 }
@@ -100,7 +91,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '仕様書が必要です' }, { status: 400 });
     }
 
-    const system = getSystem(buildType || 'html', spec);
+    const system = getSystem(buildType || 'kokoro', spec);
 
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
@@ -136,25 +127,19 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    const text = (data.content[0].text as string).trim();
+    let text = (data.content[0].text as string).trim();
 
-    // レスポンスの種類を判定
-    const jsonMatch = text.match(/^\s*\{[\s\S]*"files"\s*:\s*\[[\s\S]*\]\s*[\s\S]*\}\s*$/);
-    if (jsonMatch) {
-      // Next.jsプロジェクト形式
-      const parsed = JSON.parse(text);
-      return NextResponse.json({ type: 'project', files: parsed.files, instructions: parsed.instructions });
-    }
-
-    // シングルファイル（HTML or React）
     // コードブロックが含まれていたら除去
-    let code = text;
     const codeBlockMatch = text.match(/```(?:html|tsx?|jsx?)?\n([\s\S]*?)```/);
     if (codeBlockMatch) {
-      code = codeBlockMatch[1].trim();
+      text = codeBlockMatch[1].trim();
     }
 
-    return NextResponse.json({ type: 'single', code });
+    // ファイルパスを抽出（1行目のコメントから）
+    const pathMatch = text.match(/^\/\/\s*(src\/app\/kokoro-[\w-]+\/page\.tsx)/);
+    const filePath = pathMatch ? pathMatch[1] : null;
+
+    return NextResponse.json({ type: 'single', code: text, filePath });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

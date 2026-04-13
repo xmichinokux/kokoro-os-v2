@@ -7,16 +7,17 @@ import PersonaLoading from '@/components/PersonaLoading';
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#7c3aed';
 
-type BuildType = 'html' | 'nextjs' | 'react' | 'auto';
+type BuildType = 'kokoro' | 'html' | 'auto';
 
-type BuildResult =
-  | { type: 'single'; code: string }
-  | { type: 'project'; files: { path: string; content: string }[]; instructions: string };
+type BuildResult = {
+  type: 'single';
+  code: string;
+  filePath: string | null;
+};
 
 const BUILD_OPTIONS: { value: BuildType; label: string; desc: string }[] = [
-  { value: 'html', label: 'シングルHTMLファイル', desc: '1ファイルで完結。すぐ動く。' },
-  { value: 'nextjs', label: 'Next.jsプロジェクト', desc: 'App Router + TypeScript + Tailwind。' },
-  { value: 'react', label: 'Reactコンポーネント', desc: '関数コンポーネント + Hooks。' },
+  { value: 'kokoro', label: 'Kokoro OSページとして追加', desc: 'Next.js App Routerページを生成。Claude Codeで組み込み。' },
+  { value: 'html', label: 'シングルHTMLファイル', desc: '1ファイルで完結。ダウンロード用。' },
   { value: 'auto', label: 'AIに任せる', desc: '仕様書から最適な形式を判断。' },
 ];
 
@@ -24,11 +25,12 @@ export default function KokoroBuilderPage() {
   const router = useRouter();
 
   const [spec, setSpec] = useState('');
-  const [buildType, setBuildType] = useState<BuildType>('html');
+  const [buildType, setBuildType] = useState<BuildType>('kokoro');
   const [fromGatekeeper, setFromGatekeeper] = useState(false);
   const [phase, setPhase] = useState<'input' | 'generating' | 'done'>('input');
   const [result, setResult] = useState<BuildResult | null>(null);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
   // Gatekeeperからの読み込み
   useEffect(() => {
@@ -50,9 +52,10 @@ export default function KokoroBuilderPage() {
     setPhase('generating');
     setError('');
     setResult(null);
+    setCopied(false);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2分タイムアウト
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     try {
       const res = await fetch('/api/kokoro-builder', {
@@ -79,35 +82,41 @@ export default function KokoroBuilderPage() {
     }
   }, [spec, buildType]);
 
-  // ZIPダウンロード
-  const handleDownloadZip = useCallback(async () => {
+  // コードをコピー
+  const handleCopy = useCallback(async () => {
     if (!result) return;
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
-
-    if (result.type === 'single') {
-      zip.file('index.html', result.code);
-    } else {
-      result.files.forEach(({ path, content }) => {
-        zip.file(path, content);
-      });
-      if (result.instructions) {
-        zip.file('README.md', result.instructions);
-      }
+    try {
+      await navigator.clipboard.writeText(result.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // フォールバック
+      const ta = document.createElement('textarea');
+      ta.value = result.code;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
+  }, [result]);
 
-    const blob = await zip.generateAsync({ type: 'blob' });
+  // HTMLダウンロード
+  const handleDownloadHtml = useCallback(() => {
+    if (!result) return;
+    const blob = new Blob([result.code], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `kokoro-builder-${new Date().toISOString().slice(0, 10)}.zip`;
+    a.download = `kokoro-builder-${new Date().toISOString().slice(0, 10)}.html`;
     a.click();
     URL.revokeObjectURL(url);
   }, [result]);
 
-  // Worldへ渡す
+  // Worldへ渡す（HTML用）
   const handleToWorld = useCallback(() => {
-    if (!result || result.type !== 'single') return;
+    if (!result) return;
     localStorage.setItem('kokoro_world_input', JSON.stringify({
       strategyHtml: result.code,
       strategyText: spec,
@@ -117,12 +126,8 @@ export default function KokoroBuilderPage() {
     router.push('/kokoro-world');
   }, [result, spec, router]);
 
-  // コードプレビュー取得
-  const getPreviewCode = () => {
-    if (!result) return '';
-    if (result.type === 'single') return result.code;
-    return result.files.map(f => `// === ${f.path} ===\n${f.content}`).join('\n\n');
-  };
+  // Kokoro OSページかどうか判定
+  const isKokoroPage = result?.filePath != null;
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
@@ -259,66 +264,101 @@ export default function KokoroBuilderPage() {
               // 生成完了
             </div>
 
-            {/* ファイル情報 */}
-            {result.type === 'project' && (
+            {/* ファイルパス表示（Kokoro OSページの場合） */}
+            {isKokoroPage && (
               <div style={{
-                ...mono, fontSize: 9, color: '#6b7280', background: '#f8f9fa',
-                border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, marginBottom: 16,
+                ...mono, fontSize: 10, color: accentColor, background: 'rgba(124,58,237,0.06)',
+                border: `1px solid rgba(124,58,237,0.2)`, borderRadius: 6, padding: '10px 14px', marginBottom: 16,
               }}>
-                {result.files.length}ファイル生成
-                {result.files.map(f => (
-                  <div key={f.path} style={{ marginTop: 4, color: accentColor }}>{f.path}</div>
-                ))}
+                <span style={{ color: '#9ca3af' }}>file: </span>{result.filePath}
               </div>
             )}
 
             {/* コードプレビュー */}
-            <div style={{
-              background: '#1e1e1e', border: '1px solid #333', borderRadius: 8,
-              padding: 20, maxHeight: 500, overflowY: 'auto', marginBottom: 20,
-            }}>
-              <pre style={{
-                fontSize: 11, lineHeight: 1.6, color: '#d4d4d4',
-                fontFamily: "'Space Mono', 'Courier New', monospace",
-                whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0,
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={handleCopy}
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '0.1em',
+                  position: 'absolute', top: 10, right: 10, zIndex: 10,
+                  background: copied ? '#059669' : 'rgba(255,255,255,0.15)',
+                  border: '1px solid rgba(255,255,255,0.2)', color: '#fff',
+                  padding: '5px 12px', borderRadius: 3, cursor: 'pointer',
+                  transition: 'background 0.2s',
+                }}
+              >
+                {copied ? '✓ Copied' : 'Copy'}
+              </button>
+              <div style={{
+                background: '#1e1e1e', border: '1px solid #333', borderRadius: 8,
+                padding: 20, maxHeight: 500, overflowY: 'auto', marginBottom: 20,
               }}>
-                {getPreviewCode()}
-              </pre>
+                <pre style={{
+                  fontSize: 11, lineHeight: 1.6, color: '#d4d4d4',
+                  fontFamily: "'Space Mono', 'Courier New', monospace",
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0,
+                }}>
+                  {result.code}
+                </pre>
+              </div>
             </div>
+
+            {/* Claude Code用の手順（Kokoro OSページの場合） */}
+            {isKokoroPage && (
+              <div style={{
+                background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: 6,
+                padding: 16, marginBottom: 20,
+              }}>
+                <div style={{ ...mono, fontSize: 9, letterSpacing: '0.14em', color: '#9ca3af', marginBottom: 8, textTransform: 'uppercase' }}>
+                  // Claude Codeへの指示
+                </div>
+                <div style={{ fontSize: 13, lineHeight: 1.8, color: '#374151' }}>
+                  上のコードをコピーして、Claude Codeに以下のように伝えてください：
+                </div>
+                <div style={{
+                  ...mono, fontSize: 11, color: accentColor, background: 'rgba(124,58,237,0.06)',
+                  border: '1px solid rgba(124,58,237,0.15)', borderRadius: 4,
+                  padding: '10px 14px', marginTop: 8, lineHeight: 1.6,
+                }}>
+                  このコードを {result.filePath} として追加してください。
+                </div>
+              </div>
+            )}
 
             {/* アクションボタン */}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
-                onClick={handleDownloadZip}
+                onClick={handleCopy}
                 style={{
                   ...mono, fontSize: 10, letterSpacing: '0.12em',
                   background: accentColor, border: 'none', color: '#fff',
                   padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
                 }}
-              >Download ZIP ↓</button>
+              >{copied ? '✓ コピー済み' : 'コードをコピー'}</button>
 
-              {result.type === 'single' && (
-                <button
-                  onClick={handleToWorld}
-                  style={{
-                    ...mono, fontSize: 10, letterSpacing: '0.12em',
-                    background: '#fff', border: '1px solid #10b981', color: '#10b981',
-                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
-                  }}
-                >World →</button>
+              {!isKokoroPage && (
+                <>
+                  <button
+                    onClick={handleDownloadHtml}
+                    style={{
+                      ...mono, fontSize: 10, letterSpacing: '0.12em',
+                      background: '#fff', border: `1px solid ${accentColor}`, color: accentColor,
+                      padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                    }}
+                  >Download HTML ↓</button>
+                  <button
+                    onClick={handleToWorld}
+                    style={{
+                      ...mono, fontSize: 10, letterSpacing: '0.12em',
+                      background: '#fff', border: '1px solid #10b981', color: '#10b981',
+                      padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                    }}
+                  >World →</button>
+                </>
               )}
 
               <button
-                onClick={() => router.push('/kokoro-note')}
-                style={{
-                  ...mono, fontSize: 10, letterSpacing: '0.12em',
-                  background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
-                  padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
-                }}
-              >Note +</button>
-
-              <button
-                onClick={() => { setPhase('input'); setResult(null); setError(''); }}
+                onClick={() => { setPhase('input'); setResult(null); setError(''); setCopied(false); }}
                 style={{
                   ...mono, fontSize: 10, letterSpacing: '0.12em',
                   background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
@@ -326,25 +366,6 @@ export default function KokoroBuilderPage() {
                 }}
               >もう一度</button>
             </div>
-
-            {/* セットアップ手順 */}
-            {result.type === 'project' && result.instructions && (
-              <div style={{
-                marginTop: 24, background: '#f8f9fa', border: '1px solid #e5e7eb',
-                borderRadius: 6, padding: 16,
-              }}>
-                <div style={{ ...mono, fontSize: 9, letterSpacing: '0.14em', color: '#9ca3af', marginBottom: 8, textTransform: 'uppercase' }}>
-                  // セットアップ手順
-                </div>
-                <pre style={{
-                  fontSize: 12, lineHeight: 1.8, color: '#374151',
-                  fontFamily: "'Noto Sans JP', sans-serif",
-                  whiteSpace: 'pre-wrap', margin: 0,
-                }}>
-                  {result.instructions}
-                </pre>
-              </div>
-            )}
           </div>
         )}
 
