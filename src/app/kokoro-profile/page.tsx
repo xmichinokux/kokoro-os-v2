@@ -452,9 +452,8 @@ export default function KokoroProfilePage() {
       try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
       if (data.error) throw new Error(data.error);
 
-      const result = data.results?.[type] || data;
-      setFolderCaches(prev => ({ ...prev, [type]: { exists: true, updatedAt: new Date().toISOString(), fileCount: result.fileCount || 0 } }));
-      setFolderScans(prev => ({ ...prev, [type]: { loading: false, error: '', result: { totalFound: result.totalFound, loadedFiles: result.loadedFiles, skippedFiles: result.skippedFiles } } }));
+      setFolderCaches(prev => ({ ...prev, [type]: { exists: true, updatedAt: new Date().toISOString(), fileCount: data.fileCount || 0 } }));
+      setFolderScans(prev => ({ ...prev, [type]: { loading: false, error: '', result: { totalFound: data.totalFound, loadedFiles: data.loadedFiles, skippedFiles: data.skippedFiles } } }));
       showToast(`// ${type}スキャン完了 ✓`);
     } catch (e) {
       setFolderScans(prev => ({ ...prev, [type]: { loading: false, error: e instanceof Error ? e.message : 'スキャンに失敗しました', result: null } }));
@@ -463,48 +462,13 @@ export default function KokoroProfilePage() {
 
   const runAllScans = useCallback(async () => {
     setAllScanLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.provider_token;
-      if (!accessToken || !userId) {
-        throw new Error('Googleアクセストークンがありません。ログアウトしてGoogleで再ログインしてください。');
-      }
-
-      const types: FolderType[] = ['writing', 'thought', 'structure'];
-      for (const t of types) {
-        setFolderScans(prev => ({ ...prev, [t]: { ...prev[t], loading: true, error: '' } }));
-      }
-
-      const res = await fetch('/api/drive-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken, userId, scanType: 'all' }),
-      });
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
-      if (data.error) throw new Error(data.error);
-
-      for (const t of types) {
-        const result = data.results?.[t];
-        if (result && !result.error) {
-          setFolderCaches(prev => ({ ...prev, [t]: { exists: true, updatedAt: new Date().toISOString(), fileCount: result.fileCount || 0 } }));
-          setFolderScans(prev => ({ ...prev, [t]: { loading: false, error: '', result: { totalFound: result.totalFound, loadedFiles: result.loadedFiles, skippedFiles: result.skippedFiles } } }));
-        } else {
-          setFolderScans(prev => ({ ...prev, [t]: { loading: false, error: result?.error || '', result: null } }));
-        }
-      }
-      showToast('// 全フォルダスキャン完了 ✓');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'スキャンに失敗しました';
-      const types: FolderType[] = ['writing', 'thought', 'structure'];
-      for (const t of types) {
-        setFolderScans(prev => ({ ...prev, [t]: { loading: false, error: msg, result: null } }));
-      }
-    } finally {
-      setAllScanLoading(false);
+    const types: FolderType[] = ['writing', 'thought', 'structure'];
+    for (const t of types) {
+      await runFolderScan(t);
     }
-  }, [userId]);
+    setAllScanLoading(false);
+    showToast('// 全フォルダスキャン完了 ✓');
+  }, [runFolderScan]);
 
   const runTripScan = useCallback(async () => {
     setTripScanLoading(true);

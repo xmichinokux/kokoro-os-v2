@@ -259,45 +259,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, scanType: 'trip', ...result });
     }
 
-    // writing/thought/structure または all
+    // writing/thought/structure（1フォルダのみ）
+    const type = scanType as ScanType;
+    if (!['writing', 'thought', 'structure'].includes(type)) {
+      return NextResponse.json({ error: `無効なscanType: ${scanType}` }, { status: 400 });
+    }
+
     const scanDataId = await findFolderByName(drive, 'Scan Data');
     if (!scanDataId) throw new Error('Googleドライブに「Scan Data」フォルダが見つかりません');
 
-    const targets: ScanType[] = (scanType === 'all' || !scanType)
-      ? ['writing', 'thought', 'structure']
-      : [scanType as ScanType];
+    const subFolderName = FOLDER_PATHS[type];
+    const subFolderId = await findFolderByName(drive, subFolderName, scanDataId);
+    if (!subFolderId) throw new Error(`「Scan Data/${subFolderName}」フォルダが見つかりません`);
 
-    const results: Record<string, unknown> = {};
-    const supabase = await createServerSupabase();
+    const result = await scanFolder(drive, subFolderId, geminiKey, type);
 
-    for (const type of targets) {
-      const subFolderName = FOLDER_PATHS[type];
-      const subFolderId = await findFolderByName(drive, subFolderName, scanDataId);
-
-      if (!subFolderId) {
-        results[type] = { error: `「Scan Data/${subFolderName}」フォルダが見つかりません`, fileCount: 0 };
-        continue;
-      }
-
-      const result = await scanFolder(drive, subFolderId, geminiKey, type);
-
-      if (result.fileCount > 0) {
-        const { error: dbError } = await supabase
-          .from('user_profiles')
-          .upsert(getUpsertData(type, userId, result.cacheText, result.fileCount), { onConflict: 'user_id' });
-        if (dbError) throw new Error(`データベース保存エラー（${type}）: ${dbError.message}`);
-      }
-
-      results[type] = {
-        totalFound: result.totalFound,
-        fileCount: result.fileCount,
-        cacheLength: result.cacheText.length,
-        loadedFiles: result.loadedFiles,
-        skippedFiles: result.skippedFiles,
-      };
+    if (result.fileCount > 0) {
+      const supabase = await createServerSupabase();
+      const { error: dbError } = await supabase
+        .from('user_profiles')
+        .upsert(getUpsertData(type, userId, result.cacheText, result.fileCount), { onConflict: 'user_id' });
+      if (dbError) throw new Error(`データベース保存エラー: ${dbError.message}`);
     }
 
-    return NextResponse.json({ success: true, scanType: targets.length === 1 ? targets[0] : 'all', results });
+    return NextResponse.json({ success: true, scanType: type, ...result });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
