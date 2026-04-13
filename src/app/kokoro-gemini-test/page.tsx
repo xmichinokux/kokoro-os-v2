@@ -208,7 +208,7 @@ export default function GeminiTestPage() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ ...mono, fontSize: 10, letterSpacing: '.14em', color: '#1a73e8', fontWeight: 700 }}>
-                Gemini (2.0 Flash)
+                Gemini (2.5 Flash)
               </span>
               {geminiTime !== null && (
                 <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
