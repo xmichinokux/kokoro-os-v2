@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, type Part } from '@google/generative-ai';
 import { google, type drive_v3 } from 'googleapis';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
@@ -78,10 +78,41 @@ async function listFilesInFolders(
   return allFiles.slice(0, maxFiles);
 }
 
+// PDFをGeminiでテキスト抽出
+async function extractPdfWithGemini(
+  drive: drive_v3.Drive,
+  fileId: string,
+  geminiKey: string
+): Promise<string> {
+  const res = await drive.files.get(
+    { fileId, alt: 'media' },
+    { responseType: 'arraybuffer' }
+  );
+  const buffer = Buffer.from(res.data as ArrayBuffer);
+  const base64 = buffer.toString('base64');
+
+  const genAI = new GoogleGenerativeAI(geminiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  const parts: Part[] = [
+    {
+      inlineData: {
+        mimeType: 'application/pdf',
+        data: base64,
+      },
+    },
+    { text: 'このPDFのテキスト内容をそのまま抽出してください。装飾や説明は不要です。元のテキストだけを返してください。' },
+  ];
+
+  const result = await model.generateContent(parts);
+  return result.response.text();
+}
+
 // ファイルのテキスト内容を読み込む
 async function readFileContent(
   drive: drive_v3.Drive,
-  file: drive_v3.Schema$File
+  file: drive_v3.Schema$File,
+  geminiKey: string
 ): Promise<string> {
   const mime = file.mimeType || '';
 
@@ -94,21 +125,9 @@ async function readFileContent(
     return String(res.data);
   }
 
-  // PDF → バイナリ取得 → pdf-parse でテキスト抽出
+  // PDF → Geminiでテキスト抽出
   if (mime === 'application/pdf') {
-    try {
-      const { PDFParse } = await import('pdf-parse');
-      const res = await drive.files.get(
-        { fileId: file.id!, alt: 'media' },
-        { responseType: 'arraybuffer' }
-      );
-      const buffer = Buffer.from(res.data as ArrayBuffer);
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      return result.text;
-    } catch {
-      throw new Error('PDF解析不可（サーバーレス環境）');
-    }
+    return extractPdfWithGemini(drive, file.id!, geminiKey);
   }
 
   // テキスト系（text/plain, text/markdown, text/x-markdown, .mdファイル）
@@ -163,7 +182,7 @@ export async function POST(req: NextRequest) {
     for (const file of allFiles.slice(0, 40)) {
       if (allContent.length > 50000) break;
       try {
-        const content = await readFileContent(drive, file);
+        const content = await readFileContent(drive, file, geminiKey);
         const truncated = content.slice(0, 3000);
         allContent += `\n\n[${file.name}]\n${truncated}`;
         loadedFiles.push(file.name || 'unknown');
