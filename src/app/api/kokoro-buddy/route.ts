@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     let system: string;
 
     if (mode === 'michi') {
-      // Michiモード: 感性キャッシュを注入
+      // Michiモード: 感性キャッシュを注入（配合: thought 70% + writing 30%）
       let cache = '';
       try {
         const supabase = await createServerSupabase();
@@ -62,11 +62,15 @@ export async function POST(req: NextRequest) {
         if (user) {
           const { data } = await supabase
             .from('user_profiles')
-            .select('sensibility_cache')
+            .select('sensibility_thought_cache, sensibility_cache')
             .eq('user_id', user.id)
             .single();
-          if (data?.sensibility_cache) {
-            cache = data.sensibility_cache;
+          const thought = data?.sensibility_thought_cache || '';
+          const writing = data?.sensibility_cache || '';
+          if (thought) cache += thought;
+          if (writing) {
+            const writingSlice = writing.slice(0, Math.floor(writing.length * 0.43));
+            cache += '\n\n---\n\n【文体面の補足】\n' + writingSlice;
           }
         }
       } catch {
@@ -74,7 +78,6 @@ export async function POST(req: NextRequest) {
       }
 
       if (cache) {
-        // 感性キャッシュが長すぎる場合は切り詰め
         const trimmedCache = cache.length > 4000 ? cache.slice(0, 4000) + '...(省略)' : cache;
         system = MICHI_PREFIX(trimmedCache);
       } else {

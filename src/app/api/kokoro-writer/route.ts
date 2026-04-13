@@ -258,10 +258,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
       }
 
-      // まず感性キャッシュを確認
+      // 感性キャッシュを取得（配合: writing 70% + thought 30%）
       let context = '';
-      let loadedFiles: string[] = [];
-      let usedCache = false;
+      const loadedFiles: string[] = [];
 
       try {
         const supabase = await createServerSupabase();
@@ -269,26 +268,19 @@ export async function POST(req: NextRequest) {
         if (user) {
           const { data } = await supabase
             .from('user_profiles')
-            .select('sensibility_cache')
+            .select('sensibility_cache, sensibility_thought_cache')
             .eq('user_id', user.id)
             .single();
-          if (data?.sensibility_cache) {
-            context = data.sensibility_cache;
-            usedCache = true;
+          const writing = data?.sensibility_cache || '';
+          const thought = data?.sensibility_thought_cache || '';
+          if (writing) context += writing;
+          if (thought) {
+            const thoughtSlice = thought.slice(0, Math.floor(thought.length * 0.43));
+            context += '\n\n---\n\n【思想面の補足】\n' + thoughtSlice;
           }
         }
       } catch {
         // キャッシュ取得失敗はフォールバック
-      }
-
-      // キャッシュがない場合 → zineフォルダを直接読み込む
-      if (!usedCache) {
-        if (!accessToken) {
-          return NextResponse.json({ error: 'Googleアクセストークンがありません。Googleでログインしてください。' }, { status: 401 });
-        }
-        const driveData = await loadDriveContext(accessToken);
-        context = driveData.context;
-        loadedFiles = driveData.files;
       }
 
       const prompt = MICHI_SYSTEM.replace('{driveContext}', context || '（感性データがありません）') + '\n\n' + text;
@@ -302,7 +294,7 @@ export async function POST(req: NextRequest) {
         result,
         filesLoaded: loadedFiles,
         contextLength: context.length,
-        usedCache,
+        usedCache: true,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';

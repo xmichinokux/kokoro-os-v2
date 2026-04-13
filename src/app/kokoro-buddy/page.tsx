@@ -35,7 +35,7 @@ export default function KokoroBuddyPage() {
       try {
         const res = await fetch('/api/drive-cache');
         const data = await res.json();
-        setHasCache(!!data.cache);
+        setHasCache(!!data.writing || !!data.thought);
       } catch { /* ignore */ }
     })();
   }, []);

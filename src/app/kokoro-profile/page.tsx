@@ -265,34 +265,32 @@ export default function KokoroProfilePage() {
   // 感性キャッシュ関連
   const [hasGoogleToken, setHasGoogleToken] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [scanLoading, setScanLoading] = useState(false);
-  const [scanError, setScanError] = useState('');
-  const [scanFolder, setScanFolder] = useState('Scan Data');
-  const [scanResult, setScanResult] = useState<{
-    totalFound?: number;
-    loadedFiles?: string[];
-    skippedFiles?: string[];
-  } | null>(null);
-  const [cacheInfo, setCacheInfo] = useState<{
-    exists: boolean;
-    updatedAt: string | null;
-    fileCount: number;
-  }>({ exists: false, updatedAt: null, fileCount: 0 });
+
+  type FolderType = 'writing' | 'thought' | 'structure';
+  type ScanState = { loading: boolean; error: string; result: { totalFound?: number; loadedFiles?: string[]; skippedFiles?: string[] } | null };
+  type CacheState = { exists: boolean; updatedAt: string | null; fileCount: number };
+
+  const [folderScans, setFolderScans] = useState<Record<FolderType, ScanState>>({
+    writing: { loading: false, error: '', result: null },
+    thought: { loading: false, error: '', result: null },
+    structure: { loading: false, error: '', result: null },
+  });
+  const [folderCaches, setFolderCaches] = useState<Record<FolderType, CacheState>>({
+    writing: { exists: false, updatedAt: null, fileCount: 0 },
+    thought: { exists: false, updatedAt: null, fileCount: 0 },
+    structure: { exists: false, updatedAt: null, fileCount: 0 },
+  });
+  const [allScanLoading, setAllScanLoading] = useState(false);
 
   // Tripキャッシュ関連
   const [tripScanLoading, setTripScanLoading] = useState(false);
   const [tripScanError, setTripScanError] = useState('');
-  const [tripScanFolder, setTripScanFolder] = useState('Scan Trip');
   const [tripScanResult, setTripScanResult] = useState<{
     totalFound?: number;
     loadedFiles?: string[];
     skippedFiles?: string[];
   } | null>(null);
-  const [tripCacheInfo, setTripCacheInfo] = useState<{
-    exists: boolean;
-    updatedAt: string | null;
-    fileCount: number;
-  }>({ exists: false, updatedAt: null, fileCount: 0 });
+  const [tripCacheInfo, setTripCacheInfo] = useState<CacheState>({ exists: false, updatedAt: null, fileCount: 0 });
 
   // 初期読み込み
   useEffect(() => {
@@ -317,18 +315,23 @@ export default function KokoroProfilePage() {
         try {
           const cacheRes = await fetch('/api/drive-cache');
           const cacheData = await cacheRes.json();
-          if (cacheData.cache) {
-            setCacheInfo({
-              exists: true,
-              updatedAt: cacheData.updatedAt,
-              fileCount: cacheData.fileCount,
-            });
+          const types: FolderType[] = ['writing', 'thought', 'structure'];
+          const newCaches = { ...folderCaches };
+          for (const t of types) {
+            if (cacheData[t]) {
+              newCaches[t] = {
+                exists: true,
+                updatedAt: cacheData.updatedAt?.[t] || null,
+                fileCount: cacheData.fileCount?.[t] || 0,
+              };
+            }
           }
+          setFolderCaches(newCaches);
           if (cacheData.tripCache) {
             setTripCacheInfo({
               exists: true,
-              updatedAt: cacheData.tripUpdatedAt,
-              fileCount: cacheData.tripFileCount,
+              updatedAt: cacheData.updatedAt?.trip || null,
+              fileCount: cacheData.fileCount?.trip || 0,
             });
           }
         } catch {
@@ -430,9 +433,8 @@ export default function KokoroProfilePage() {
     }
   }, [noteCount, profile]);
 
-  const runDriveScan = useCallback(async () => {
-    setScanLoading(true);
-    setScanError('');
+  const runFolderScan = useCallback(async (type: FolderType) => {
+    setFolderScans(prev => ({ ...prev, [type]: { ...prev[type], loading: true, error: '' } }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.provider_token;
@@ -443,34 +445,66 @@ export default function KokoroProfilePage() {
       const res = await fetch('/api/drive-scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken, userId, folderName: scanFolder }),
+        body: JSON.stringify({ accessToken, userId, scanType: type }),
       });
       const text = await res.text();
       let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`);
-      }
+      try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
       if (data.error) throw new Error(data.error);
 
-      setCacheInfo({
-        exists: true,
-        updatedAt: new Date().toISOString(),
-        fileCount: data.fileCount,
-      });
-      setScanResult({
-        totalFound: data.totalFound,
-        loadedFiles: data.loadedFiles,
-        skippedFiles: data.skippedFiles,
-      });
-      showToast(`// スキャン完了 ✓ ${data.fileCount}/${data.totalFound}ファイル読み込み`);
+      const result = data.results?.[type] || data;
+      setFolderCaches(prev => ({ ...prev, [type]: { exists: true, updatedAt: new Date().toISOString(), fileCount: result.fileCount || 0 } }));
+      setFolderScans(prev => ({ ...prev, [type]: { loading: false, error: '', result: { totalFound: result.totalFound, loadedFiles: result.loadedFiles, skippedFiles: result.skippedFiles } } }));
+      showToast(`// ${type}スキャン完了 ✓`);
     } catch (e) {
-      setScanError(e instanceof Error ? e.message : 'スキャンに失敗しました');
-    } finally {
-      setScanLoading(false);
+      setFolderScans(prev => ({ ...prev, [type]: { loading: false, error: e instanceof Error ? e.message : 'スキャンに失敗しました', result: null } }));
     }
-  }, [userId, scanFolder]);
+  }, [userId]);
+
+  const runAllScans = useCallback(async () => {
+    setAllScanLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.provider_token;
+      if (!accessToken || !userId) {
+        throw new Error('Googleアクセストークンがありません。ログアウトしてGoogleで再ログインしてください。');
+      }
+
+      const types: FolderType[] = ['writing', 'thought', 'structure'];
+      for (const t of types) {
+        setFolderScans(prev => ({ ...prev, [t]: { ...prev[t], loading: true, error: '' } }));
+      }
+
+      const res = await fetch('/api/drive-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken, userId, scanType: 'all' }),
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
+      if (data.error) throw new Error(data.error);
+
+      for (const t of types) {
+        const result = data.results?.[t];
+        if (result && !result.error) {
+          setFolderCaches(prev => ({ ...prev, [t]: { exists: true, updatedAt: new Date().toISOString(), fileCount: result.fileCount || 0 } }));
+          setFolderScans(prev => ({ ...prev, [t]: { loading: false, error: '', result: { totalFound: result.totalFound, loadedFiles: result.loadedFiles, skippedFiles: result.skippedFiles } } }));
+        } else {
+          setFolderScans(prev => ({ ...prev, [t]: { loading: false, error: result?.error || '', result: null } }));
+        }
+      }
+      showToast('// 全フォルダスキャン完了 ✓');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'スキャンに失敗しました';
+      const types: FolderType[] = ['writing', 'thought', 'structure'];
+      for (const t of types) {
+        setFolderScans(prev => ({ ...prev, [t]: { loading: false, error: msg, result: null } }));
+      }
+    } finally {
+      setAllScanLoading(false);
+    }
+  }, [userId]);
 
   const runTripScan = useCallback(async () => {
     setTripScanLoading(true);
@@ -485,34 +519,22 @@ export default function KokoroProfilePage() {
       const res = await fetch('/api/drive-scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken, userId, folderName: tripScanFolder, scanType: 'trip' }),
+        body: JSON.stringify({ accessToken, userId, scanType: 'trip' }),
       });
       const text = await res.text();
       let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`);
-      }
+      try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
       if (data.error) throw new Error(data.error);
 
-      setTripCacheInfo({
-        exists: true,
-        updatedAt: new Date().toISOString(),
-        fileCount: data.fileCount,
-      });
-      setTripScanResult({
-        totalFound: data.totalFound,
-        loadedFiles: data.loadedFiles,
-        skippedFiles: data.skippedFiles,
-      });
-      showToast(`// Tripスキャン完了 ✓ ${data.fileCount}/${data.totalFound}ファイル読み込み`);
+      setTripCacheInfo({ exists: true, updatedAt: new Date().toISOString(), fileCount: data.fileCount || 0 });
+      setTripScanResult({ totalFound: data.totalFound, loadedFiles: data.loadedFiles, skippedFiles: data.skippedFiles });
+      showToast('// Tripスキャン完了 ✓');
     } catch (e) {
       setTripScanError(e instanceof Error ? e.message : 'スキャンに失敗しました');
     } finally {
       setTripScanLoading(false);
     }
-  }, [userId, tripScanFolder]);
+  }, [userId]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
@@ -631,118 +653,102 @@ export default function KokoroProfilePage() {
           )}
         </div>
 
-        {/* 感性キャッシュセクション */}
+        {/* 感性キャッシュセクション（フォルダ別） */}
         <div style={{
           background: '#f8f9fa', border: '1px solid #e5e7eb', borderLeft: '3px solid #0f9d58',
           padding: 24, borderRadius: '0 8px 8px 0', marginBottom: 36,
         }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#0f9d58', textTransform: 'uppercase', marginBottom: 8 }}>
-                // 感性キャッシュ（Google Drive スキャン）
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#0f9d58', textTransform: 'uppercase', marginBottom: 4 }}>
+                // 感性キャッシュ（Scan Data フォルダ別）
               </div>
               <div style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.8 }}>
-                Googleドライブの文章を全スキャンし、あなたの文体・センス・価値観を「感性ベクター」として保存します。
-                Writer Michiモードなどで使用されます。
-              </div>
-
-              {cacheInfo.exists ? (
-                <div style={{ ...mono, fontSize: 9, color: '#0f9d58', marginTop: 8 }}>
-                  ✓ 最終スキャン：{cacheInfo.updatedAt ? new Date(cacheInfo.updatedAt).toLocaleString('ja-JP') : '不明'}
-                  {' / '}{cacheInfo.fileCount}ファイル読み込み済み
-                </div>
-              ) : (
-                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
-                  ✗ まだスキャンしていません
-                </div>
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                <span style={{ ...mono, fontSize: 8, color: '#6b7280', whiteSpace: 'nowrap' }}>// 対象フォルダ:</span>
-                <input
-                  type="text"
-                  value={scanFolder}
-                  onChange={e => setScanFolder(e.target.value)}
-                  style={{
-                    ...mono, fontSize: 11, color: '#111827',
-                    background: '#fff', border: '1px solid #d1d5db',
-                    borderRadius: 3, padding: '4px 8px', width: 160, outline: 'none',
-                  }}
-                />
-              </div>
-              <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.08em', marginTop: 8, opacity: 0.7 }}>
-                // 週1回の更新を推奨。スキャンには数十秒〜数分かかります
+                Scan Data内の「文章」「思想」「構造」フォルダを個別にスキャンします。
               </div>
             </div>
             <button
-              onClick={runDriveScan}
-              disabled={scanLoading || !hasGoogleToken}
-              title={!hasGoogleToken ? 'Googleでログインすると使えます' : 'Googleドライブをスキャンする'}
+              onClick={runAllScans}
+              disabled={allScanLoading || !hasGoogleToken}
               style={{
                 background: hasGoogleToken ? '#0f9d58' : '#e5e7eb',
-                border: 'none',
-                color: hasGoogleToken ? '#fff' : '#9ca3af',
+                border: 'none', color: hasGoogleToken ? '#fff' : '#9ca3af',
                 ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
-                padding: '11px 22px', cursor: (scanLoading || !hasGoogleToken) ? 'not-allowed' : 'pointer',
+                padding: '11px 18px', cursor: (allScanLoading || !hasGoogleToken) ? 'not-allowed' : 'pointer',
                 borderRadius: 3, whiteSpace: 'nowrap', flexShrink: 0,
-                opacity: scanLoading ? 0.5 : 1,
+                opacity: allScanLoading ? 0.5 : 1,
               }}
             >
-              {scanLoading ? '// スキャン中...' : cacheInfo.exists ? 'スキャンを更新' : 'スキャン開始'}
+              {allScanLoading ? '// 全スキャン中...' : '全フォルダをスキャン'}
             </button>
           </div>
 
           {!hasGoogleToken && (
-            <div style={{ marginTop: 12, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
-              // Googleログインが必要です →{' '}
-              <a href="/auth" style={{ color: '#0f9d58' }}>ログイン</a>
+            <div style={{ marginBottom: 12, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
+              // Googleログインが必要です → <a href="/auth" style={{ color: '#0f9d58' }}>ログイン</a>
             </div>
           )}
 
-          {scanLoading && (
-            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#0f9d58' }}>
-              // Googleドライブを読み込んでいます...（数十秒〜数分かかります）
-            </div>
-          )}
-
-          {scanError && (
-            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6 }}>
-              // エラー: {scanError}
-            </div>
-          )}
-
-          {/* スキャン結果の詳細 */}
-          {scanResult && (
-            <div style={{
-              marginTop: 14, padding: 14,
-              background: 'rgba(15,157,88,0.06)', border: '1px solid rgba(15,157,88,0.15)',
-              borderRadius: 4, maxHeight: 300, overflowY: 'auto',
-            }}>
-              <div style={{ ...mono, fontSize: 9, color: '#0f9d58', letterSpacing: '0.12em', marginBottom: 8 }}>
-                // 検出: {scanResult.totalFound}件 / 読み込み: {scanResult.loadedFiles?.length ?? 0}件
+          {([
+            { type: 'writing' as FolderType, label: '文章', desc: '文体・リズム・語調', color: '#0f9d58' },
+            { type: 'thought' as FolderType, label: '思想', desc: '価値観・世界観・思考の方向性', color: '#3b82f6' },
+            { type: 'structure' as FolderType, label: '構造', desc: '情報整理・構造化の特徴', color: '#8b5cf6' },
+          ]).map(({ type, label, desc, color }) => {
+            const scan = folderScans[type];
+            const cache = folderCaches[type];
+            return (
+              <div key={type} style={{
+                padding: '14px 16px', marginBottom: 8,
+                background: '#fff', border: '1px solid #e5e7eb', borderLeft: `2px solid ${color}`,
+                borderRadius: '0 4px 4px 0',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ ...mono, fontSize: 11, fontWeight: 600, color }}>{label}</span>
+                      <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>Scan Data/{label}</span>
+                    </div>
+                    <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginTop: 2 }}>{desc}</div>
+                    {cache.exists ? (
+                      <div style={{ ...mono, fontSize: 9, color, marginTop: 4 }}>
+                        ✓ {cache.updatedAt ? new Date(cache.updatedAt).toLocaleString('ja-JP') : '不明'} / {cache.fileCount}件
+                      </div>
+                    ) : (
+                      <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 4 }}>✗ 未スキャン</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => runFolderScan(type)}
+                    disabled={scan.loading || !hasGoogleToken}
+                    style={{
+                      background: hasGoogleToken ? color : '#e5e7eb',
+                      border: 'none', color: hasGoogleToken ? '#fff' : '#9ca3af',
+                      ...mono, fontSize: 8, letterSpacing: '0.12em',
+                      padding: '8px 14px', cursor: (scan.loading || !hasGoogleToken) ? 'not-allowed' : 'pointer',
+                      borderRadius: 3, whiteSpace: 'nowrap', opacity: scan.loading ? 0.5 : 1,
+                    }}
+                  >
+                    {scan.loading ? '...' : cache.exists ? '更新' : 'スキャン'}
+                  </button>
+                </div>
+                {scan.error && (
+                  <div style={{ marginTop: 8, ...mono, fontSize: 9, color: '#ef4444' }}>// エラー: {scan.error}</div>
+                )}
+                {scan.result && (
+                  <div style={{ marginTop: 8, ...mono, fontSize: 9, color: '#6b7280' }}>
+                    // 検出: {scan.result.totalFound}件 / 読み込み: {scan.result.loadedFiles?.length ?? 0}件
+                    {scan.result.loadedFiles?.map((f, i) => (
+                      <div key={i} style={{ color: '#374151', lineHeight: 1.6 }}>✓ {f}</div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {scanResult.loadedFiles && scanResult.loadedFiles.length > 0 && (
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ ...mono, fontSize: 8, color: '#6b7280', marginBottom: 4 }}>読み込み済み:</div>
-                  {scanResult.loadedFiles.map((f, i) => (
-                    <div key={i} style={{ ...mono, fontSize: 9, color: '#374151', lineHeight: 1.8 }}>
-                      ✓ {f}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {scanResult.skippedFiles && scanResult.skippedFiles.length > 0 && (
-                <div>
-                  <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginBottom: 4 }}>スキップ:</div>
-                  {scanResult.skippedFiles.map((f, i) => (
-                    <div key={i} style={{ ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.8 }}>
-                      ✗ {f}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })}
+
+          <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.08em', marginTop: 8, opacity: 0.7 }}>
+            // 週1回の更新を推奨
+          </div>
         </div>
 
         {/* Tripキャッシュセクション */}
@@ -756,101 +762,48 @@ export default function KokoroProfilePage() {
                 // Tripキャッシュ（Scan Tripフォルダ）
               </div>
               <div style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.8 }}>
-                Geminiのトリップした文章をスキャンし「トリップ設計図」として保存します。
-                Writer Tripモードで使用されます。
+                トリップした文章をスキャンし「トリップ設計図」として保存します。
               </div>
-
               {tripCacheInfo.exists ? (
                 <div style={{ ...mono, fontSize: 9, color: '#e11d48', marginTop: 8 }}>
-                  ✓ 最終スキャン：{tripCacheInfo.updatedAt ? new Date(tripCacheInfo.updatedAt).toLocaleString('ja-JP') : '不明'}
-                  {' / '}{tripCacheInfo.fileCount}ファイル読み込み済み
+                  ✓ {tripCacheInfo.updatedAt ? new Date(tripCacheInfo.updatedAt).toLocaleString('ja-JP') : '不明'} / {tripCacheInfo.fileCount}件
                 </div>
               ) : (
-                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
-                  ✗ まだスキャンしていません
-                </div>
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>✗ 未スキャン</div>
               )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                <span style={{ ...mono, fontSize: 8, color: '#6b7280', whiteSpace: 'nowrap' }}>// 対象フォルダ:</span>
-                <input
-                  type="text"
-                  value={tripScanFolder}
-                  onChange={e => setTripScanFolder(e.target.value)}
-                  style={{
-                    ...mono, fontSize: 11, color: '#111827',
-                    background: '#fff', border: '1px solid #d1d5db',
-                    borderRadius: 3, padding: '4px 8px', width: 160, outline: 'none',
-                  }}
-                />
-              </div>
             </div>
             <button
               onClick={runTripScan}
               disabled={tripScanLoading || !hasGoogleToken}
-              title={!hasGoogleToken ? 'Googleでログインすると使えます' : 'Tripスキャンを実行する'}
               style={{
                 background: hasGoogleToken ? '#e11d48' : '#e5e7eb',
-                border: 'none',
-                color: hasGoogleToken ? '#fff' : '#9ca3af',
+                border: 'none', color: hasGoogleToken ? '#fff' : '#9ca3af',
                 ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
                 padding: '11px 22px', cursor: (tripScanLoading || !hasGoogleToken) ? 'not-allowed' : 'pointer',
-                borderRadius: 3, whiteSpace: 'nowrap', flexShrink: 0,
-                opacity: tripScanLoading ? 0.5 : 1,
+                borderRadius: 3, whiteSpace: 'nowrap', flexShrink: 0, opacity: tripScanLoading ? 0.5 : 1,
               }}
             >
-              {tripScanLoading ? '// スキャン中...' : tripCacheInfo.exists ? 'Tripスキャンを更新' : 'Tripスキャン開始'}
+              {tripScanLoading ? '// スキャン中...' : tripCacheInfo.exists ? '更新' : 'スキャン開始'}
             </button>
           </div>
 
           {!hasGoogleToken && (
             <div style={{ marginTop: 12, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
-              // Googleログインが必要です →{' '}
-              <a href="/auth" style={{ color: '#e11d48' }}>ログイン</a>
+              // Googleログインが必要です → <a href="/auth" style={{ color: '#e11d48' }}>ログイン</a>
             </div>
           )}
-
           {tripScanLoading && (
-            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#e11d48' }}>
-              // Scan Tripフォルダを読み込んでいます...
-            </div>
+            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#e11d48' }}>// スキャン中...</div>
           )}
-
           {tripScanError && (
-            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6 }}>
-              // エラー: {tripScanError}
-            </div>
+            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#ef4444' }}>// エラー: {tripScanError}</div>
           )}
-
           {tripScanResult && (
-            <div style={{
-              marginTop: 14, padding: 14,
-              background: 'rgba(225,29,72,0.06)', border: '1px solid rgba(225,29,72,0.15)',
-              borderRadius: 4, maxHeight: 300, overflowY: 'auto',
-            }}>
-              <div style={{ ...mono, fontSize: 9, color: '#e11d48', letterSpacing: '0.12em', marginBottom: 8 }}>
-                // 検出: {tripScanResult.totalFound}件 / 読み込み: {tripScanResult.loadedFiles?.length ?? 0}件
-              </div>
-              {tripScanResult.loadedFiles && tripScanResult.loadedFiles.length > 0 && (
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ ...mono, fontSize: 8, color: '#6b7280', marginBottom: 4 }}>読み込み済み:</div>
-                  {tripScanResult.loadedFiles.map((f, i) => (
-                    <div key={i} style={{ ...mono, fontSize: 9, color: '#374151', lineHeight: 1.8 }}>
-                      ✓ {f}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {tripScanResult.skippedFiles && tripScanResult.skippedFiles.length > 0 && (
-                <div>
-                  <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginBottom: 4 }}>スキップ:</div>
-                  {tripScanResult.skippedFiles.map((f, i) => (
-                    <div key={i} style={{ ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.8 }}>
-                      ✗ {f}
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div style={{ marginTop: 12, ...mono, fontSize: 9, color: '#6b7280' }}>
+              // 検出: {tripScanResult.totalFound}件 / 読み込み: {tripScanResult.loadedFiles?.length ?? 0}件
+              {tripScanResult.loadedFiles?.map((f, i) => (
+                <div key={i} style={{ color: '#374151', lineHeight: 1.6 }}>✓ {f}</div>
+              ))}
             </div>
           )}
         </div>
