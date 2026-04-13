@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase/client';
 import { saveToNote } from '@/lib/saveToNote';
 import { saveStrategyInput } from '@/lib/strategyInputs';
 import PersonaLoading from '@/components/PersonaLoading';
 
-type WriterMode = 'lite' | 'deep' | 'spark';
+type WriterMode = 'lite' | 'deep' | 'spark' | 'michi';
 
 const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = {
   lite: {
@@ -20,6 +21,10 @@ const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = 
   spark: {
     label: 'Spark',
     placeholder: 'キーワードや断片的なメモを並べてください。\n例：シューティング スクロール 駆け引き スコア 緊張感',
+  },
+  michi: {
+    label: 'Michi',
+    placeholder: 'あなたの文体で整形したい文章を入力してください...\nzineフォルダの内容を参考にして、あなたらしい文章に仕上げます。',
   },
 };
 
@@ -81,8 +86,18 @@ export default function KokoroWriterPage() {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const [strategySaved, setStrategySaved] = useState(false);
+  const [hasGoogleToken, setHasGoogleToken] = useState(false);
+  const [driveFiles, setDriveFiles] = useState<string[]>([]);
+  const [driveContextLen, setDriveContextLen] = useState<number | null>(null);
 
-  const canSubmit = inputText.trim().length > 0 && !isLoading;
+  // Googleアクセストークンの有無を確認
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setHasGoogleToken(!!session?.provider_token);
+    });
+  }, []);
+
+  const canSubmit = inputText.trim().length > 0 && !isLoading && (mode !== 'michi' || hasGoogleToken);
 
   const handleRun = useCallback(async (text?: string, overrideMode?: WriterMode) => {
     const t = text ?? inputText;
@@ -93,24 +108,37 @@ export default function KokoroWriterPage() {
     setOutputText('');
     setOutputHtml('');
     setSaved(false);
+    setDriveFiles([]);
+    setDriveContextLen(null);
 
     try {
+      // Michiモード: アクセストークンを取得して送信
+      let accessToken: string | undefined;
+      if (m === 'michi') {
+        const { data: { session } } = await supabase.auth.getSession();
+        accessToken = session?.provider_token ?? undefined;
+        if (!accessToken) throw new Error('Googleアクセストークンがありません。Googleでログインし直してください。');
+      }
+
       const res = await fetch('/api/kokoro-writer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: t, mode: m }),
+        body: JSON.stringify({ text: t, mode: m, ...(accessToken ? { accessToken } : {}) }),
       });
       if (!res.ok) throw new Error('編集に失敗しました');
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      // Drive情報を保存
+      if (data.filesLoaded) setDriveFiles(data.filesLoaded);
+      if (data.contextLength != null) setDriveContextLen(data.contextLength);
+
       const raw = (data.result ?? '') as string;
       if (m === 'lite') {
-        // Lite: プレーンテキストのみ
         setOutputText(raw);
         setOutputHtml('');
       } else {
-        // Deep / Spark: XMLパース → HTML描画
+        // Deep / Spark / Michi: XMLパース → HTML描画
         const parsed = parseWriterXml(raw);
         setOutputHtml(parsed.html);
         setOutputText(parsed.plain);
@@ -186,24 +214,46 @@ export default function KokoroWriterPage() {
 
         {/* モード切替タブ */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
-          {(Object.keys(MODE_CONFIG) as WriterMode[]).map(m => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setOutputText(''); setOutputHtml(''); setError(''); }}
-              style={{
-                ...mono, fontSize: 10, letterSpacing: '.1em',
-                padding: '8px 20px', borderRadius: 2, cursor: 'pointer',
-                border: `1px solid ${mode === m ? accentColor : '#d1d5db'}`,
-                color: mode === m ? '#fff' : '#9ca3af',
-                background: mode === m ? accentColor : 'transparent',
-                fontWeight: mode === m ? 600 : 400,
-                transition: 'all 0.15s',
-              }}
-            >
-              {MODE_CONFIG[m].label}
-            </button>
-          ))}
+          {(Object.keys(MODE_CONFIG) as WriterMode[]).map(m => {
+            const isMichi = m === 'michi';
+            const michiDisabled = isMichi && !hasGoogleToken;
+            const activeColor = isMichi ? '#0f9d58' : accentColor;
+            const isActive = mode === m;
+            return (
+              <button
+                key={m}
+                onClick={() => {
+                  if (michiDisabled) return;
+                  setMode(m);
+                  setOutputText(''); setOutputHtml(''); setError('');
+                  setDriveFiles([]); setDriveContextLen(null);
+                }}
+                title={michiDisabled ? 'Googleログインが必要です' : MODE_CONFIG[m].label}
+                style={{
+                  ...mono, fontSize: 10, letterSpacing: '.1em',
+                  padding: '8px 20px', borderRadius: 2,
+                  cursor: michiDisabled ? 'not-allowed' : 'pointer',
+                  border: `1px solid ${isActive ? activeColor : michiDisabled ? '#e5e7eb' : '#d1d5db'}`,
+                  color: isActive ? '#fff' : michiDisabled ? '#d1d5db' : '#9ca3af',
+                  background: isActive ? activeColor : 'transparent',
+                  fontWeight: isActive ? 600 : 400,
+                  opacity: michiDisabled ? 0.6 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {MODE_CONFIG[m].label}
+              </button>
+            );
+          })}
         </div>
+
+        {/* Michiモード: Googleログイン未検出の注意 */}
+        {mode === 'michi' && !hasGoogleToken && (
+          <div style={{ marginBottom: 16, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
+            // Googleログインが必要です →{' '}
+            <a href="/auth" style={{ color: '#0f9d58' }}>ログイン</a>
+          </div>
+        )}
 
         {/* 入力 */}
         <textarea
@@ -225,6 +275,19 @@ export default function KokoroWriterPage() {
         {/* 出力 */}
         {(outputHtml || outputText) && (
           <div style={{ marginTop: 24 }}>
+            {/* Michiモード: Drive参照バナー */}
+            {mode === 'michi' && driveFiles.length > 0 && (
+              <div style={{
+                background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 4,
+                padding: '8px 12px', marginBottom: 12, fontSize: 11, color: '#065f46', lineHeight: 1.6,
+              }}>
+                📁 zineフォルダ参照中
+                <div style={{ ...mono, fontSize: 9, color: '#6b7280', marginTop: 4 }}>
+                  {driveFiles.map((f, i) => <div key={i}>• {f}</div>)}
+                  {driveContextLen !== null && <div style={{ marginTop: 4 }}>// {driveContextLen.toLocaleString()} 文字読み込み</div>}
+                </div>
+              </div>
+            )}
             {mode === 'lite' ? (
               /* Lite: readOnly テキストエリア */
               <textarea
@@ -283,7 +346,16 @@ export default function KokoroWriterPage() {
         </button>
 
         {/* ローディング */}
-        {isLoading && <PersonaLoading />}
+        {isLoading && (
+          <>
+            {mode === 'michi' && (
+              <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#0f9d58', letterSpacing: '.08em' }}>
+                // zineフォルダを読み込んでいます...
+              </div>
+            )}
+            <PersonaLoading />
+          </>
+        )}
 
         {/* エラー */}
         {error && (

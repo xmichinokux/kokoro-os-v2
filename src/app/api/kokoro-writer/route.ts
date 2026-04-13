@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { google } from 'googleapis';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 const LITE_SYSTEM = `あなたはKokoro OSのWriterエンジン（Liteモード）です。
@@ -113,19 +115,132 @@ HTMLクラス：
 区切り線：      <hr class="whr">
 引用：          <blockquote class="wbq">引用</blockquote>`;
 
+const MICHI_SYSTEM = `以下はこのユーザーの過去の文章・ZINEの内容です。
+
+{driveContext}
+
+---
+
+このユーザーの文体・思想・センスを完全に理解した上で、
+以下の文章を「このユーザーが書いたら書くような文章」にレイアウト・整形してください。
+
+ルール：
+・このユーザーの文体の特徴を忠実に再現する
+・余計な装飾を避けてシンプルに
+・ユーザーの語彙・リズム・改行の癖を反映する
+・元の文章の意図を保ちながらユーザーらしさを加える
+
+以下のHTMLクラスを使ってレイアウトしてください：
+タイトル：<h1 class="wt">
+リード文：<p class="wlead">
+大見出し：<h2 class="wh2">
+小見出し：<h3 class="wh3">
+通常段落：<p class="wp">
+強調：<strong class="wstrong">
+箇条書き：<ul class="wul"><li>
+区切り線：<hr class="whr">
+引用：<blockquote class="wbq">
+
+以下のXMLフォーマットのみで返答してください：
+
+<edited>
+<!-- HTMLをここに -->
+</edited>
+<memos>
+感性モードとしての意図を簡潔に
+</memos>
+<suggestion>
+改善提案（任意）
+</suggestion>`;
+
+async function loadDriveContext(accessToken: string): Promise<{ context: string; files: string[] }> {
+  const auth = new google.auth.OAuth2();
+  auth.setCredentials({ access_token: accessToken });
+  const drive = google.drive({ version: 'v3', auth });
+
+  // zineフォルダを検索
+  const folderRes = await drive.files.list({
+    q: "name='zine' and mimeType='application/vnd.google-apps.folder'",
+    fields: 'files(id, name)',
+  });
+  const folder = folderRes.data.files?.[0];
+  if (!folder) throw new Error('Googleドライブに「zine」フォルダが見つかりません');
+
+  // フォルダ内のテキスト系ファイルを取得
+  const filesRes = await drive.files.list({
+    q: `'${folder.id}' in parents and (mimeType='text/plain' or mimeType='application/vnd.google-apps.document')`,
+    fields: 'files(id, name, mimeType)',
+    pageSize: 10,
+  });
+  const files = filesRes.data.files || [];
+
+  let driveContext = '';
+  const loadedFiles: string[] = [];
+  for (const file of files.slice(0, 5)) {
+    try {
+      if (file.mimeType === 'application/vnd.google-apps.document') {
+        const content = await drive.files.export({ fileId: file.id!, mimeType: 'text/plain' });
+        driveContext += `\n\n[${file.name}]\n${content.data}`;
+      } else {
+        const content = await drive.files.get({ fileId: file.id!, alt: 'media' });
+        driveContext += `\n\n[${file.name}]\n${content.data}`;
+      }
+      loadedFiles.push(file.name || 'unknown');
+    } catch (e) {
+      console.error(`ファイル読み込みエラー: ${file.name}`, e);
+    }
+  }
+
+  if (driveContext.length > 8000) {
+    driveContext = driveContext.slice(0, 8000) + '...(省略)';
+  }
+
+  return { context: driveContext, files: loadedFiles };
+}
+
 function buildSystem(mode: string): string {
   if (mode === 'deep') return CORE_SYSTEM;
   if (mode === 'spark') return SPARK_SYSTEM;
-  // core (legacy) も deep として扱う
   if (mode === 'core') return CORE_SYSTEM;
   return LITE_SYSTEM;
 }
 
 export async function POST(req: NextRequest) {
-  const { text, mode } = await req.json();
+  const { text, mode, accessToken } = await req.json();
 
+  // Michiモード: Gemini + Drive
+  if (mode === 'michi') {
+    try {
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (!geminiKey) {
+        return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
+      }
+      if (!accessToken) {
+        return NextResponse.json({ error: 'Googleアクセストークンがありません。Googleでログインしてください。' }, { status: 401 });
+      }
+
+      const { context: driveContext, files: loadedFiles } = await loadDriveContext(accessToken);
+
+      const prompt = MICHI_SYSTEM.replace('{driveContext}', driveContext || '（zineフォルダにファイルがありません）') + '\n\n' + text;
+
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const geminiResult = await model.generateContent(prompt);
+      const result = geminiResult.response.text();
+
+      return NextResponse.json({
+        result,
+        filesLoaded: loadedFiles,
+        contextLength: driveContext.length,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
+  }
+
+  // 既存モード (lite / deep / spark)
   const baseSystem = buildSystem(mode);
-  // Deep/Spark モードのみ MECE_CORE + REVO_CYCLE を注入
   const useValueEngine = mode === 'core' || mode === 'deep' || mode === 'spark';
   const valueInject = useValueEngine ? KokoroValueEngine.forWriterCore() : '';
   const system = (valueInject ? valueInject + '\n\n' : '') + baseSystem;
