@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { google, type drive_v3 } from 'googleapis';
+import { PDFDocument } from 'pdf-lib';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -78,15 +79,34 @@ async function listFilesInFolders(
   return allFiles.slice(0, maxFiles);
 }
 
+// 大きいPDFを先頭ページだけに切り出す（5ページまで）
+async function truncatePdf(buffer: Buffer, maxPages = 5): Promise<Buffer> {
+  const srcDoc = await PDFDocument.load(buffer as unknown as ArrayBuffer);
+  const totalPages = srcDoc.getPageCount();
+
+  if (totalPages <= maxPages) {
+    return buffer; // そのまま返す
+  }
+
+  // 先頭maxPages分だけコピーした新しいPDFを作成
+  const newDoc = await PDFDocument.create();
+  const pages = await newDoc.copyPages(srcDoc, Array.from({ length: maxPages }, (_, i) => i));
+  for (const page of pages) {
+    newDoc.addPage(page);
+  }
+  const trimmedBytes = await newDoc.save();
+  return Buffer.from(trimmedBytes);
+}
+
 // PDFをGeminiでテキスト抽出（タイムアウト付き）
 async function extractPdfWithGemini(
   drive: drive_v3.Drive,
   fileId: string,
   geminiKey: string
 ): Promise<string> {
-  // 20秒タイムアウト
+  // 30秒タイムアウト
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('PDF抽出タイムアウト')), 20000)
+    setTimeout(() => reject(new Error('PDF抽出タイムアウト')), 30000)
   );
 
   const extract = async () => {
@@ -94,12 +114,12 @@ async function extractPdfWithGemini(
       { fileId, alt: 'media' },
       { responseType: 'arraybuffer' }
     );
-    const buffer = Buffer.from(res.data as ArrayBuffer);
-    // 10MB超のPDFはスキップ
-    if (buffer.length > 10 * 1024 * 1024) {
-      throw new Error('PDFが大きすぎます（10MB超）');
-    }
-    const base64 = buffer.toString('base64');
+    const rawBuffer = Buffer.from(res.data as ArrayBuffer);
+
+    // 先頭5ページに切り出し（大きいPDFでも処理可能に）
+    const pdfBuffer = await truncatePdf(rawBuffer, 5);
+
+    const base64 = pdfBuffer.toString('base64');
 
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
