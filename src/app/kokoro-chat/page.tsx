@@ -50,6 +50,7 @@ type Message = {
   showBoard?: boolean;
   showKami?: boolean;
   showPonchi?: boolean;
+  showGatekeeper?: boolean;
   showStrategy?: boolean;
   showWorld?: boolean;
   // ウィッシュリスト追加バナー
@@ -561,6 +562,7 @@ export default function KokoroChat() {
         showBoard:      has('board') || undefined,
         showKami:       has('kami') || undefined,
         showPonchi:     has('ponchi') || undefined,
+        showGatekeeper: has('gatekeeper') || undefined,
         showStrategy:   has('strategy') || undefined,
         showWorld:      has('world') || undefined,
         showWishlist:   (has('wishlist') && !!wishItem?.text) || undefined,
@@ -777,7 +779,7 @@ export default function KokoroChat() {
                     </>
                   )}
                   {/* アプリ誘導ボタン（ボタンのみ） */}
-                  {(msg.showZen || msg.showAnimal || msg.showFashion || msg.showNote || msg.showInsight || msg.showPlan || msg.showWriter || msg.showBrowser || msg.showCouple || msg.showBuddy || msg.showPhilosophy || msg.showBoard || msg.showKami || msg.showPonchi || msg.showStrategy || msg.showWorld || msg.showWishlist) && (
+                  {(msg.showZen || msg.showAnimal || msg.showFashion || msg.showNote || msg.showInsight || msg.showPlan || msg.showWriter || msg.showBrowser || msg.showCouple || msg.showBuddy || msg.showPhilosophy || msg.showBoard || msg.showKami || msg.showPonchi || msg.showGatekeeper || msg.showStrategy || msg.showWorld || msg.showWishlist) && (
                     <div style={{ marginTop:10, display:'flex', flexWrap:'wrap', gap:6 }}>
                       {msg.showZen && (
                         <button onClick={msg.stayPersona ? exitStayMode : () => handleZenClick()}
@@ -867,6 +869,12 @@ export default function KokoroChat() {
                         <button onClick={() => routeFromTalk('ponchiFromTalk', '/kokoro-ponchi', { userText: msg.routingUserText })}
                           style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
                           Ponchi →
+                        </button>
+                      )}
+                      {msg.showGatekeeper && (
+                        <button onClick={() => router.push('/kokoro-gatekeeper')}
+                          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.1em', color:'#6366f1', background:'transparent', border:'1px solid rgba(99,102,241,0.4)', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>
+                          Gatekeeper →
                         </button>
                       )}
                       {msg.showStrategy && (

@@ -6,7 +6,7 @@ import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 export type TalkRoute =
   | 'zen' | 'plan' | 'writer' | 'browser' | 'animal_talk' | 'note'
   | 'fashion' | 'recipe' | 'insight' | 'couple' | 'buddy'
-  | 'philosophy' | 'board' | 'kami' | 'ponchi' | null;
+  | 'philosophy' | 'board' | 'kami' | 'ponchi' | 'gatekeeper' | null;
 
 export type WishlistItemSuggestion = {
   text: string;
@@ -30,6 +30,7 @@ export type TalkMeta = {
   need_board: boolean;
   need_kami: boolean;
   need_ponchi: boolean;
+  need_gatekeeper: boolean;
   need_wishlist: boolean;
   wishlist_item: WishlistItemSuggestion | null;
   sync_rate: number;
@@ -41,7 +42,7 @@ function createEmptyMeta(): TalkMeta {
     need_zen: false, need_plan: false, need_writer: false, need_browser: false,
     need_animal_talk: false, need_note: false, need_fashion: false, need_recipe: false,
     need_insight: false, need_couple: false, need_buddy: false, need_philosophy: false,
-    need_board: false, need_kami: false, need_ponchi: false,
+    need_board: false, need_kami: false, need_ponchi: false, need_gatekeeper: false,
     need_wishlist: false, wishlist_item: null,
     sync_rate: 0, route: null,
   };
@@ -100,6 +101,7 @@ function normalizeMeta(raw: unknown): TalkMeta {
     need_board: bool('need_board'),
     need_kami: bool('need_kami'),
     need_ponchi: bool('need_ponchi'),
+    need_gatekeeper: bool('need_gatekeeper'),
     need_wishlist: bool('need_wishlist'),
     wishlist_item: normalizeWishlistItem(m.wishlist_item),
     sync_rate: sync,
@@ -174,6 +176,7 @@ function buildTalkSystem(params: {
     "need_board": true | false,
     "need_kami": true | false,
     "need_ponchi": true | false,
+    "need_gatekeeper": true | false,
     "need_wishlist": true | false,
     "wishlist_item": {
       "text": "ウィッシュの内容（20字以内推奨）",
@@ -181,7 +184,7 @@ function buildTalkSystem(params: {
       "intensity": "now" | "soon" | "someday"
     } | null,
     "sync_rate": 0.0,
-    "route": "zen" | "plan" | "writer" | "browser" | "animal_talk" | "note" | "fashion" | "recipe" | "insight" | "couple" | "buddy" | "philosophy" | "board" | "kami" | "ponchi" | null
+    "route": "zen" | "plan" | "writer" | "browser" | "animal_talk" | "note" | "fashion" | "recipe" | "insight" | "couple" | "buddy" | "philosophy" | "board" | "kami" | "ponchi" | "gatekeeper" | null
   }
 }
 
@@ -205,6 +208,7 @@ function buildTalkSystem(params: {
 - need_board: 「会議」「ミーティング」「打ち合わせ」「議事進行」
 - need_kami: 「表にしたい」「比較したい」「リスト化したい」「整理して並べたい」
 - need_ponchi: 「プレゼン」「スライド」「6枚で説明」「コンセプトを伝えたい」
+- need_gatekeeper: 「仕様書を作りたい」「要件定義したい」「アプリを設計したい」「何を作るか整理したい」
 - need_wishlist: 「〜したい」「〜が欲しい」「〜に行きたい」「〜が好き」「〜を探してる」など、欲望・願望の表現
 
 need_wishlist が true のときは wishlist_item を必ず以下の形で埋める：

@@ -120,6 +120,13 @@ const APPS: App[] = [
     ready: true,
   },
   {
+    icon: "🔒",
+    name: "Kokoro Gatekeeper",
+    desc: "要求から仕様書を生成します。",
+    href: "/kokoro-gatekeeper",
+    ready: true,
+  },
+  {
     icon: "🌍",
     name: "Kokoro World",
     desc: "企画書から動くデモページを自動生成。",

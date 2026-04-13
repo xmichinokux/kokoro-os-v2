@@ -377,6 +377,19 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
                 World →
               </button>
               <button
+                onClick={() => router.push('/kokoro-gatekeeper')}
+                title="Gatekeeperで仕様書を生成"
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(99,102,241,0.5)',
+                  color: '#6366f1',
+                  ...mono, fontSize: 9, letterSpacing: '.12em',
+                  padding: '8px 16px', cursor: 'pointer', borderRadius: 2,
+                }}
+              >
+                Gatekeeper →
+              </button>
+              <button
                 onClick={handleReset}
                 title="インプットをクリアして最初から"
                 style={{
