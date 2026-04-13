@@ -22,13 +22,13 @@ export default function AuthPage() {
     });
   }, [router]);
 
-  const handleEmailAuth = async () => {
+  const handleEmailAuth = async (mode: 'login' | 'signup') => {
     if (!email.trim() || !password.trim()) return;
     setLoading(true);
     setError('');
     setMessage('');
 
-    if (isSignUp) {
+    if (mode === 'signup') {
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) {
         setError(error.message);
@@ -121,7 +121,7 @@ export default function AuthPage() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             placeholder="パスワード"
-            onKeyDown={e => e.key === 'Enter' && handleEmailAuth()}
+            onKeyDown={e => e.key === 'Enter' && handleEmailAuth(isSignUp ? 'signup' : 'login')}
             style={{
               width: '100%', padding: '10px 14px', fontSize: 13,
               border: '1px solid #d1d5db', borderRadius: 4,
@@ -134,7 +134,7 @@ export default function AuthPage() {
         {/* ログイン / 新規登録ボタン */}
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
           <button
-            onClick={() => { setIsSignUp(false); handleEmailAuth(); }}
+            onClick={() => { setIsSignUp(false); handleEmailAuth('login'); }}
             disabled={loading || !email.trim() || !password.trim()}
             style={{
               flex: 1, padding: '11px 0',
@@ -148,7 +148,7 @@ export default function AuthPage() {
             ログイン
           </button>
           <button
-            onClick={() => { setIsSignUp(true); handleEmailAuth(); }}
+            onClick={() => { setIsSignUp(true); handleEmailAuth('signup'); }}
             disabled={loading || !email.trim() || !password.trim()}
             style={{
               flex: 1, padding: '11px 0',
