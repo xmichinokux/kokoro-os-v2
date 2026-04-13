@@ -28,20 +28,14 @@ export default function GeminiTestPage() {
     setClaudeTime(null);
     const start = Date.now();
     try {
-      const res = await fetch('/api/kokoro-chat', {
+      const res = await fetch('/api/claude-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: prompt.trim(),
-          persona: 'watari',
-          backend: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
-          history: [],
-        }),
+        body: JSON.stringify({ prompt: prompt.trim() }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setClaudeResult(data.reply || data.text || JSON.stringify(data));
+      setClaudeResult(data.text);
       setClaudeTime(Date.now() - start);
     } catch (e) {
       setClaudeError(e instanceof Error ? e.message : 'エラー');
