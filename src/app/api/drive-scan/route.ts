@@ -2,7 +2,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { google, type drive_v3 } from 'googleapis';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { PDFParse } from 'pdf-parse';
 
 // 対象MIMEタイプ
 const TARGET_MIME_TYPES = [
@@ -60,15 +59,21 @@ async function readFileContent(
   }
 
   if (file.mimeType === 'application/pdf') {
-    // PDF → バイナリ取得 → pdf-parse でテキスト抽出
-    const res = await drive.files.get(
-      { fileId: file.id!, alt: 'media' },
-      { responseType: 'arraybuffer' }
-    );
-    const buffer = Buffer.from(res.data as ArrayBuffer);
-    const parser = new PDFParse({ data: buffer });
-    const result = await parser.getText();
-    return result.text;
+    // PDF → バイナリ取得 → 動的importでpdf-parse
+    try {
+      const { PDFParse } = await import('pdf-parse');
+      const res = await drive.files.get(
+        { fileId: file.id!, alt: 'media' },
+        { responseType: 'arraybuffer' }
+      );
+      const buffer = Buffer.from(res.data as ArrayBuffer);
+      const parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      return result.text;
+    } catch {
+      // pdf-parseが使えない環境（Vercel等）ではスキップ
+      throw new Error('PDF解析不可（サーバーレス環境）');
+    }
   }
 
   // プレーンテキスト
