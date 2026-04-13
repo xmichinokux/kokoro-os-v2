@@ -267,6 +267,11 @@ export default function KokoroProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [scanResult, setScanResult] = useState<{
+    totalFound?: number;
+    loadedFiles?: string[];
+    skippedFiles?: string[];
+  } | null>(null);
   const [cacheInfo, setCacheInfo] = useState<{
     exists: boolean;
     updatedAt: string | null;
@@ -425,7 +430,12 @@ export default function KokoroProfilePage() {
         updatedAt: new Date().toISOString(),
         fileCount: data.fileCount,
       });
-      showToast(`// スキャン完了 ✓ ${data.fileCount}ファイル読み込み`);
+      setScanResult({
+        totalFound: data.totalFound,
+        loadedFiles: data.loadedFiles,
+        skippedFiles: data.skippedFiles,
+      });
+      showToast(`// スキャン完了 ✓ ${data.fileCount}/${data.totalFound}ファイル読み込み`);
     } catch (e) {
       setScanError(e instanceof Error ? e.message : 'スキャンに失敗しました');
     } finally {
@@ -614,6 +624,39 @@ export default function KokoroProfilePage() {
           {scanError && (
             <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6 }}>
               // エラー: {scanError}
+            </div>
+          )}
+
+          {/* スキャン結果の詳細 */}
+          {scanResult && (
+            <div style={{
+              marginTop: 14, padding: 14,
+              background: 'rgba(15,157,88,0.06)', border: '1px solid rgba(15,157,88,0.15)',
+              borderRadius: 4, maxHeight: 300, overflowY: 'auto',
+            }}>
+              <div style={{ ...mono, fontSize: 9, color: '#0f9d58', letterSpacing: '0.12em', marginBottom: 8 }}>
+                // 検出: {scanResult.totalFound}件 / 読み込み: {scanResult.loadedFiles?.length ?? 0}件
+              </div>
+              {scanResult.loadedFiles && scanResult.loadedFiles.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ ...mono, fontSize: 8, color: '#6b7280', marginBottom: 4 }}>読み込み済み:</div>
+                  {scanResult.loadedFiles.map((f, i) => (
+                    <div key={i} style={{ ...mono, fontSize: 9, color: '#374151', lineHeight: 1.8 }}>
+                      ✓ {f}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {scanResult.skippedFiles && scanResult.skippedFiles.length > 0 && (
+                <div>
+                  <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginBottom: 4 }}>スキップ:</div>
+                  {scanResult.skippedFiles.map((f, i) => (
+                    <div key={i} style={{ ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.8 }}>
+                      ✗ {f}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

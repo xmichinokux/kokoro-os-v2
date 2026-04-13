@@ -1,7 +1,83 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { google } from 'googleapis';
+import { google, type drive_v3 } from 'googleapis';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { PDFParse } from 'pdf-parse';
+
+// 対象MIMEタイプ
+const TARGET_MIME_TYPES = [
+  'text/plain',
+  'application/vnd.google-apps.document',
+  'application/pdf',
+];
+
+const MIME_QUERY = TARGET_MIME_TYPES
+  .map(t => `mimeType='${t}'`)
+  .join(' or ');
+
+// ページネーションで全ファイルを取得（上限200件）
+async function listAllFiles(
+  drive: drive_v3.Drive,
+  maxFiles = 200
+): Promise<drive_v3.Schema$File[]> {
+  const allFiles: drive_v3.Schema$File[] = [];
+  let pageToken: string | undefined;
+
+  while (allFiles.length < maxFiles) {
+    const res = await drive.files.list({
+      q: `(${MIME_QUERY}) and trashed=false`,
+      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, parents)',
+      pageSize: 100,
+      orderBy: 'modifiedTime desc',
+      pageToken,
+      // サブフォルダ内も含む（corpora=user がデフォルトで全フォルダ横断）
+      corpora: 'user',
+      includeItemsFromAllDrives: false,
+    });
+
+    const files = res.data.files || [];
+    allFiles.push(...files);
+
+    pageToken = res.data.nextPageToken ?? undefined;
+    if (!pageToken) break;
+  }
+
+  return allFiles.slice(0, maxFiles);
+}
+
+// ファイルのテキスト内容を読み込む
+async function readFileContent(
+  drive: drive_v3.Drive,
+  file: drive_v3.Schema$File
+): Promise<string> {
+  if (file.mimeType === 'application/vnd.google-apps.document') {
+    // Google Docs → テキスト書き出し
+    const res = await drive.files.export({
+      fileId: file.id!,
+      mimeType: 'text/plain',
+    });
+    return String(res.data);
+  }
+
+  if (file.mimeType === 'application/pdf') {
+    // PDF → バイナリ取得 → pdf-parse でテキスト抽出
+    const res = await drive.files.get(
+      { fileId: file.id!, alt: 'media' },
+      { responseType: 'arraybuffer' }
+    );
+    const buffer = Buffer.from(res.data as ArrayBuffer);
+    const parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
+    return result.text;
+  }
+
+  // プレーンテキスト
+  const res = await drive.files.get({
+    fileId: file.id!,
+    alt: 'media',
+  });
+  return String(res.data);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,41 +98,34 @@ export async function POST(req: NextRequest) {
     auth.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth });
 
-    // 全テキストファイルを取得（最大50ファイル、最新順）
-    const filesRes = await drive.files.list({
-      q: "mimeType='text/plain' or mimeType='application/vnd.google-apps.document'",
-      fields: 'files(id, name, mimeType, modifiedTime)',
-      pageSize: 50,
-      orderBy: 'modifiedTime desc',
-    });
+    // 全ファイル一覧取得（ページネーション・サブフォルダ込み）
+    const allFiles = await listAllFiles(drive);
 
-    const files = filesRes.data.files || [];
+    // ファイル一覧（デバッグ用にレスポンスにも含める）
+    const fileList = allFiles.map(f => ({
+      name: f.name,
+      mimeType: f.mimeType,
+      modifiedTime: f.modifiedTime,
+    }));
 
-    // ファイルの内容を読み込む（最大20ファイル・合計30000文字）
+    // 内容を読み込む（最大40ファイル・合計50000文字）
     let allContent = '';
     let loadedCount = 0;
+    const loadedFiles: string[] = [];
+    const skippedFiles: string[] = [];
 
-    for (const file of files.slice(0, 20)) {
-      if (allContent.length > 30000) break;
+    for (const file of allFiles.slice(0, 40)) {
+      if (allContent.length > 50000) break;
       try {
-        let content = '';
-        if (file.mimeType === 'application/vnd.google-apps.document') {
-          const res = await drive.files.export({
-            fileId: file.id!,
-            mimeType: 'text/plain',
-          });
-          content = String(res.data);
-        } else {
-          const res = await drive.files.get({
-            fileId: file.id!,
-            alt: 'media',
-          });
-          content = String(res.data);
-        }
-        allContent += `\n\n[${file.name}]\n${content.slice(0, 2000)}`;
+        const content = await readFileContent(drive, file);
+        const truncated = content.slice(0, 3000);
+        allContent += `\n\n[${file.name}]\n${truncated}`;
+        loadedFiles.push(file.name || 'unknown');
         loadedCount++;
       } catch (e) {
-        console.error(`スキップ: ${file.name}`, e);
+        const errMsg = e instanceof Error ? e.message : 'unknown';
+        console.error(`スキップ: ${file.name} (${errMsg})`);
+        skippedFiles.push(`${file.name} (${errMsg})`);
       }
     }
 
@@ -106,8 +175,12 @@ ${allContent}
 
     return NextResponse.json({
       success: true,
+      totalFound: allFiles.length,
       fileCount: loadedCount,
       cacheLength: sensibilityCache.length,
+      fileList,
+      loadedFiles,
+      skippedFiles,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
