@@ -1,14 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { google, type drive_v3 } from 'googleapis';
-import { PDFDocument } from 'pdf-lib';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
-// 検索クエリ: MIMEタイプ + .md拡張子（text/plainとして保存される場合がある）
+// 検索クエリ: テキスト系のみ（PDFは処理時間がかかるため除外）
 const FILE_QUERY = [
   "mimeType='text/plain'",
   "mimeType='application/vnd.google-apps.document'",
-  "mimeType='application/pdf'",
   "mimeType='text/markdown'",
   "mimeType='text/x-markdown'",
   "name contains '.md'",
@@ -79,71 +77,10 @@ async function listFilesInFolders(
   return allFiles.slice(0, maxFiles);
 }
 
-// 大きいPDFを先頭ページだけに切り出す（5ページまで）
-async function truncatePdf(buffer: Buffer, maxPages = 5): Promise<Buffer> {
-  const srcDoc = await PDFDocument.load(buffer as unknown as ArrayBuffer);
-  const totalPages = srcDoc.getPageCount();
-
-  if (totalPages <= maxPages) {
-    return buffer; // そのまま返す
-  }
-
-  // 先頭maxPages分だけコピーした新しいPDFを作成
-  const newDoc = await PDFDocument.create();
-  const pages = await newDoc.copyPages(srcDoc, Array.from({ length: maxPages }, (_, i) => i));
-  for (const page of pages) {
-    newDoc.addPage(page);
-  }
-  const trimmedBytes = await newDoc.save();
-  return Buffer.from(trimmedBytes);
-}
-
-// PDFをGeminiでテキスト抽出（タイムアウト付き）
-async function extractPdfWithGemini(
-  drive: drive_v3.Drive,
-  fileId: string,
-  geminiKey: string
-): Promise<string> {
-  // 30秒タイムアウト
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('PDF抽出タイムアウト')), 30000)
-  );
-
-  const extract = async () => {
-    const res = await drive.files.get(
-      { fileId, alt: 'media' },
-      { responseType: 'arraybuffer' }
-    );
-    const rawBuffer = Buffer.from(res.data as ArrayBuffer);
-
-    // 先頭5ページに切り出し（大きいPDFでも処理可能に）
-    const pdfBuffer = await truncatePdf(rawBuffer, 5);
-
-    const base64 = pdfBuffer.toString('base64');
-
-    const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: 'application/pdf',
-          data: base64,
-        },
-      },
-      { text: 'このPDFのテキスト内容をそのまま抽出してください。装飾や説明は不要です。元のテキストだけを返してください。' },
-    ]);
-    return result.response.text();
-  };
-
-  return Promise.race([extract(), timeout]);
-}
-
 // ファイルのテキスト内容を読み込む
 async function readFileContent(
   drive: drive_v3.Drive,
-  file: drive_v3.Schema$File,
-  geminiKey: string
+  file: drive_v3.Schema$File
 ): Promise<string> {
   const mime = file.mimeType || '';
 
@@ -154,11 +91,6 @@ async function readFileContent(
       mimeType: 'text/plain',
     });
     return String(res.data);
-  }
-
-  // PDF → Geminiでテキスト抽出
-  if (mime === 'application/pdf') {
-    return extractPdfWithGemini(drive, file.id!, geminiKey);
   }
 
   // テキスト系（text/plain, text/markdown, text/x-markdown, .mdファイル）
@@ -216,7 +148,7 @@ export async function POST(req: NextRequest) {
     for (const file of allFiles.slice(0, 40)) {
       if (allContent.length > 50000) break;
       try {
-        const content = await readFileContent(drive, file, geminiKey);
+        const content = await readFileContent(drive, file);
         const truncated = content.slice(0, 3000);
         allContent += `\n\n[${file.name}]\n${truncated}`;
         loadedFiles.push(file.name || 'unknown');
