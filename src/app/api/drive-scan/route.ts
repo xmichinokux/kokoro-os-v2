@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type Part } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { google, type drive_v3 } from 'googleapis';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
@@ -78,34 +78,45 @@ async function listFilesInFolders(
   return allFiles.slice(0, maxFiles);
 }
 
-// PDFをGeminiでテキスト抽出
+// PDFをGeminiでテキスト抽出（タイムアウト付き）
 async function extractPdfWithGemini(
   drive: drive_v3.Drive,
   fileId: string,
   geminiKey: string
 ): Promise<string> {
-  const res = await drive.files.get(
-    { fileId, alt: 'media' },
-    { responseType: 'arraybuffer' }
+  // 20秒タイムアウト
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('PDF抽出タイムアウト')), 20000)
   );
-  const buffer = Buffer.from(res.data as ArrayBuffer);
-  const base64 = buffer.toString('base64');
 
-  const genAI = new GoogleGenerativeAI(geminiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const extract = async () => {
+    const res = await drive.files.get(
+      { fileId, alt: 'media' },
+      { responseType: 'arraybuffer' }
+    );
+    const buffer = Buffer.from(res.data as ArrayBuffer);
+    // 10MB超のPDFはスキップ
+    if (buffer.length > 10 * 1024 * 1024) {
+      throw new Error('PDFが大きすぎます（10MB超）');
+    }
+    const base64 = buffer.toString('base64');
 
-  const parts: Part[] = [
-    {
-      inlineData: {
-        mimeType: 'application/pdf',
-        data: base64,
+    const genAI = new GoogleGenerativeAI(geminiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: base64,
+        },
       },
-    },
-    { text: 'このPDFのテキスト内容をそのまま抽出してください。装飾や説明は不要です。元のテキストだけを返してください。' },
-  ];
+      { text: 'このPDFのテキスト内容をそのまま抽出してください。装飾や説明は不要です。元のテキストだけを返してください。' },
+    ]);
+    return result.response.text();
+  };
 
-  const result = await model.generateContent(parts);
-  return result.response.text();
+  return Promise.race([extract(), timeout]);
 }
 
 // ファイルのテキスト内容を読み込む
@@ -137,6 +148,9 @@ async function readFileContent(
   });
   return String(res.data);
 }
+
+// Vercel関数のタイムアウトを延長（最大60秒）
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
