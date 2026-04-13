@@ -127,6 +127,13 @@ const APPS: App[] = [
     ready: true,
   },
   {
+    icon: "🔨",
+    name: "Kokoro Builder",
+    desc: "仕様書からコードを自動生成します。",
+    href: "/kokoro-builder",
+    ready: true,
+  },
+  {
     icon: "🌍",
     name: "Kokoro World",
     desc: "企画書から動くデモページを自動生成。",
