@@ -10,39 +10,28 @@ function CallbackHandler() {
   const [status, setStatus] = useState('認証を確認中...');
 
   useEffect(() => {
-    const handleCallback = async () => {
-      // PKCE flow: ?code=xxx
-      const code = searchParams.get('code');
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          setStatus(`エラー: ${error.message}`);
-          setTimeout(() => router.replace('/auth'), 3000);
-          return;
-        }
+    // onAuthStateChangeでセッション確立を検知
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
         router.replace('/');
-        return;
       }
+    });
 
-      // Hash flow / 自動検出: getSessionで確認
+    // フォールバック: 一定時間後にセッション確認
+    const timeout = setTimeout(async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        router.replace('/');
-        return;
-      }
-
-      // 少し待ってリトライ
-      await new Promise(r => setTimeout(r, 1500));
-      const { data: { session: retry } } = await supabase.auth.getSession();
-      if (retry) {
         router.replace('/');
       } else {
         setStatus('認証に失敗しました。もう一度お試しください。');
         setTimeout(() => router.replace('/auth'), 3000);
       }
-    };
+    }, 3000);
 
-    handleCallback();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, [router, searchParams]);
 
   return (
