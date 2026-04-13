@@ -1,31 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const KOKORO_PAGE_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
-以下の仕様書を読んで、Kokoro OSのNext.jsページとして動作するコンポーネントを生成してください。
-
-【仕様書】
-${spec}
-
-【技術仕様】
-・Next.js 14 App Router
-・TypeScript
-・Tailwind CSS
-・必要なnpmパッケージはコメントで明記する（// npm install xxx）
-・'use client'ディレクティブを適切に使用する
-・Kokoro OSの既存スタイル（Space Mono・Noto Sans JP）に合わせる
-・ファイルパス：src/app/kokoro-[機能名]/page.tsx
-
-【ルール】
-・1ファイルで完結させる（可能な限り）
-・外部ライブラリはimport文で明記する
-・コメントを適切に入れる
-・仕様書の機能を忠実に実装する
-・仕様書にない機能を勝手に追加しない
-
-1行目にファイルパスをコメントで記載し、その後にコードを続けてください。
-例: // src/app/kokoro-example/page.tsx
-マークダウンのコードブロックは使わない。`;
-
 const HTML_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
 以下の仕様書を読んで、動作するシングルHTMLファイルを生成してください。
 
@@ -34,45 +8,53 @@ ${spec}
 
 【ルール】
 ・完全に動作するシングルファイルのHTMLを生成する
-・外部ライブラリはCDN経由で読み込む
+・サーバーなしでブラウザで直接開いて動作すること
+・外部ライブラリはすべてCDN経由で読み込む
+・Phaser 3が必要な場合：<script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+・Three.jsが必要な場合：<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+・Chart.jsが必要な場合：<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+・その他のライブラリもjsdelivr等のCDNから読み込む
 ・仕様書の機能を忠実に実装する
 ・仕様書にない機能を勝手に追加しない
 ・コメントを適切に入れる
 ・日本語対応（Noto Sans JPをGoogle Fontsから読み込む）
 ・モバイル対応（レスポンシブ）
+・viewportメタタグを必ず含める
 
 HTMLコードのみを返してください。
-マークダウンのコードブロックは使わない。`;
+マークダウンのコードブロックは使わない。
+<!DOCTYPE html>から始めてください。`;
 
 const AUTO_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
-以下の仕様書を読んで、最適な形式でコードを生成してください。
+以下の仕様書を読んで、動作するシングルHTMLファイルを生成してください。
+仕様書の内容に最適なライブラリを自動選択してください。
 
 【仕様書】
 ${spec}
 
-【判断基準】
-・Kokoro OS内で動かすもの → Next.jsページコンポーネント（1ファイル、'use client'）
-・スタンドアロンで動かすもの → シングルHTML
-
-Next.jsページの場合：
-・1行目にファイルパスをコメントで記載（// src/app/kokoro-xxx/page.tsx）
-・TypeScript + Tailwind CSS
-・'use client'ディレクティブを使用
-
-シングルHTMLの場合：
-・完全に動作する1ファイルのHTML
-・外部ライブラリはCDN経由
-
 【ルール】
+・完全に動作するシングルファイルのHTMLを生成する
+・サーバーなしでブラウザで直接開いて動作すること
+・外部ライブラリはすべてCDN経由で読み込む
+・Phaser 3が必要な場合：<script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+・Three.jsが必要な場合：<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+・Chart.jsが必要な場合：<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+・その他のライブラリもjsdelivr等のCDNから読み込む
 ・仕様書の機能を忠実に実装する
 ・仕様書にない機能を勝手に追加しない
-・マークダウンのコードブロックは使わない`;
+・コメントを適切に入れる
+・日本語対応（Noto Sans JPをGoogle Fontsから読み込む）
+・モバイル対応（レスポンシブ）
+・viewportメタタグを必ず含める
 
-type BuildType = 'kokoro' | 'html' | 'auto';
+HTMLコードのみを返してください。
+マークダウンのコードブロックは使わない。
+<!DOCTYPE html>から始めてください。`;
+
+type BuildType = 'html' | 'auto';
 
 function getSystem(type: BuildType, spec: string): string {
   switch (type) {
-    case 'kokoro': return KOKORO_PAGE_SYSTEM(spec);
     case 'html': return HTML_SYSTEM(spec);
     case 'auto': return AUTO_SYSTEM(spec);
   }
@@ -91,7 +73,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '仕様書が必要です' }, { status: 400 });
     }
 
-    const system = getSystem(buildType || 'kokoro', spec);
+    const system = getSystem(buildType || 'html', spec);
 
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
@@ -127,19 +109,15 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    let text = (data.content[0].text as string).trim();
+    let code = (data.content[0].text as string).trim();
 
     // コードブロックが含まれていたら除去
-    const codeBlockMatch = text.match(/```(?:html|tsx?|jsx?)?\n([\s\S]*?)```/);
+    const codeBlockMatch = code.match(/```(?:html)?\n([\s\S]*?)```/);
     if (codeBlockMatch) {
-      text = codeBlockMatch[1].trim();
+      code = codeBlockMatch[1].trim();
     }
 
-    // ファイルパスを抽出（1行目のコメントから）
-    const pathMatch = text.match(/^\/\/\s*(src\/app\/kokoro-[\w-]+\/page\.tsx)/);
-    const filePath = pathMatch ? pathMatch[1] : null;
-
-    return NextResponse.json({ type: 'single', code: text, filePath });
+    return NextResponse.json({ code });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
