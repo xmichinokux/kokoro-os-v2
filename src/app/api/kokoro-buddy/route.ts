@@ -85,24 +85,33 @@ export async function POST(req: NextRequest) {
       system = BUDDY_SYSTEM + (valueInject ? '\n' + valueInject : '');
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: mode === 'michi' ? 600 : 300,
-        system,
-        messages: trimmed,
-      }),
+    const body = JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: mode === 'michi' ? 600 : 300,
+      system,
+      messages: trimmed,
     });
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    };
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      let errMsg = `Anthropic API error (${res.status})`;
+    // 529 Overloaded 自動リトライ（最大5回・3秒間隔）
+    let res: Response | null = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers,
+        body,
+      });
+      if (res.status !== 529) break;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+
+    if (!res || !res.ok) {
+      const errBody = await res?.text() ?? '';
+      let errMsg = `Anthropic API error (${res?.status ?? 'unknown'})`;
       try {
         const err = JSON.parse(errBody);
         errMsg = err.error?.message || errMsg;
