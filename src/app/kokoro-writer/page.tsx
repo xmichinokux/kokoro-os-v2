@@ -7,7 +7,7 @@ import { saveToNote } from '@/lib/saveToNote';
 import { saveStrategyInput } from '@/lib/strategyInputs';
 import PersonaLoading from '@/components/PersonaLoading';
 
-type WriterMode = 'lite' | 'deep' | 'spark' | 'michi';
+type WriterMode = 'lite' | 'deep' | 'spark' | 'michi' | 'trip';
 
 const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = {
   lite: {
@@ -25,6 +25,10 @@ const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = 
   michi: {
     label: 'Michi',
     placeholder: 'あなたの文体で整形したい文章を入力してください...\nzineフォルダの内容を参考にして、あなたらしい文章に仕上げます。',
+  },
+  trip: {
+    label: 'Trip',
+    placeholder: '変換したい文章を入力してください...\nトリップした文体で宇宙的スケールに昇華します。',
   },
 };
 
@@ -91,14 +95,26 @@ export default function KokoroWriterPage() {
   const [driveContextLen, setDriveContextLen] = useState<number | null>(null);
   const [usedCache, setUsedCache] = useState(false);
 
-  // Googleアクセストークンの有無を確認
+  const [hasTripCache, setHasTripCache] = useState(false);
+
+  // Googleアクセストークン・キャッシュ有無を確認
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       setHasGoogleToken(!!session?.provider_token);
-    });
+      if (session?.user) {
+        try {
+          const res = await fetch('/api/drive-cache');
+          const data = await res.json();
+          setHasTripCache(!!data.tripCache);
+        } catch { /* ignore */ }
+      }
+    })();
   }, []);
 
-  const canSubmit = inputText.trim().length > 0 && !isLoading && (mode !== 'michi' || hasGoogleToken);
+  const canSubmit = inputText.trim().length > 0 && !isLoading
+    && (mode !== 'michi' || hasGoogleToken)
+    && (mode !== 'trip' || hasTripCache);
 
   const handleRun = useCallback(async (text?: string, overrideMode?: WriterMode) => {
     const t = text ?? inputText;
@@ -219,28 +235,31 @@ export default function KokoroWriterPage() {
         <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
           {(Object.keys(MODE_CONFIG) as WriterMode[]).map(m => {
             const isMichi = m === 'michi';
-            const michiDisabled = isMichi && !hasGoogleToken;
-            const activeColor = isMichi ? '#0f9d58' : accentColor;
+            const isTrip = m === 'trip';
+            const isDisabled = (isMichi && !hasGoogleToken) || (isTrip && !hasTripCache);
+            const activeColor = isMichi ? '#0f9d58' : isTrip ? '#e11d48' : accentColor;
             const isActive = mode === m;
             return (
               <button
                 key={m}
                 onClick={() => {
-                  if (michiDisabled) return;
+                  if (isDisabled) return;
                   setMode(m);
                   setOutputText(''); setOutputHtml(''); setError('');
                   setDriveFiles([]); setDriveContextLen(null);
                 }}
-                title={michiDisabled ? 'Googleログインが必要です' : MODE_CONFIG[m].label}
+                title={isDisabled
+                  ? (isTrip ? 'ProfileページでTripスキャンを実行してください' : 'Googleログインが必要です')
+                  : MODE_CONFIG[m].label}
                 style={{
                   ...mono, fontSize: 10, letterSpacing: '.1em',
                   padding: '8px 20px', borderRadius: 2,
-                  cursor: michiDisabled ? 'not-allowed' : 'pointer',
-                  border: `1px solid ${isActive ? activeColor : michiDisabled ? '#e5e7eb' : '#d1d5db'}`,
-                  color: isActive ? '#fff' : michiDisabled ? '#d1d5db' : '#9ca3af',
+                  cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  border: `1px solid ${isActive ? activeColor : isDisabled ? '#e5e7eb' : '#d1d5db'}`,
+                  color: isActive ? '#fff' : isDisabled ? '#d1d5db' : '#9ca3af',
                   background: isActive ? activeColor : 'transparent',
                   fontWeight: isActive ? 600 : 400,
-                  opacity: michiDisabled ? 0.6 : 1,
+                  opacity: isDisabled ? 0.6 : 1,
                   transition: 'all 0.15s',
                 }}
               >
@@ -255,6 +274,14 @@ export default function KokoroWriterPage() {
           <div style={{ marginBottom: 16, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
             // Googleログインが必要です →{' '}
             <a href="/auth" style={{ color: '#0f9d58' }}>ログイン</a>
+          </div>
+        )}
+
+        {/* Tripモード: キャッシュ未検出の注意 */}
+        {mode === 'trip' && !hasTripCache && (
+          <div style={{ marginBottom: 16, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
+            // Tripキャッシュがありません →{' '}
+            <a href="/kokoro-profile" style={{ color: '#e11d48' }}>Profileページ</a>でScan Tripを実行してください
           </div>
         )}
 
@@ -278,16 +305,19 @@ export default function KokoroWriterPage() {
         {/* 出力 */}
         {(outputHtml || outputText) && (
           <div style={{ marginTop: 24 }}>
-            {/* Michiモード: 感性情報バナー */}
-            {mode === 'michi' && (usedCache || driveFiles.length > 0) && (
+            {/* Michi/Tripモード: キャッシュ情報バナー */}
+            {(mode === 'michi' || mode === 'trip') && (usedCache || driveFiles.length > 0) && (
               <div style={{
-                background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 4,
-                padding: '8px 12px', marginBottom: 12, fontSize: 11, color: '#065f46', lineHeight: 1.6,
+                background: mode === 'trip' ? '#fff1f2' : '#ecfdf5',
+                border: `1px solid ${mode === 'trip' ? '#fda4af' : '#a7f3d0'}`,
+                borderRadius: 4,
+                padding: '8px 12px', marginBottom: 12, fontSize: 11,
+                color: mode === 'trip' ? '#9f1239' : '#065f46', lineHeight: 1.6,
               }}>
-                {usedCache ? '🧠 感性キャッシュを使用' : '📁 zineフォルダ参照中'}
+                {mode === 'trip' ? '🚀 Tripキャッシュを使用' : usedCache ? '🧠 感性キャッシュを使用' : '📁 zineフォルダ参照中'}
                 <div style={{ ...mono, fontSize: 9, color: '#6b7280', marginTop: 4 }}>
                   {usedCache ? (
-                    <div>// 感性ベクター（{driveContextLen?.toLocaleString() ?? '?'} 文字）</div>
+                    <div>// {mode === 'trip' ? 'トリップ設計図' : '感性ベクター'}（{driveContextLen?.toLocaleString() ?? '?'} 文字）</div>
                   ) : (
                     <>
                       {driveFiles.map((f, i) => <div key={i}>• {f}</div>)}
@@ -357,9 +387,9 @@ export default function KokoroWriterPage() {
         {/* ローディング */}
         {isLoading && (
           <>
-            {mode === 'michi' && (
-              <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#0f9d58', letterSpacing: '.08em' }}>
-                // zineフォルダを読み込んでいます...
+            {(mode === 'michi' || mode === 'trip') && (
+              <div style={{ marginTop: 12, ...mono, fontSize: 10, color: mode === 'trip' ? '#e11d48' : '#0f9d58', letterSpacing: '.08em' }}>
+                {mode === 'trip' ? '// トリップモードで変換中...' : '// zineフォルダを読み込んでいます...'}
               </div>
             )}
             <PersonaLoading />

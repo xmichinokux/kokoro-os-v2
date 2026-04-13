@@ -279,6 +279,21 @@ export default function KokoroProfilePage() {
     fileCount: number;
   }>({ exists: false, updatedAt: null, fileCount: 0 });
 
+  // Tripキャッシュ関連
+  const [tripScanLoading, setTripScanLoading] = useState(false);
+  const [tripScanError, setTripScanError] = useState('');
+  const [tripScanFolder, setTripScanFolder] = useState('Scan Trip');
+  const [tripScanResult, setTripScanResult] = useState<{
+    totalFound?: number;
+    loadedFiles?: string[];
+    skippedFiles?: string[];
+  } | null>(null);
+  const [tripCacheInfo, setTripCacheInfo] = useState<{
+    exists: boolean;
+    updatedAt: string | null;
+    fileCount: number;
+  }>({ exists: false, updatedAt: null, fileCount: 0 });
+
   // 初期読み込み
   useEffect(() => {
     const init = async () => {
@@ -307,6 +322,13 @@ export default function KokoroProfilePage() {
               exists: true,
               updatedAt: cacheData.updatedAt,
               fileCount: cacheData.fileCount,
+            });
+          }
+          if (cacheData.tripCache) {
+            setTripCacheInfo({
+              exists: true,
+              updatedAt: cacheData.tripUpdatedAt,
+              fileCount: cacheData.tripFileCount,
             });
           }
         } catch {
@@ -442,7 +464,43 @@ export default function KokoroProfilePage() {
     } finally {
       setScanLoading(false);
     }
-  }, [userId]);
+  }, [userId, scanFolder]);
+
+  const runTripScan = useCallback(async () => {
+    setTripScanLoading(true);
+    setTripScanError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.provider_token;
+      if (!accessToken || !userId) {
+        throw new Error('Googleアクセストークンがありません。ログアウトしてGoogleで再ログインしてください。');
+      }
+
+      const res = await fetch('/api/drive-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken, userId, folderName: tripScanFolder, scanType: 'trip' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      setTripCacheInfo({
+        exists: true,
+        updatedAt: new Date().toISOString(),
+        fileCount: data.fileCount,
+      });
+      setTripScanResult({
+        totalFound: data.totalFound,
+        loadedFiles: data.loadedFiles,
+        skippedFiles: data.skippedFiles,
+      });
+      showToast(`// Tripスキャン完了 ✓ ${data.fileCount}/${data.totalFound}ファイル読み込み`);
+    } catch (e) {
+      setTripScanError(e instanceof Error ? e.message : 'スキャンに失敗しました');
+    } finally {
+      setTripScanLoading(false);
+    }
+  }, [userId, tripScanFolder]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
@@ -665,6 +723,116 @@ export default function KokoroProfilePage() {
                 <div>
                   <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginBottom: 4 }}>スキップ:</div>
                   {scanResult.skippedFiles.map((f, i) => (
+                    <div key={i} style={{ ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.8 }}>
+                      ✗ {f}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Tripキャッシュセクション */}
+        <div style={{
+          background: '#f8f9fa', border: '1px solid #e5e7eb', borderLeft: '3px solid #e11d48',
+          padding: 24, borderRadius: '0 8px 8px 0', marginBottom: 36,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#e11d48', textTransform: 'uppercase', marginBottom: 8 }}>
+                // Tripキャッシュ（Scan Tripフォルダ）
+              </div>
+              <div style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.8 }}>
+                Geminiのトリップした文章をスキャンし「トリップ設計図」として保存します。
+                Writer Tripモードで使用されます。
+              </div>
+
+              {tripCacheInfo.exists ? (
+                <div style={{ ...mono, fontSize: 9, color: '#e11d48', marginTop: 8 }}>
+                  ✓ 最終スキャン：{tripCacheInfo.updatedAt ? new Date(tripCacheInfo.updatedAt).toLocaleString('ja-JP') : '不明'}
+                  {' / '}{tripCacheInfo.fileCount}ファイル読み込み済み
+                </div>
+              ) : (
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
+                  ✗ まだスキャンしていません
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                <span style={{ ...mono, fontSize: 8, color: '#6b7280', whiteSpace: 'nowrap' }}>// 対象フォルダ:</span>
+                <input
+                  type="text"
+                  value={tripScanFolder}
+                  onChange={e => setTripScanFolder(e.target.value)}
+                  style={{
+                    ...mono, fontSize: 11, color: '#111827',
+                    background: '#fff', border: '1px solid #d1d5db',
+                    borderRadius: 3, padding: '4px 8px', width: 160, outline: 'none',
+                  }}
+                />
+              </div>
+            </div>
+            <button
+              onClick={runTripScan}
+              disabled={tripScanLoading || !hasGoogleToken}
+              title={!hasGoogleToken ? 'Googleでログインすると使えます' : 'Tripスキャンを実行する'}
+              style={{
+                background: hasGoogleToken ? '#e11d48' : '#e5e7eb',
+                border: 'none',
+                color: hasGoogleToken ? '#fff' : '#9ca3af',
+                ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
+                padding: '11px 22px', cursor: (tripScanLoading || !hasGoogleToken) ? 'not-allowed' : 'pointer',
+                borderRadius: 3, whiteSpace: 'nowrap', flexShrink: 0,
+                opacity: tripScanLoading ? 0.5 : 1,
+              }}
+            >
+              {tripScanLoading ? '// スキャン中...' : tripCacheInfo.exists ? 'Tripスキャンを更新' : 'Tripスキャン開始'}
+            </button>
+          </div>
+
+          {!hasGoogleToken && (
+            <div style={{ marginTop: 12, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
+              // Googleログインが必要です →{' '}
+              <a href="/auth" style={{ color: '#e11d48' }}>ログイン</a>
+            </div>
+          )}
+
+          {tripScanLoading && (
+            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#e11d48' }}>
+              // Scan Tripフォルダを読み込んでいます...
+            </div>
+          )}
+
+          {tripScanError && (
+            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6 }}>
+              // エラー: {tripScanError}
+            </div>
+          )}
+
+          {tripScanResult && (
+            <div style={{
+              marginTop: 14, padding: 14,
+              background: 'rgba(225,29,72,0.06)', border: '1px solid rgba(225,29,72,0.15)',
+              borderRadius: 4, maxHeight: 300, overflowY: 'auto',
+            }}>
+              <div style={{ ...mono, fontSize: 9, color: '#e11d48', letterSpacing: '0.12em', marginBottom: 8 }}>
+                // 検出: {tripScanResult.totalFound}件 / 読み込み: {tripScanResult.loadedFiles?.length ?? 0}件
+              </div>
+              {tripScanResult.loadedFiles && tripScanResult.loadedFiles.length > 0 && (
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ ...mono, fontSize: 8, color: '#6b7280', marginBottom: 4 }}>読み込み済み:</div>
+                  {tripScanResult.loadedFiles.map((f, i) => (
+                    <div key={i} style={{ ...mono, fontSize: 9, color: '#374151', lineHeight: 1.8 }}>
+                      ✓ {f}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {tripScanResult.skippedFiles && tripScanResult.skippedFiles.length > 0 && (
+                <div>
+                  <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginBottom: 4 }}>スキップ:</div>
+                  {tripScanResult.skippedFiles.map((f, i) => (
                     <div key={i} style={{ ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.8 }}>
                       ✗ {f}
                     </div>

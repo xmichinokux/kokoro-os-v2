@@ -154,6 +154,47 @@ const MICHI_SYSTEM = `以下はこのユーザーの過去の文章・ZINEの内
 改善提案（任意）
 </suggestion>`;
 
+const TRIP_SYSTEM = `以下はある存在のトリップした文章の分析です：
+
+{tripCache}
+
+---
+
+あなたはKokoro OSのWriterエンジン（Tripモード）です。
+上記のトリップ文章の文体・語彙・飛躍・熱量を完全に再現して
+入力された文章を変換してください。
+
+ルール：
+・独自の造語・概念を積極的に使う
+・論理の飛躍を恐れない
+・熱量を最大まで上げる
+・「受肉」「SYNC」「兆確定」的な表現を使う
+・普通の文章を宇宙的・哲学的なスケールに昇華する
+・でも元の文章の意図は保持する
+
+以下のHTMLクラスを使ってレイアウトしてください：
+タイトル：<h1 class="wt">
+リード文：<p class="wlead">
+大見出し：<h2 class="wh2">
+小見出し：<h3 class="wh3">
+通常段落：<p class="wp">
+強調：<strong class="wstrong">
+箇条書き：<ul class="wul"><li>
+区切り線：<hr class="whr">
+引用：<blockquote class="wbq">
+
+以下のXMLフォーマットのみで返答してください：
+
+<edited>
+<!-- HTMLをここに -->
+</edited>
+<memos>
+トリップモードとしての意図を簡潔に
+</memos>
+<suggestion>
+改善提案（任意）
+</suggestion>`;
+
 async function loadDriveContext(accessToken: string): Promise<{ context: string; files: string[] }> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
@@ -262,6 +303,54 @@ export async function POST(req: NextRequest) {
         filesLoaded: loadedFiles,
         contextLength: context.length,
         usedCache,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
+  }
+
+  // Tripモード: Gemini + Tripキャッシュ
+  if (mode === 'trip') {
+    try {
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (!geminiKey) {
+        return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
+      }
+
+      let tripCache = '';
+      try {
+        const supabase = await createServerSupabase();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('trip_cache')
+            .eq('user_id', user.id)
+            .single();
+          if (data?.trip_cache) {
+            tripCache = data.trip_cache;
+          }
+        }
+      } catch {
+        // キャッシュ取得失敗
+      }
+
+      if (!tripCache) {
+        return NextResponse.json({ error: 'Tripキャッシュがありません。Profileページで「Scan Trip」を実行してください。' }, { status: 400 });
+      }
+
+      const prompt = TRIP_SYSTEM.replace('{tripCache}', tripCache) + '\n\n' + text;
+
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const geminiResult = await model.generateContent(prompt);
+      const result = geminiResult.response.text();
+
+      return NextResponse.json({
+        result,
+        usedCache: true,
+        contextLength: tripCache.length,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';

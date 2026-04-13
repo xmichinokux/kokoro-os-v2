@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { accessToken, userId, folderName } = await req.json();
+    const { accessToken, userId, folderName, scanType } = await req.json();
     if (!accessToken) {
       return NextResponse.json({ error: 'Googleアクセストークンがありません' }, { status: 401 });
     }
@@ -134,7 +134,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ユーザーIDがありません' }, { status: 401 });
     }
 
-    const targetFolder = folderName || 'Scan Data';
+    const isTrip = scanType === 'trip';
+    const targetFolder = folderName || (isTrip ? 'Scan Trip' : 'Scan Data');
 
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
@@ -174,12 +175,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Geminiで感性ベクターを生成
+    // Geminiで分析を生成
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    const result = await model.generateContent(`
-以下はあるユーザーの文章・メモ・ZINEの内容です。
+    const prompt = isTrip
+      ? `以下はある存在がトリップした時の文章です。
+
+${allContent}
+
+---
+
+この文章の「文体・語彙・飛躍・熱量・独自の概念・造語」を
+3000文字以内で詳細に分析してください。
+
+特に以下の観点で：
+・独自の造語・概念（例：受肉・SYNC・0.82mm・兆確定）
+・文章の飛躍パターン（どのように論理を飛ばすか）
+・熱量の表現方法
+・句読点・改行・強調の癖
+・宇宙的・哲学的な大げさな表現パターン
+
+この分析はAIがこの文体を再現するための「トリップ設計図」として使います。`
+      : `以下はあるユーザーの文章・メモ・ZINEの内容です。
 
 ${allContent}
 
@@ -197,21 +215,29 @@ ${allContent}
 ・独自の切り口・視点
 
 この要約はAIがこのユーザーの代わりに文章を書く時の「感性の設計図」として使います。
-できるだけ具体的に、このユーザーらしさが再現できるように書いてください。
-`);
+できるだけ具体的に、このユーザーらしさが再現できるように書いてください。`;
 
-    const sensibilityCache = result.response.text();
+    const result = await model.generateContent(prompt);
+    const cacheText = result.response.text();
 
     // Supabaseに保存
     const supabase = await createServerSupabase();
+    const upsertData = isTrip
+      ? {
+          user_id: userId,
+          trip_cache: cacheText,
+          trip_updated_at: new Date().toISOString(),
+          trip_file_count: loadedCount,
+        }
+      : {
+          user_id: userId,
+          sensibility_cache: cacheText,
+          sensibility_updated_at: new Date().toISOString(),
+          sensibility_file_count: loadedCount,
+        };
     const { error: dbError } = await supabase
       .from('user_profiles')
-      .upsert({
-        user_id: userId,
-        sensibility_cache: sensibilityCache,
-        sensibility_updated_at: new Date().toISOString(),
-        sensibility_file_count: loadedCount,
-      }, { onConflict: 'user_id' });
+      .upsert(upsertData, { onConflict: 'user_id' });
 
     if (dbError) {
       console.error('Supabase保存エラー:', dbError);
@@ -220,9 +246,10 @@ ${allContent}
 
     return NextResponse.json({
       success: true,
+      scanType: isTrip ? 'trip' : 'sensibility',
       totalFound: allFiles.length,
       fileCount: loadedCount,
-      cacheLength: sensibilityCache.length,
+      cacheLength: cacheText.length,
       fileList,
       loadedFiles,
       skippedFiles,
