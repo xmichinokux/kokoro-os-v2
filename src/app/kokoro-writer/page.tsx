@@ -89,6 +89,7 @@ export default function KokoroWriterPage() {
   const [hasGoogleToken, setHasGoogleToken] = useState(false);
   const [driveFiles, setDriveFiles] = useState<string[]>([]);
   const [driveContextLen, setDriveContextLen] = useState<number | null>(null);
+  const [usedCache, setUsedCache] = useState(false);
 
   // Googleアクセストークンの有無を確認
   useEffect(() => {
@@ -110,6 +111,7 @@ export default function KokoroWriterPage() {
     setSaved(false);
     setDriveFiles([]);
     setDriveContextLen(null);
+    setUsedCache(false);
 
     try {
       // Michiモード: アクセストークンを取得して送信
@@ -132,6 +134,7 @@ export default function KokoroWriterPage() {
       // Drive情報を保存
       if (data.filesLoaded) setDriveFiles(data.filesLoaded);
       if (data.contextLength != null) setDriveContextLen(data.contextLength);
+      if (data.usedCache) setUsedCache(true);
 
       const raw = (data.result ?? '') as string;
       if (m === 'lite') {
@@ -275,16 +278,22 @@ export default function KokoroWriterPage() {
         {/* 出力 */}
         {(outputHtml || outputText) && (
           <div style={{ marginTop: 24 }}>
-            {/* Michiモード: Drive参照バナー */}
-            {mode === 'michi' && driveFiles.length > 0 && (
+            {/* Michiモード: 感性情報バナー */}
+            {mode === 'michi' && (usedCache || driveFiles.length > 0) && (
               <div style={{
                 background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 4,
                 padding: '8px 12px', marginBottom: 12, fontSize: 11, color: '#065f46', lineHeight: 1.6,
               }}>
-                📁 zineフォルダ参照中
+                {usedCache ? '🧠 感性キャッシュを使用' : '📁 zineフォルダ参照中'}
                 <div style={{ ...mono, fontSize: 9, color: '#6b7280', marginTop: 4 }}>
-                  {driveFiles.map((f, i) => <div key={i}>• {f}</div>)}
-                  {driveContextLen !== null && <div style={{ marginTop: 4 }}>// {driveContextLen.toLocaleString()} 文字読み込み</div>}
+                  {usedCache ? (
+                    <div>// 感性ベクター（{driveContextLen?.toLocaleString() ?? '?'} 文字）</div>
+                  ) : (
+                    <>
+                      {driveFiles.map((f, i) => <div key={i}>• {f}</div>)}
+                      {driveContextLen !== null && <div style={{ marginTop: 4 }}>// {driveContextLen.toLocaleString()} 文字読み込み</div>}
+                    </>
+                  )}
                 </div>
               </div>
             )}

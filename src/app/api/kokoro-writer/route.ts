@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { google } from 'googleapis';
+import { createServerSupabase } from '@/lib/supabase/server';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 const LITE_SYSTEM = `あなたはKokoro OSのWriterエンジン（Liteモード）です。
@@ -208,20 +209,48 @@ function buildSystem(mode: string): string {
 export async function POST(req: NextRequest) {
   const { text, mode, accessToken } = await req.json();
 
-  // Michiモード: Gemini + Drive
+  // Michiモード: Gemini + Drive（キャッシュ優先）
   if (mode === 'michi') {
     try {
       const geminiKey = process.env.GEMINI_API_KEY;
       if (!geminiKey) {
         return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
       }
-      if (!accessToken) {
-        return NextResponse.json({ error: 'Googleアクセストークンがありません。Googleでログインしてください。' }, { status: 401 });
+
+      // まず感性キャッシュを確認
+      let context = '';
+      let loadedFiles: string[] = [];
+      let usedCache = false;
+
+      try {
+        const supabase = await createServerSupabase();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('sensibility_cache')
+            .eq('user_id', user.id)
+            .single();
+          if (data?.sensibility_cache) {
+            context = data.sensibility_cache;
+            usedCache = true;
+          }
+        }
+      } catch {
+        // キャッシュ取得失敗はフォールバック
       }
 
-      const { context: driveContext, files: loadedFiles } = await loadDriveContext(accessToken);
+      // キャッシュがない場合 → zineフォルダを直接読み込む
+      if (!usedCache) {
+        if (!accessToken) {
+          return NextResponse.json({ error: 'Googleアクセストークンがありません。Googleでログインしてください。' }, { status: 401 });
+        }
+        const driveData = await loadDriveContext(accessToken);
+        context = driveData.context;
+        loadedFiles = driveData.files;
+      }
 
-      const prompt = MICHI_SYSTEM.replace('{driveContext}', driveContext || '（zineフォルダにファイルがありません）') + '\n\n' + text;
+      const prompt = MICHI_SYSTEM.replace('{driveContext}', context || '（感性データがありません）') + '\n\n' + text;
 
       const genAI = new GoogleGenerativeAI(geminiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -231,7 +260,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         result,
         filesLoaded: loadedFiles,
-        contextLength: driveContext.length,
+        contextLength: context.length,
+        usedCache,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase/client';
 import {
   getProfile, saveProfile, createEmptyProfile, PROFILE_FIELDS,
   type KokoroUserProfile,
@@ -261,6 +262,17 @@ export default function KokoroProfilePage() {
   const [toast, setToast] = useState('');
   const [lastSaved, setLastSaved] = useState('');
 
+  // 感性キャッシュ関連
+  const [hasGoogleToken, setHasGoogleToken] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [cacheInfo, setCacheInfo] = useState<{
+    exists: boolean;
+    updatedAt: string | null;
+    fileCount: number;
+  }>({ exists: false, updatedAt: null, fileCount: 0 });
+
   // 初期読み込み
   useEffect(() => {
     const init = async () => {
@@ -273,6 +285,28 @@ export default function KokoroProfilePage() {
       const { getAllNotes } = await import('@/lib/kokoro/noteStorage');
       const notes = await getAllNotes();
       setNoteCount(notes.length);
+
+      // Googleトークン・ユーザーID確認
+      const { data: { session } } = await supabase.auth.getSession();
+      setHasGoogleToken(!!session?.provider_token);
+      setUserId(session?.user?.id ?? null);
+
+      // 感性キャッシュ情報を取得
+      if (session?.user) {
+        try {
+          const cacheRes = await fetch('/api/drive-cache');
+          const cacheData = await cacheRes.json();
+          if (cacheData.cache) {
+            setCacheInfo({
+              exists: true,
+              updatedAt: cacheData.updatedAt,
+              fileCount: cacheData.fileCount,
+            });
+          }
+        } catch {
+          // キャッシュ取得失敗は無視
+        }
+      }
     };
     init();
   }, []);
@@ -367,6 +401,37 @@ export default function KokoroProfilePage() {
       setAnalyzing(false);
     }
   }, [noteCount, profile]);
+
+  const runDriveScan = useCallback(async () => {
+    setScanLoading(true);
+    setScanError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.provider_token;
+      if (!accessToken || !userId) {
+        throw new Error('Googleアクセストークンがありません。ログアウトしてGoogleで再ログインしてください。');
+      }
+
+      const res = await fetch('/api/drive-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken, userId }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      setCacheInfo({
+        exists: true,
+        updatedAt: new Date().toISOString(),
+        fileCount: data.fileCount,
+      });
+      showToast(`// スキャン完了 ✓ ${data.fileCount}ファイル読み込み`);
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : 'スキャンに失敗しました');
+    } finally {
+      setScanLoading(false);
+    }
+  }, [userId]);
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
@@ -481,6 +546,74 @@ export default function KokoroProfilePage() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* 感性キャッシュセクション */}
+        <div style={{
+          background: '#f8f9fa', border: '1px solid #e5e7eb', borderLeft: '3px solid #0f9d58',
+          padding: 24, borderRadius: '0 8px 8px 0', marginBottom: 36,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#0f9d58', textTransform: 'uppercase', marginBottom: 8 }}>
+                // 感性キャッシュ（Google Drive スキャン）
+              </div>
+              <div style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.8 }}>
+                Googleドライブの文章を全スキャンし、あなたの文体・センス・価値観を「感性ベクター」として保存します。
+                Writer Michiモードなどで使用されます。
+              </div>
+
+              {cacheInfo.exists ? (
+                <div style={{ ...mono, fontSize: 9, color: '#0f9d58', marginTop: 8 }}>
+                  ✓ 最終スキャン：{cacheInfo.updatedAt ? new Date(cacheInfo.updatedAt).toLocaleString('ja-JP') : '不明'}
+                  {' / '}{cacheInfo.fileCount}ファイル読み込み済み
+                </div>
+              ) : (
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
+                  ✗ まだスキャンしていません
+                </div>
+              )}
+
+              <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.08em', marginTop: 8, opacity: 0.7 }}>
+                // 週1回の更新を推奨。スキャンには数十秒〜数分かかります
+              </div>
+            </div>
+            <button
+              onClick={runDriveScan}
+              disabled={scanLoading || !hasGoogleToken}
+              title={!hasGoogleToken ? 'Googleでログインすると使えます' : 'Googleドライブをスキャンする'}
+              style={{
+                background: hasGoogleToken ? '#0f9d58' : '#e5e7eb',
+                border: 'none',
+                color: hasGoogleToken ? '#fff' : '#9ca3af',
+                ...mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase',
+                padding: '11px 22px', cursor: (scanLoading || !hasGoogleToken) ? 'not-allowed' : 'pointer',
+                borderRadius: 3, whiteSpace: 'nowrap', flexShrink: 0,
+                opacity: scanLoading ? 0.5 : 1,
+              }}
+            >
+              {scanLoading ? '// スキャン中...' : cacheInfo.exists ? 'スキャンを更新' : 'スキャン開始'}
+            </button>
+          </div>
+
+          {!hasGoogleToken && (
+            <div style={{ marginTop: 12, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
+              // Googleログインが必要です →{' '}
+              <a href="/auth" style={{ color: '#0f9d58' }}>ログイン</a>
+            </div>
+          )}
+
+          {scanLoading && (
+            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#0f9d58' }}>
+              // Googleドライブを読み込んでいます...（数十秒〜数分かかります）
+            </div>
+          )}
+
+          {scanError && (
+            <div style={{ marginTop: 12, ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6 }}>
+              // エラー: {scanError}
             </div>
           )}
         </div>
