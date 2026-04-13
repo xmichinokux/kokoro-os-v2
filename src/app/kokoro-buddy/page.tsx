@@ -78,8 +78,8 @@ export default function KokoroBuddyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newHistory, mode }),
       });
-      if (!res.ok) throw new Error('応答の取得に失敗しました');
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) throw new Error(data?.error || `API エラー (${res.status})`);
       if (data.error) throw new Error(data.error);
       setMessages([...newHistory, { role: 'assistant', content: data.result ?? '' }]);
       scrollToBottom();
