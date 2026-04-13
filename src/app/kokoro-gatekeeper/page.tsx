@@ -52,16 +52,28 @@ export default function KokoroGatekeeperPage() {
   }, []);
 
   const callApi = useCallback(async (body: Record<string, unknown>) => {
-    const res = await fetch('/api/kokoro-gatekeeper', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
-    if (data.error) throw new Error(data.error);
-    return data;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    try {
+      const res = await fetch('/api/kokoro-gatekeeper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        throw new Error('タイムアウト: 応答に時間がかかりすぎました。もう一度お試しください。');
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }, []);
 
   // ステップ1: 最初の質問を取得
