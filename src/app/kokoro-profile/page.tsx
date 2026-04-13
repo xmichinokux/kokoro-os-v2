@@ -445,7 +445,13 @@ export default function KokoroProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accessToken, userId, folderName: scanFolder }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`);
+      }
       if (data.error) throw new Error(data.error);
 
       setCacheInfo({
@@ -481,7 +487,13 @@ export default function KokoroProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accessToken, userId, folderName: tripScanFolder, scanType: 'trip' }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`);
+      }
       if (data.error) throw new Error(data.error);
 
       setTripCacheInfo({
