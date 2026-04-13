@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 type App = {
   icon: string;
@@ -163,6 +165,7 @@ const APPS: App[] = [
 
 export default function Home() {
   const [hasHonneLogs, setHasHonneLogs] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     try {
@@ -172,6 +175,14 @@ export default function Home() {
         setHasHonneLogs(Array.isArray(logs) && logs.length > 0);
       }
     } catch { /* ignore */ }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   return (
@@ -190,9 +201,30 @@ export default function Home() {
         >
           KOKORO OS
         </span>
-        <span className="text-xs" style={{ color: "#9ca3af" }}>
-          v0.1 beta
-        </span>
+        <div className="flex items-center gap-3">
+          {user ? (
+            <>
+              <span className="text-xs" style={{ color: '#6b7280' }}>
+                {user.email?.split('@')[0]}
+              </span>
+              <button
+                onClick={async () => { await supabase.auth.signOut(); setUser(null); }}
+                className="text-xs px-2 py-1 rounded"
+                style={{ color: '#9ca3af', border: '1px solid #e5e7eb', background: 'transparent', cursor: 'pointer' }}
+              >
+                ログアウト
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/auth"
+              className="text-xs px-3 py-1 rounded"
+              style={{ color: '#7c3aed', border: '1px solid #7c3aed', background: 'transparent' }}
+            >
+              ログイン
+            </Link>
+          )}
+        </div>
       </header>
 
       {/* Hero */}

@@ -142,7 +142,7 @@ export default function KokoroZen() {
     }
   };
 
-  const handleSaveZenNote = () => {
+  const handleSaveZenNote = async () => {
     if (!result || zenNoteSaved) return;
     const parts: string[] = [];
     parts.push(`[中心の物語]\n${result.core.main_story}`);
@@ -168,7 +168,7 @@ export default function KokoroZen() {
       parts.push(`[エミの問い]\n${result.emiQuestion}`);
     }
     const body = parts.join('\n\n');
-    saveToNote(body, 'Zen');
+    await saveToNote(body, 'Zen');
     setZenNoteSaved(true);
   };
 

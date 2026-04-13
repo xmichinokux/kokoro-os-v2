@@ -37,7 +37,7 @@ export default function KokoroRecipePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...payload,
-          kokoroProfile: getKokoroProfile(),
+          kokoroProfile: await getKokoroProfile(),
         }),
       });
       if (!res.ok) throw new Error('生成失敗');
@@ -53,7 +53,7 @@ export default function KokoroRecipePage() {
 
   // マウント時にlocalStorageから入力を取得
   useEffect(() => {
-    setKokoroProfile(getKokoroProfile());
+    getKokoroProfile().then(p => { if (p) setKokoroProfile(p); });
     const saved = consumeRecipeInput();
     if (saved) {
       setInput(saved);
@@ -64,7 +64,7 @@ export default function KokoroRecipePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!result || noteSaved) return;
 
     const body = [
@@ -75,7 +75,7 @@ export default function KokoroRecipePage() {
       ),
     ].join('\n');
 
-    saveToNote(body, 'Recipe');
+    await saveToNote(body, 'Recipe');
     setNoteSaved(true);
   };
 

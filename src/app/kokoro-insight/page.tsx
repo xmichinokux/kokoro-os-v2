@@ -80,7 +80,7 @@ export default function KokoroInsightPage() {
   const [noteSaved, setNoteSaved] = useState(false);
 
   /* ─── Note に保存 ─── */
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!currentResult) return;
     const parts: string[] = [];
     parts.push(`[${currentResult.title}]`);
@@ -117,7 +117,7 @@ export default function KokoroInsightPage() {
       parts.push(compareText);
     }
 
-    if (saveToNote(parts.join('\n'), 'Insight')) {
+    if (await saveToNote(parts.join('\n'), 'Insight')) {
       setNoteSaved(true);
       setTimeout(() => setNoteSaved(false), 2000);
     }

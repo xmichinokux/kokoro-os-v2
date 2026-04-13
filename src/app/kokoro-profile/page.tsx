@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  getProfile, createEmptyProfile, PROFILE_FIELDS, PROFILE_STORAGE_KEY,
+  getProfile, saveProfile, createEmptyProfile, PROFILE_FIELDS,
   type KokoroUserProfile,
 } from '@/lib/getProfile';
+import LoginBanner from '@/components/LoginBanner';
 import PersonaLoading from '@/components/PersonaLoading';
 
 type ProfileKey = keyof Omit<KokoroUserProfile, 'updatedAt'>;
@@ -262,19 +263,18 @@ export default function KokoroProfilePage() {
 
   // 初期読み込み
   useEffect(() => {
-    const saved = getProfile();
-    if (saved) {
-      setProfile(saved);
-      if (saved.updatedAt) setLastSaved(saved.updatedAt);
-    }
-    // Note 件数
-    try {
-      const raw = localStorage.getItem('kokoro_notes');
-      const notes = raw ? JSON.parse(raw) : [];
-      setNoteCount(Array.isArray(notes) ? notes.length : 0);
-    } catch {
-      setNoteCount(0);
-    }
+    const init = async () => {
+      const saved = await getProfile();
+      if (saved) {
+        setProfile(saved);
+        if (saved.updatedAt) setLastSaved(saved.updatedAt);
+      }
+      // Note 件数
+      const { getAllNotes } = await import('@/lib/kokoro/noteStorage');
+      const notes = await getAllNotes();
+      setNoteCount(notes.length);
+    };
+    init();
   }, []);
 
   const showToast = (msg: string) => {
@@ -292,18 +292,18 @@ export default function KokoroProfilePage() {
     });
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const now = new Date().toLocaleString('ja-JP');
     const toSave: KokoroUserProfile = { ...profile, updatedAt: now };
-    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(toSave));
+    await saveProfile(toSave);
     setProfile(toSave);
     setLastSaved(now);
     showToast('// プロフィールを保存しました ✓');
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!confirm('プロフィールをすべてリセットしますか？')) return;
-    localStorage.removeItem(PROFILE_STORAGE_KEY);
+    await saveProfile(createEmptyProfile());
     setProfile(createEmptyProfile());
     setLastSaved('');
     setAiFilled(new Set());
@@ -322,9 +322,9 @@ export default function KokoroProfilePage() {
     setAnalysisSummary('');
 
     try {
-      const raw = localStorage.getItem('kokoro_notes');
-      const notes: Array<{ body?: string; text?: string; title?: string; source?: string; createdAt?: string; date?: string; tags?: string[] }> =
-        raw ? JSON.parse(raw) : [];
+      const { getAllNotes: fetchAllNotes } = await import('@/lib/kokoro/noteStorage');
+      const allNotes = await fetchAllNotes();
+      const notes = allNotes as Array<{ body?: string; text?: string; title?: string; source?: string; createdAt?: string; date?: string; tags?: string[] }>;
 
       // 最大50件、各Noteをテキスト化
       const notesText = notes.slice(0, 50).map(n => {
@@ -408,6 +408,8 @@ export default function KokoroProfilePage() {
       </header>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '48px 28px 100px', position: 'relative' }}>
+
+        <LoginBanner message="ログインするとプロフィールがクラウドに保存されます。" />
 
         {/* 連携アプリ */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 28, alignItems: 'center' }}>

@@ -129,9 +129,9 @@ export default function KokoroWriterPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!outputText) return;
-    saveToNote(outputText, 'Writer');
+    await saveToNote(outputText, 'Writer');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

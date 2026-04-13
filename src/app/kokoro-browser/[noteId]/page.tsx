@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useParams } from 'next/navigation';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
@@ -20,30 +20,28 @@ export default function NoteDetailPage() {
   const noteId = params?.noteId as string;
   const mono = { fontFamily: "'Space Mono', monospace" };
 
-  // localStorageの公開NoteとモックNote両方から検索
-  const allPublicNotes: PublicNote[] = useMemo(() => {
-    const localNotes: PublicNote[] = (() => {
-      if (typeof window === 'undefined') return [];
-      try {
-        const all: KokoroNote[] = getAllNotes();
-        return all
-          .filter(n => n.isPublic)
-          .map(n => ({
-            id: n.id,
-            title: n.title,
-            body: n.body,
-            tags: n.tags,
-            topic: n.topic,
-            source: n.source as PublicNote['source'],
-            createdAt: n.createdAt,
-            isPublic: true as const,
-          }));
-      } catch {
-        return [];
-      }
-    })();
-    return [...localNotes, ...MOCK_PUBLIC_NOTES];
+  // 公開NoteとモックNote両方から検索
+  const [localNotes, setLocalNotes] = useState<PublicNote[]>([]);
+  useEffect(() => {
+    getAllNotes().then(all => {
+      setLocalNotes(
+        all.filter(n => n.isPublic).map(n => ({
+          id: n.id,
+          title: n.title,
+          body: n.body,
+          tags: n.tags,
+          topic: n.topic,
+          source: n.source as PublicNote['source'],
+          createdAt: n.createdAt,
+          isPublic: true as const,
+        }))
+      );
+    });
   }, []);
+  const allPublicNotes = useMemo(
+    () => [...localNotes, ...MOCK_PUBLIC_NOTES],
+    [localNotes]
+  );
 
   const note = useMemo(
     () => allPublicNotes.find(n => n.id === noteId),

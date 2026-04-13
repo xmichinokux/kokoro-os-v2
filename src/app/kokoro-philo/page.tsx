@@ -209,7 +209,7 @@ export default function KokoroPhiloPage() {
     }
   };
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     let body = `Q: ${question}\n\n`;
     if (mode === 'multi' && multiResult) {
       body += multiResult.philosophers.map(p => `[${p.name}]\n${p.response}`).join('\n\n');
@@ -232,7 +232,7 @@ export default function KokoroPhiloPage() {
       return;
     }
 
-    saveToNote(body, 'Philo');
+    await saveToNote(body, 'Philo');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

@@ -70,7 +70,7 @@ export default function KokoroBoardPage() {
     setIsLoading(false);
   }, [agenda, members]);
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!result) return;
     let body = `会議: ${agenda}\n\n[開会]\n${result.opening}\n\n`;
     body += result.agenda_items.map((a, i) =>
@@ -80,7 +80,7 @@ export default function KokoroBoardPage() {
     body += result.action_items.map(a => `✓ ${a.task}${a.owner ? ` (${a.owner})` : ''}`).join('\n');
     body += `\n\n[閉会]\n${result.closing}`;
 
-    saveToNote(body, 'Board');
+    await saveToNote(body, 'Board');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

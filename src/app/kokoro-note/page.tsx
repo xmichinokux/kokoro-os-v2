@@ -6,6 +6,7 @@ import type { KokoroNote } from '@/types/note';
 import type { KokoroNoteDraft } from '@/types/noteMeta';
 import type { NoteImageEntry, PersonaKey, PersonaInterpretation } from '@/types/noteImage';
 import { getAllNotes, saveNote, deleteNote, togglePin, createNoteId } from '@/lib/kokoro/noteStorage';
+import LoginBanner from '@/components/LoginBanner';
 import { searchNotes } from '@/lib/kokoro/noteSearch';
 import { setNoteForTalk, setNoteForZen } from '@/lib/kokoro/noteLinkage';
 import { generateAutoNoteMeta } from '@/lib/kokoro-note/generateAutoNoteMeta';
@@ -113,7 +114,7 @@ export default function KokoroNotePage() {
 
   // マウント時にnotes読み込み
   useEffect(() => {
-    setNotes(getAllNotes());
+    getAllNotes().then(setNotes);
     setImageNotes(getAllImageNotes());
   }, []);
 
@@ -140,21 +141,26 @@ export default function KokoroNotePage() {
   }, []);
 
   // notes再読み込みヘルパー
-  const refresh = () => {
-    setNotes(getAllNotes());
+  const refresh = async () => {
+    setNotes(await getAllNotes());
     setImageNotes(getAllImageNotes());
   };
 
   // 選択中のnote
   const selectedNote = notes.find(n => n.id === selectedId) ?? null;
 
+  // 検索ヒットID
+  const [searchHitIds, setSearchHitIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchHitIds(null); return; }
+    searchNotes(searchQuery).then(hits => setSearchHitIds(new Set(hits.map(h => h.noteId))));
+  }, [searchQuery]);
+
   // 一覧: タグフィルタ + 検索 + ピン上位ソート
   const displayNotes = useMemo(() => {
     let list: KokoroNote[];
-    if (searchQuery.trim()) {
-      const hits = searchNotes(searchQuery).map(h => h.noteId);
-      const hitSet = new Set(hits);
-      list = filteredNotes.filter(n => hitSet.has(n.id));
+    if (searchHitIds) {
+      list = filteredNotes.filter(n => searchHitIds.has(n.id));
     } else {
       list = [...filteredNotes];
     }
@@ -218,7 +224,7 @@ export default function KokoroNotePage() {
     setTimeout(() => bodyRef.current?.focus(), 100);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const now = new Date().toISOString();
     const tags = editTags.split(/[,、]/).map(t => t.trim()).filter(Boolean);
 
@@ -226,7 +232,7 @@ export default function KokoroNotePage() {
       // 更新
       const existing = notes.find(n => n.id === editingId);
       if (existing) {
-        saveNote({
+        await saveNote({
           ...existing,
           title: editTitle || editBody.slice(0, 20) || '無題',
           body: editBody,
@@ -236,7 +242,7 @@ export default function KokoroNotePage() {
       }
     } else {
       // 新規テキストNote
-      saveNote({
+      await saveNote({
         id: createNoteId(),
         createdAt: now,
         updatedAt: now,
@@ -263,27 +269,27 @@ export default function KokoroNotePage() {
     }
     setEditImagePreview(null);
     setEditImageBase64(null);
-    refresh();
+    await refresh();
     setView('list');
   };
 
-  const handleDelete = (id: string) => {
-    deleteNote(id);
-    refresh();
+  const handleDelete = async (id: string) => {
+    await deleteNote(id);
+    await refresh();
     setView('list');
   };
 
-  const handleTogglePin = (id: string) => {
-    togglePin(id);
-    refresh();
+  const handleTogglePin = async (id: string) => {
+    await togglePin(id);
+    await refresh();
   };
 
-  const handleTogglePublic = (id: string) => {
+  const handleTogglePublic = async (id: string) => {
     const note = notes.find(n => n.id === id);
     if (!note) return;
     const updated = { ...note, isPublic: !note.isPublic, updatedAt: new Date().toISOString() };
-    saveNote(updated);
-    refresh();
+    await saveNote(updated);
+    await refresh();
   };
 
   const handleAiSuggest = async () => {
@@ -411,16 +417,16 @@ export default function KokoroNotePage() {
         {deleteMode ? (
           <>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (selectedForDelete.size === 0) return;
                 if (!confirm(`${selectedForDelete.size}件のNoteを削除しますか？`)) return;
-                selectedForDelete.forEach(id => {
-                  deleteNote(id);
+                for (const id of selectedForDelete) {
+                  await deleteNote(id);
                   deleteImageNote(id);
-                });
+                }
                 setSelectedForDelete(new Set());
                 setDeleteMode(false);
-                refresh();
+                await refresh();
               }}
               disabled={selectedForDelete.size === 0}
               style={{ fontFamily:"'Space Mono', monospace", fontSize:9, padding:'4px 12px', borderRadius:4, background: selectedForDelete.size > 0 ? '#fef2f2' : '#f3f4f6', color: selectedForDelete.size > 0 ? '#dc2626' : '#9ca3af', border:'1px solid #e5e7eb', cursor:'pointer' }}
@@ -1211,6 +1217,7 @@ export default function KokoroNotePage() {
 
       {/* メインコンテンツ */}
       <main className="flex-1 px-6 py-6 max-w-2xl mx-auto w-full">
+        <LoginBanner message="ログインするとNoteがクラウドに保存されます。" />
         {view === 'list' && renderList()}
         {view === 'detail' && renderDetail()}
         {view === 'imageDetail' && renderImageDetail()}

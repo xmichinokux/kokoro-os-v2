@@ -54,10 +54,10 @@ export default function KokoroPonchiPage() {
     }
   }, [inputText]);
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (slides.length === 0) return;
     const body = slides.map(s => `// ${s.num} ${s.title}\n${s.body}`).join('\n\n');
-    saveToNote(body, 'Ponchi');
+    await saveToNote(body, 'Ponchi');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

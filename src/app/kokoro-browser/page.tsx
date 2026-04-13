@@ -71,14 +71,12 @@ export default function KokoroBrowserPage() {
     [selectedId, allGamesen]
   );
 
-  // localStorageの公開Noteを取得してPublicNote形式に変換
-  const localPublicNotes: PublicNote[] = useMemo(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const all: KokoroNote[] = getAllNotes();
-      return all
-        .filter(n => n.isPublic)
-        .map(n => ({
+  // 公開Noteを取得してPublicNote形式に変換
+  const [localPublicNotes, setLocalPublicNotes] = useState<PublicNote[]>([]);
+  useEffect(() => {
+    getAllNotes().then(all => {
+      setLocalPublicNotes(
+        all.filter(n => n.isPublic).map(n => ({
           id: n.id,
           title: n.title,
           body: n.body,
@@ -87,10 +85,9 @@ export default function KokoroBrowserPage() {
           source: n.source as PublicNote['source'],
           createdAt: n.createdAt,
           isPublic: true as const,
-        }));
-    } catch {
-      return [];
-    }
+        }))
+      );
+    });
   }, []);
 
   const allPublicNotes = useMemo(

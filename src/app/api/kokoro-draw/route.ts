@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     const replicate = new Replicate({ auth: replicateToken });
 
     const output = await replicate.run(
-      'stability-ai/sdxl:39ed52f2319f9312908b3399caedec277aaabc86e78c6bf7c5ea0cff3f02e40c',
+      'stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc',
       {
         input: {
           prompt: finalPrompt,
@@ -100,9 +100,20 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    // output は URL の配列 or ReadableStream の配列
-    const urls = output as string[] | unknown[];
-    const imageUrl = typeof urls[0] === 'string' ? urls[0] : null;
+    // output は FileOutput オブジェクトの配列（新SDK）or 文字列URLの配列（旧SDK）
+    const results = output as unknown[];
+    let imageUrl: string | null = null;
+
+    if (results && results[0]) {
+      const first = results[0];
+      if (typeof first === 'string') {
+        imageUrl = first;
+      } else if (typeof first === 'object' && first !== null) {
+        // FileOutput: .url() or .toString()
+        const fo = first as { url?: () => string; toString?: () => string };
+        imageUrl = fo.url?.() ?? fo.toString?.() ?? null;
+      }
+    }
 
     if (!imageUrl) {
       throw new Error('画像URLが取得できませんでした');

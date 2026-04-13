@@ -2,8 +2,8 @@ import type { KokoroNote, NoteSearchHit } from '@/types/note';
 import { getAllNotes } from './noteStorage';
 
 // 1. キーワード検索
-export function searchNotes(query: string): NoteSearchHit[] {
-  const notes = getAllNotes();
+export async function searchNotes(query: string): Promise<NoteSearchHit[]> {
+  const notes = await getAllNotes();
   const q = query.toLowerCase();
   return notes
     .filter(n =>
@@ -24,13 +24,13 @@ export function searchNotes(query: string): NoteSearchHit[] {
 }
 
 // 2. 意味検索（insightType / emotionTone / topic ベース）
-export function findRelatedNotes(
+export async function findRelatedNotes(
   insightType?: string,
   emotionTone?: string,
   topic?: string,
   limit = 3
-): NoteSearchHit[] {
-  const notes = getAllNotes();
+): Promise<NoteSearchHit[]> {
+  const notes = await getAllNotes();
   const scored = notes.map(n => {
     let score = 0;
     if (insightType && n.insightType === insightType) score += 2;
@@ -54,11 +54,11 @@ export function findRelatedNotes(
 }
 
 // 3. 現在文脈検索（Talk/Zenの流れから関連noteを自動検索）
-export function findContextualNotes(
+export async function findContextualNotes(
   currentText: string,
   limit = 2
-): NoteSearchHit[] {
-  const notes = getAllNotes();
+): Promise<NoteSearchHit[]> {
+  const notes = await getAllNotes();
   const words = currentText
     .replace(/[。、！？\s]/g, ' ')
     .split(' ')
@@ -87,8 +87,8 @@ export function findContextualNotes(
 }
 
 // 4. 反復テーマ検索（複数noteから繰り返しテーマを抽出）
-export function findRecurringNoteThemes(limit = 3): string[] {
-  const notes = getAllNotes();
+export async function findRecurringNoteThemes(limit = 3): Promise<string[]> {
+  const notes = await getAllNotes();
   const topicCount: Record<string, number> = {};
   for (const n of notes) {
     if (n.topic) {

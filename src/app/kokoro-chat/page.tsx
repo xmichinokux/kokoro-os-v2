@@ -114,9 +114,9 @@ export default function KokoroChat() {
     setTimeout(() => setToast(null), 2400);
   };
 
-  const handleAddToWishlist = (msgIndex: number, msg: Message) => {
+  const handleAddToWishlist = async (msgIndex: number, msg: Message) => {
     if (!msg.wishlistText) return;
-    const result = saveToWishlist({
+    const result = await saveToWishlist({
       text: msg.wishlistText,
       category: msg.wishlistCategory,
       intensity: msg.wishlistIntensity,
@@ -360,8 +360,8 @@ export default function KokoroChat() {
     return shuffled.slice(0, count);
   };
 
-  const openFashion = () => {
-    const profile = getProfile();
+  const openFashion = async () => {
+    const profile = await getProfile();
     const lastImageMsg = [...messages].reverse().find(m => m.imageBase64);
     sessionStorage.setItem('fashionIntent', JSON.stringify({
       fromTalk: true,
@@ -487,7 +487,7 @@ export default function KokoroChat() {
         turnCount,
         sessionState,
       });
-      const profile = getProfile();
+      const profile = await getProfile();
 
       // Note連携
       const noteContext = linkedNote ? {

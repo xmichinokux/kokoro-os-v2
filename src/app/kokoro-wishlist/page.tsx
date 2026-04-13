@@ -12,6 +12,7 @@ import {
   type WishCategory,
   type WishIntensity,
 } from '@/lib/wishlist';
+import LoginBanner from '@/components/LoginBanner';
 
 const mono = { fontFamily: "'Space Mono', monospace" };
 const accentColor = '#ec4899';
@@ -63,7 +64,7 @@ export default function KokoroWishlistPage() {
     setTimeout(() => setToast(null), 2400);
   };
 
-  const refresh = () => setItems(loadWishlist());
+  const refresh = async () => setItems(await loadWishlist());
 
   useEffect(() => {
     refresh();
@@ -87,10 +88,10 @@ export default function KokoroWishlistPage() {
     return sorted;
   }, [items, categoryFilter, sortMode]);
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('このウィッシュを削除しますか？')) return;
-    deleteFromWishlist(id);
-    refresh();
+    await deleteFromWishlist(id);
+    await refresh();
     showToast('削除しました');
   };
 
@@ -106,17 +107,17 @@ export default function KokoroWishlistPage() {
     router.push('/kokoro-chat');
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const text = newText.trim();
     if (!text) return;
-    const result = saveToWishlist({
+    const result = await saveToWishlist({
       text,
       category: newCategory,
       intensity: newIntensity,
       source: 'manual',
     });
     if (result) {
-      refresh();
+      await refresh();
       setNewText('');
       setNewCategory('other');
       setNewIntensity('someday');
@@ -163,6 +164,8 @@ export default function KokoroWishlistPage() {
       </header>
 
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '36px 28px 100px' }}>
+
+        <LoginBanner message="ログインするとウィッシュリストがクラウドに保存されます。" />
 
         {/* 操作バー（フィルタ・ソート・追加） */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginBottom: 24 }}>

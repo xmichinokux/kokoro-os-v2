@@ -83,12 +83,12 @@ export default function KokoroKamiPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!hasTable) return;
     const header = columns.join('\t');
     const bodyRows = rows.map(r => r.join('\t')).join('\n');
     const text = `${title}\n${description}\n\n${header}\n${bodyRows}`;
-    saveToNote(text, 'Kami');
+    await saveToNote(text, 'Kami');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

@@ -61,10 +61,10 @@ export default function KokoroPlanPage() {
     setTasks(prev => prev.map((t, i) => i === idx ? { ...t, done: !t.done } : t));
   };
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!goal.trim() || tasks.length === 0) return;
     const body = `Goal: ${goal}\n\n${tasks.map(t => `${t.done ? '✓' : '□'} ${t.text}${t.estimate ? ` (${t.estimate})` : ''}`).join('\n')}`;
-    saveToNote(body, 'Plan');
+    await saveToNote(body, 'Plan');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

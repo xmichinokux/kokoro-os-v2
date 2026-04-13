@@ -1,11 +1,12 @@
 /**
  * Kokoro Wishlist の共通ストレージ関数
  *
- * 仕様:
- * - localStorage キー: `kokoro_wishlist`
- * - DB は使わない・認証不要
- * - 上限 500 件（超えたら古いものを削除）
+ * ログイン時: Supabase (wishlists テーブル)
+ * 未ログイン時: localStorage (kokoro_wishlist)
  */
+
+import { supabase } from '@/lib/supabase/client';
+import { getCurrentUserId } from '@/lib/supabase/auth';
 
 export type WishCategory = 'fashion' | 'food' | 'place' | 'person' | 'thing' | 'other';
 export type WishIntensity = 'now' | 'soon' | 'someday';
@@ -54,10 +55,9 @@ function normalizeIntensity(value: unknown): WishIntensity {
     : 'someday';
 }
 
-/**
- * ウィッシュリストを読み込む。
- */
-export function loadWishlist(): WishItem[] {
+// --- localStorage ---
+
+function loadWishlistLocal(): WishItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -80,12 +80,7 @@ export function loadWishlist(): WishItem[] {
   }
 }
 
-/**
- * ウィッシュリストに 1 件追加する。
- *
- * @returns 成功したら作成された WishItem / 失敗したら null
- */
-export function saveToWishlist(input: {
+function saveToWishlistLocal(input: {
   text: string;
   category?: WishCategory | string;
   intensity?: WishIntensity | string;
@@ -96,7 +91,7 @@ export function saveToWishlist(input: {
   if (!text) return null;
 
   try {
-    const list = loadWishlist();
+    const list = loadWishlistLocal();
     const item: WishItem = {
       id: Date.now(),
       date: new Date().toISOString(),
@@ -114,13 +109,10 @@ export function saveToWishlist(input: {
   }
 }
 
-/**
- * id を指定して 1 件削除する。
- */
-export function deleteFromWishlist(id: number): boolean {
+function deleteFromWishlistLocal(id: number): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    const list = loadWishlist().filter((it) => it.id !== id);
+    const list = loadWishlistLocal().filter((it) => it.id !== id);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
     return true;
   } catch {
@@ -128,14 +120,108 @@ export function deleteFromWishlist(id: number): boolean {
   }
 }
 
-/**
- * 全件削除（テスト・初期化用）。
- */
-export function clearWishlist(): void {
+function clearWishlistLocal(): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
+}
+
+// --- Supabase ---
+
+function dbToWish(row: Record<string, unknown>): WishItem {
+  return {
+    id: new Date(row.created_at as string).getTime(),
+    date: row.created_at as string,
+    text: row.text as string,
+    category: normalizeCategory(row.category),
+    intensity: normalizeIntensity(row.intensity),
+    source: (row.source as string) ?? 'manual',
+  };
+}
+
+async function loadWishlistDb(userId: string): Promise<WishItem[]> {
+  const { data, error } = await supabase
+    .from('wishlists')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error || !data) return [];
+  return data.map(dbToWish);
+}
+
+async function saveToWishlistDb(userId: string, input: {
+  text: string;
+  category?: WishCategory | string;
+  intensity?: WishIntensity | string;
+  source?: string;
+}): Promise<WishItem | null> {
+  const text = (input.text ?? '').trim();
+  if (!text) return null;
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('wishlists').insert({
+    user_id: userId,
+    text,
+    category: normalizeCategory(input.category),
+    intensity: normalizeIntensity(input.intensity),
+    source: input.source ?? 'manual',
+    created_at: now,
+  });
+  if (error) { console.error('Wishlist save error:', error.message); return null; }
+
+  return {
+    id: new Date(now).getTime(),
+    date: now,
+    text,
+    category: normalizeCategory(input.category),
+    intensity: normalizeIntensity(input.intensity),
+    source: input.source ?? 'manual',
+  };
+}
+
+async function deleteFromWishlistDb(userId: string, id: number): Promise<boolean> {
+  // idはcreated_atのタイムスタンプ。一致するレコードを削除
+  const isoDate = new Date(id).toISOString();
+  const { error } = await supabase
+    .from('wishlists')
+    .delete()
+    .eq('user_id', userId)
+    .eq('created_at', isoDate);
+  return !error;
+}
+
+async function clearWishlistDb(userId: string): Promise<void> {
+  await supabase.from('wishlists').delete().eq('user_id', userId);
+}
+
+// --- Public API ---
+
+export async function loadWishlist(): Promise<WishItem[]> {
+  const userId = await getCurrentUserId();
+  if (userId) return loadWishlistDb(userId);
+  return loadWishlistLocal();
+}
+
+export async function saveToWishlist(input: {
+  text: string;
+  category?: WishCategory | string;
+  intensity?: WishIntensity | string;
+  source?: string;
+}): Promise<WishItem | null> {
+  const userId = await getCurrentUserId();
+  if (userId) return saveToWishlistDb(userId, input);
+  return saveToWishlistLocal(input);
+}
+
+export async function deleteFromWishlist(id: number): Promise<boolean> {
+  const userId = await getCurrentUserId();
+  if (userId) return deleteFromWishlistDb(userId, id);
+  return deleteFromWishlistLocal(id);
+}
+
+export async function clearWishlist(): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (userId) return clearWishlistDb(userId);
+  clearWishlistLocal();
 }

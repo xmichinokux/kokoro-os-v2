@@ -115,9 +115,9 @@ export default function KokoroWorldPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!generatedHtml) return;
-    saveToNote(generatedHtml, 'World');
+    await saveToNote(generatedHtml, 'World');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

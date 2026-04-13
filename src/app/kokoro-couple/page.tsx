@@ -82,11 +82,11 @@ export default function KokoroCouplePage() {
     }
   }, [inputText, activeTab, partnerName, partnerTraits]);
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!resultText) return;
     const label = TAB_CONFIG[activeTab].label;
     const body = `[${label}] ${resultText}`;
-    saveToNote(body, 'Couple');
+    await saveToNote(body, 'Couple');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

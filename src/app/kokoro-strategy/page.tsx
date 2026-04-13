@@ -117,9 +117,9 @@ export default function KokoroStrategyPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!outputPlain) return;
-    saveToNote(outputPlain, 'Strategy');
+    await saveToNote(outputPlain, 'Strategy');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

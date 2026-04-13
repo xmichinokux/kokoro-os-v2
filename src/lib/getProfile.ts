@@ -1,19 +1,21 @@
 /**
  * Kokoro Profile 共通読み込み関数
  *
- * - localStorage キー: `kokoro_profile`
- * - Fashion / Recipe / Plan / Talk など各アプリから参照される
- * - 既存の `@/lib/profile` (KokoroProfile) とは別の新しいユーザー主導型プロフィール
+ * ログイン時: Supabase の user_profiles テーブル
+ * 未ログイン時: localStorage (kokoro_profile)
  */
+
+import { supabase } from '@/lib/supabase/client';
+import { getCurrentUserId } from '@/lib/supabase/auth';
 
 export type KokoroUserProfile = {
   p_name: string;
   p_age: string;
   p_gender: string;
   p_location: string;
-  p_prefecture: string;   // 都道府県（手動入力。にゃんパスシティーの土台）
-  p_city: string;         // 市区町村
-  p_area_range: string;   // 表示範囲: city / prefecture / country
+  p_prefecture: string;
+  p_city: string;
+  p_area_range: string;
   p_style: string;
   p_brands: string;
   p_colors: string;
@@ -54,11 +56,9 @@ export function createEmptyProfile(): KokoroUserProfile {
   };
 }
 
-/**
- * localStorage から KokoroUserProfile を読み込む。
- * 未保存の場合は null を返す。
- */
-export function getProfile(): KokoroUserProfile | null {
+// --- localStorage ---
+
+function getProfileLocal(): KokoroUserProfile | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
@@ -70,9 +70,58 @@ export function getProfile(): KokoroUserProfile | null {
   }
 }
 
+function saveProfileLocal(profile: KokoroUserProfile): void {
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+}
+
+// --- Supabase ---
+
+function dbToProfile(row: Record<string, unknown>): KokoroUserProfile {
+  const empty = createEmptyProfile();
+  for (const key of PROFILE_FIELDS) {
+    if (typeof row[key] === 'string') {
+      (empty as Record<string, string>)[key] = row[key] as string;
+    }
+  }
+  empty.updatedAt = (row.updated_at as string) ?? '';
+  return empty;
+}
+
+async function getProfileDb(userId: string): Promise<KokoroUserProfile | null> {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+  if (error || !data) return null;
+  return dbToProfile(data);
+}
+
+async function saveProfileDb(userId: string, profile: KokoroUserProfile): Promise<void> {
+  const row: Record<string, unknown> = { user_id: userId, updated_at: new Date().toISOString() };
+  for (const key of PROFILE_FIELDS) {
+    row[key] = profile[key] ?? '';
+  }
+  const { error } = await supabase.from('user_profiles').upsert(row, { onConflict: 'user_id' });
+  if (error) console.error('Profile save error:', error.message);
+}
+
+// --- Public API ---
+
+export async function getProfile(): Promise<KokoroUserProfile | null> {
+  const userId = await getCurrentUserId();
+  if (userId) return getProfileDb(userId);
+  return getProfileLocal();
+}
+
+export async function saveProfile(profile: KokoroUserProfile): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (userId) return saveProfileDb(userId, profile);
+  saveProfileLocal(profile);
+}
+
 /**
  * プロフィールが1つでも埋まっているか判定。
- * Fashion / Recipe バナー表示の判定に使う。
  */
 export function hasProfileData(profile: KokoroUserProfile | null): boolean {
   if (!profile) return false;
@@ -81,7 +130,6 @@ export function hasProfileData(profile: KokoroUserProfile | null): boolean {
 
 /**
  * Fashion 用のプロフィール文脈文字列を組み立てる。
- * 空フィールドは含めない。
  */
 export function buildFashionProfileContext(profile: KokoroUserProfile | null): string {
   if (!profile || !hasProfileData(profile)) return '';

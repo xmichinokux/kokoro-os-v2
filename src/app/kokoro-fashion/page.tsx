@@ -56,8 +56,8 @@ export default function KokoroFashion() {
         body: JSON.stringify({
           imageBase64: opts.imageBase64 || undefined,
           imageMediaType: opts.imageMediaType || undefined,
-          profile: opts.profile || getProfile(),
-          kokoroProfile: getKokoroProfile(),
+          profile: opts.profile || await getProfile(),
+          kokoroProfile: await getKokoroProfile(),
         }),
       });
       const data = await res.json();
@@ -88,9 +88,10 @@ export default function KokoroFashion() {
     setStarted(true);
 
     // Kokoro Profile を読み込んでバナー表示用にstateへ
-    setKokoroProfile(getKokoroProfile());
+    getKokoroProfile().then(p => { if (p) setKokoroProfile(p); });
 
-    const currentProfile = getProfile();
+    const init = async () => {
+    const currentProfile = await getProfile();
     let intentProfile = currentProfile;
     let imgBase64: string | null = null;
     let imgType: string | null = null;
@@ -115,9 +116,11 @@ export default function KokoroFashion() {
       imageBase64: imgBase64,
       imageMediaType: imgType,
     });
+    };
+    init();
   }, [started, runAnalysis]);
 
-  const handleSaveToNote = () => {
+  const handleSaveToNote = async () => {
     if (!result || noteSaved) return;
     const text = [
       `[スタイル名] ${result.styleName}`,
@@ -135,7 +138,7 @@ export default function KokoroFashion() {
       '',
       `[年齢・文脈]\n${result.details.ageVision}`,
     ].filter(Boolean).join('\n');
-    saveToNote(text, 'Fashion');
+    await saveToNote(text, 'Fashion');
     setNoteSaved(true);
   };
 
