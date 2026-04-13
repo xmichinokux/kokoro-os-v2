@@ -3,16 +3,15 @@ import { google, type drive_v3 } from 'googleapis';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
-// 対象MIMEタイプ
-const TARGET_MIME_TYPES = [
-  'text/plain',
-  'application/vnd.google-apps.document',
-  'application/pdf',
-];
-
-const MIME_QUERY = TARGET_MIME_TYPES
-  .map(t => `mimeType='${t}'`)
-  .join(' or ');
+// 検索クエリ: MIMEタイプ + .md拡張子（text/plainとして保存される場合がある）
+const FILE_QUERY = [
+  "mimeType='text/plain'",
+  "mimeType='application/vnd.google-apps.document'",
+  "mimeType='application/pdf'",
+  "mimeType='text/markdown'",
+  "mimeType='text/x-markdown'",
+  "name contains '.md'",
+].join(' or ');
 
 // 指定フォルダとそのサブフォルダのIDを再帰的に収集
 async function collectFolderIds(
@@ -61,7 +60,7 @@ async function listFilesInFolders(
     let pageToken: string | undefined;
     while (allFiles.length < maxFiles) {
       const res = await drive.files.list({
-        q: `'${folderId}' in parents and (${MIME_QUERY}) and trashed=false`,
+        q: `'${folderId}' in parents and (${FILE_QUERY}) and trashed=false`,
         fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, parents)',
         pageSize: 100,
         orderBy: 'modifiedTime desc',
@@ -84,8 +83,10 @@ async function readFileContent(
   drive: drive_v3.Drive,
   file: drive_v3.Schema$File
 ): Promise<string> {
-  if (file.mimeType === 'application/vnd.google-apps.document') {
-    // Google Docs → テキスト書き出し
+  const mime = file.mimeType || '';
+
+  // Google Docs → テキスト書き出し
+  if (mime === 'application/vnd.google-apps.document') {
     const res = await drive.files.export({
       fileId: file.id!,
       mimeType: 'text/plain',
@@ -93,8 +94,8 @@ async function readFileContent(
     return String(res.data);
   }
 
-  if (file.mimeType === 'application/pdf') {
-    // PDF → バイナリ取得 → 動的importでpdf-parse
+  // PDF → バイナリ取得 → pdf-parse でテキスト抽出
+  if (mime === 'application/pdf') {
     try {
       const { PDFParse } = await import('pdf-parse');
       const res = await drive.files.get(
@@ -106,12 +107,11 @@ async function readFileContent(
       const result = await parser.getText();
       return result.text;
     } catch {
-      // pdf-parseが使えない環境（Vercel等）ではスキップ
       throw new Error('PDF解析不可（サーバーレス環境）');
     }
   }
 
-  // プレーンテキスト
+  // テキスト系（text/plain, text/markdown, text/x-markdown, .mdファイル）
   const res = await drive.files.get({
     fileId: file.id!,
     alt: 'media',
