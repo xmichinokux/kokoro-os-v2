@@ -267,6 +267,7 @@ export default function KokoroProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState('');
+  const [scanFolder, setScanFolder] = useState('Scan Data');
   const [scanResult, setScanResult] = useState<{
     totalFound?: number;
     loadedFiles?: string[];
@@ -420,7 +421,7 @@ export default function KokoroProfilePage() {
       const res = await fetch('/api/drive-scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken, userId }),
+        body: JSON.stringify({ accessToken, userId, folderName: scanFolder }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -586,6 +587,19 @@ export default function KokoroProfilePage() {
                 </div>
               )}
 
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                <span style={{ ...mono, fontSize: 8, color: '#6b7280', whiteSpace: 'nowrap' }}>// 対象フォルダ:</span>
+                <input
+                  type="text"
+                  value={scanFolder}
+                  onChange={e => setScanFolder(e.target.value)}
+                  style={{
+                    ...mono, fontSize: 11, color: '#111827',
+                    background: '#fff', border: '1px solid #d1d5db',
+                    borderRadius: 3, padding: '4px 8px', width: 160, outline: 'none',
+                  }}
+                />
+              </div>
               <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.08em', marginTop: 8, opacity: 0.7 }}>
                 // 週1回の更新を推奨。スキャンには数十秒〜数分かかります
               </div>

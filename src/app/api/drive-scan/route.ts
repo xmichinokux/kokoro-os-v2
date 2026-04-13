@@ -14,31 +14,66 @@ const MIME_QUERY = TARGET_MIME_TYPES
   .map(t => `mimeType='${t}'`)
   .join(' or ');
 
-// ページネーションで全ファイルを取得（上限200件）
-async function listAllFiles(
+// 指定フォルダとそのサブフォルダのIDを再帰的に収集
+async function collectFolderIds(
   drive: drive_v3.Drive,
+  folderName: string
+): Promise<string[]> {
+  // ルートフォルダを検索
+  const rootRes = await drive.files.list({
+    q: `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: 'files(id, name)',
+  });
+  const rootFolder = rootRes.data.files?.[0];
+  if (!rootFolder) throw new Error(`Googleドライブに「${folderName}」フォルダが見つかりません`);
+
+  const folderIds: string[] = [rootFolder.id!];
+
+  // BFSでサブフォルダを再帰的に収集
+  const queue = [rootFolder.id!];
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const subRes = await drive.files.list({
+      q: `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id, name)',
+      pageSize: 100,
+    });
+    for (const sub of subRes.data.files || []) {
+      folderIds.push(sub.id!);
+      queue.push(sub.id!);
+    }
+  }
+
+  return folderIds;
+}
+
+// 指定フォルダ群の中のファイルをページネーションで取得（上限200件）
+async function listFilesInFolders(
+  drive: drive_v3.Drive,
+  folderIds: string[],
   maxFiles = 200
 ): Promise<drive_v3.Schema$File[]> {
   const allFiles: drive_v3.Schema$File[] = [];
-  let pageToken: string | undefined;
 
-  while (allFiles.length < maxFiles) {
-    const res = await drive.files.list({
-      q: `(${MIME_QUERY}) and trashed=false`,
-      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, parents)',
-      pageSize: 100,
-      orderBy: 'modifiedTime desc',
-      pageToken,
-      // サブフォルダ内も含む（corpora=user がデフォルトで全フォルダ横断）
-      corpora: 'user',
-      includeItemsFromAllDrives: false,
-    });
+  for (const folderId of folderIds) {
+    if (allFiles.length >= maxFiles) break;
 
-    const files = res.data.files || [];
-    allFiles.push(...files);
+    let pageToken: string | undefined;
+    while (allFiles.length < maxFiles) {
+      const res = await drive.files.list({
+        q: `'${folderId}' in parents and (${MIME_QUERY}) and trashed=false`,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, parents)',
+        pageSize: 100,
+        orderBy: 'modifiedTime desc',
+        pageToken,
+      });
 
-    pageToken = res.data.nextPageToken ?? undefined;
-    if (!pageToken) break;
+      const files = res.data.files || [];
+      allFiles.push(...files);
+
+      pageToken = res.data.nextPageToken ?? undefined;
+      if (!pageToken) break;
+    }
   }
 
   return allFiles.slice(0, maxFiles);
@@ -91,7 +126,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { accessToken, userId } = await req.json();
+    const { accessToken, userId, folderName } = await req.json();
     if (!accessToken) {
       return NextResponse.json({ error: 'Googleアクセストークンがありません' }, { status: 401 });
     }
@@ -99,12 +134,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ユーザーIDがありません' }, { status: 401 });
     }
 
+    const targetFolder = folderName || 'Scan Data';
+
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: accessToken });
     const drive = google.drive({ version: 'v3', auth });
 
-    // 全ファイル一覧取得（ページネーション・サブフォルダ込み）
-    const allFiles = await listAllFiles(drive);
+    // 対象フォルダ + サブフォルダを再帰的に収集
+    const folderIds = await collectFolderIds(drive, targetFolder);
+
+    // フォルダ内のファイル一覧取得
+    const allFiles = await listFilesInFolders(drive, folderIds);
 
     // ファイル一覧（デバッグ用にレスポンスにも含める）
     const fileList = allFiles.map(f => ({
