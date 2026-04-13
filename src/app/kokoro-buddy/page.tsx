@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase/client';
 import PersonaLoading from '@/components/PersonaLoading';
 
 type BuddyMessage = { role: 'user' | 'assistant'; content: string };
+type BuddyMode = 'normal' | 'michi';
 
 const IDEA_CHIPS = [
   { label: '新しいビジネスのアイデア', text: '新しいビジネスのアイデアがあって' },
@@ -18,10 +20,25 @@ export default function KokoroBuddyPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
   const accentColor = '#6366f1';
 
+  const [mode, setMode] = useState<BuddyMode>('normal');
+  const [hasCache, setHasCache] = useState(false);
   const [messages, setMessages] = useState<BuddyMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // 感性キャッシュの有無を確認
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      try {
+        const res = await fetch('/api/drive-cache');
+        const data = await res.json();
+        setHasCache(!!data.cache);
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -59,7 +76,7 @@ export default function KokoroBuddyPage() {
       const res = await fetch('/api/kokoro-buddy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newHistory }),
+        body: JSON.stringify({ messages: newHistory, mode }),
       });
       if (!res.ok) throw new Error('応答の取得に失敗しました');
       const data = await res.json();
@@ -72,7 +89,7 @@ export default function KokoroBuddyPage() {
       setIsLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [inputText, isLoading, messages]);
+  }, [inputText, isLoading, messages, mode]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -140,6 +157,49 @@ export default function KokoroBuddyPage() {
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 40px', display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 60px)' }}>
 
+        {/* モード切替 */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20, alignItems: 'center' }}>
+          <button
+            onClick={() => { setMode('normal'); setMessages([]); setError(''); }}
+            style={{
+              ...mono, fontSize: 10, letterSpacing: '.1em',
+              padding: '8px 20px', borderRadius: 2, cursor: 'pointer',
+              border: `1px solid ${mode === 'normal' ? accentColor : '#d1d5db'}`,
+              color: mode === 'normal' ? '#fff' : '#9ca3af',
+              background: mode === 'normal' ? accentColor : 'transparent',
+              fontWeight: mode === 'normal' ? 600 : 400,
+              transition: 'all 0.15s',
+            }}
+          >
+            Buddy
+          </button>
+          <button
+            onClick={() => {
+              if (!hasCache) return;
+              setMode('michi'); setMessages([]); setError('');
+            }}
+            title={!hasCache ? 'Profileページでドライブをスキャンしてください' : 'Buddy Michi'}
+            style={{
+              ...mono, fontSize: 10, letterSpacing: '.1em',
+              padding: '8px 20px', borderRadius: 2,
+              cursor: hasCache ? 'pointer' : 'not-allowed',
+              border: `1px solid ${mode === 'michi' ? '#0f9d58' : !hasCache ? '#e5e7eb' : '#d1d5db'}`,
+              color: mode === 'michi' ? '#fff' : !hasCache ? '#d1d5db' : '#9ca3af',
+              background: mode === 'michi' ? '#0f9d58' : 'transparent',
+              fontWeight: mode === 'michi' ? 600 : 400,
+              opacity: !hasCache ? 0.6 : 1,
+              transition: 'all 0.15s',
+            }}
+          >
+            Buddy Michi
+          </button>
+          {!hasCache && (
+            <span style={{ ...mono, fontSize: 8, color: '#9ca3af', marginLeft: 8 }}>
+              // <a href="/kokoro-profile" style={{ color: '#0f9d58' }}>Profileページ</a>でドライブをスキャンしてください
+            </span>
+          )}
+        </div>
+
         {/* ヒントテキスト */}
         {messages.length === 0 && (
           <>
@@ -148,7 +208,9 @@ export default function KokoroBuddyPage() {
               marginBottom: 20, lineHeight: 1.8,
               fontFamily: "'Noto Serif JP', serif",
             }}>
-              アイデアをぶつけてください。どんな断片でも、矛盾していても大丈夫。ディグが一緒に広げます。
+              {mode === 'michi'
+                ? 'あなたのセンスで壁打ちします。アイデアをぶつけてください。'
+                : 'アイデアをぶつけてください。どんな断片でも、矛盾していても大丈夫。ディグが一緒に広げます。'}
             </p>
 
             {/* クイックチップ */}
