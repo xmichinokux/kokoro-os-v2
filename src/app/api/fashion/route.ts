@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { KokoroProfile } from '@/lib/profile';
-import { buildFashionProfileContext, type KokoroUserProfile } from '@/lib/getProfile';
+import { buildFashionProfileContext, type KokoroUserProfile } from '@/lib/profileTypes';
 
 const FASHION_SYSTEM = `あなたはKokoro OSの「Fashion」診断AIです。
 

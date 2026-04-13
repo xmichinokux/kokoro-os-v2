@@ -12,7 +12,7 @@ export default function LoginBanner({ message }: { message?: string }) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: unknown } }) => {
       setShow(!session);
     });
   }, []);

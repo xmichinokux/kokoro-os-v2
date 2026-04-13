@@ -17,7 +17,7 @@ export default function AuthPage() {
 
   // すでにログイン済みならリダイレクト
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: unknown } }) => {
       if (session) router.replace('/');
     });
   }, [router]);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { KokoroRecipeInput } from '@/types/recipe';
-import { buildRecipeProfileContext, type KokoroUserProfile } from '@/lib/getProfile';
+import { buildRecipeProfileContext, type KokoroUserProfile } from '@/lib/profileTypes';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 type RequestBody = KokoroRecipeInput & { kokoroProfile?: KokoroUserProfile | null };
