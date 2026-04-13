@@ -71,7 +71,9 @@ export async function POST(req: NextRequest) {
       }
 
       if (cache) {
-        system = MICHI_PREFIX(cache);
+        // 感性キャッシュが長すぎる場合は切り詰め
+        const trimmedCache = cache.length > 4000 ? cache.slice(0, 4000) + '...(省略)' : cache;
+        system = MICHI_PREFIX(trimmedCache);
       } else {
         // キャッシュなし → 通常のBuddyにフォールバック
         const valueInject = KokoroValueEngine.forBuddy();
@@ -92,15 +94,20 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 300,
+        max_tokens: mode === 'michi' ? 600 : 300,
         system,
         messages: trimmed,
       }),
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || 'Anthropic API error');
+      const errBody = await res.text();
+      let errMsg = `Anthropic API error (${res.status})`;
+      try {
+        const err = JSON.parse(errBody);
+        errMsg = err.error?.message || errMsg;
+      } catch { /* non-JSON response */ }
+      throw new Error(errMsg);
     }
 
     const data = await res.json();
