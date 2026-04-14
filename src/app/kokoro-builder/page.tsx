@@ -54,6 +54,7 @@ export default function KokoroBuilderPage() {
   const [integrationNotes, setIntegrationNotes] = useState('');
   const [designDoc, setDesignDoc] = useState('');
   const [currentModuleIndex, setCurrentModuleIndex] = useState(-1);
+  const [interfaceDoc, setInterfaceDoc] = useState('');
 
   // Gatekeeperからの読み込み
   useEffect(() => {
@@ -218,6 +219,29 @@ export default function KokoroBuilderPage() {
     setModularPhase('building');
     setError('');
 
+    // Step 0: インターフェース定義を生成
+    let currentInterfaceDoc = interfaceDoc;
+    if (!currentInterfaceDoc) {
+      try {
+        const ifData = await apiFetch('/api/builder-interface', {
+          designDoc,
+          modules: modules.map(m => ({
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            dependencies: m.dependencies,
+            implementation_notes: m.implementation_notes,
+          })),
+        });
+        currentInterfaceDoc = ifData.interfaceDoc as string;
+        setInterfaceDoc(currentInterfaceDoc);
+      } catch (e) {
+        // インターフェース生成失敗でも続行可能（従来と同じ動作）
+        console.warn('インターフェース生成をスキップ:', e);
+        currentInterfaceDoc = '';
+      }
+    }
+
     const updated = [...modules];
 
     for (let i = 0; i < updated.length; i++) {
@@ -238,6 +262,7 @@ export default function KokoroBuilderPage() {
           moduleDescription: updated[i].description,
           implementationNotes: updated[i].implementation_notes,
           previousModules: previousCode,
+          interfaceDoc: currentInterfaceDoc,
         });
         updated[i] = { ...updated[i], code: data.code as string, state: 'done' };
         setModules([...updated]);
@@ -269,7 +294,7 @@ export default function KokoroBuilderPage() {
       setError(e instanceof Error ? e.message : '統合に失敗しました');
       setModularPhase('split_done');
     }
-  }, [modules, spec, integrationNotes, designDoc, apiFetch, showPreview]);
+  }, [modules, spec, integrationNotes, designDoc, interfaceDoc, apiFetch, showPreview]);
 
   // === Modular: 失敗モジュールをリトライ ===
   const handleRetryModule = useCallback(async (index: number) => {
@@ -290,6 +315,7 @@ export default function KokoroBuilderPage() {
         moduleDescription: updated[index].description,
         implementationNotes: updated[index].implementation_notes,
         previousModules: previousCode,
+        interfaceDoc,
       });
       updated[index] = { ...updated[index], code: data.code as string, state: 'done' };
       setModules([...updated]);
@@ -298,7 +324,7 @@ export default function KokoroBuilderPage() {
       setModules([...updated]);
       setError(`リトライ失敗: ${e instanceof Error ? e.message : 'エラー'}`);
     }
-  }, [modules, spec, apiFetch]);
+  }, [modules, spec, interfaceDoc, apiFetch]);
 
   // ビルド実行（通常モード用）
   const handleBuild = useCallback(() => {
@@ -356,6 +382,7 @@ export default function KokoroBuilderPage() {
     setModules([]);
     setIntegrationNotes('');
     setDesignDoc('');
+    setInterfaceDoc('');
     setCurrentModuleIndex(-1);
     localStorage.removeItem(STORAGE_KEY_INSTRUCTION);
     localStorage.removeItem(STORAGE_KEY_SPEC);

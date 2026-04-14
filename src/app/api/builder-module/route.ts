@@ -2,19 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
-const MODULE_PROMPT = (spec: string, moduleName: string, moduleDesc: string, moduleNotes: string, previousModules: string) =>
+const MODULE_PROMPT = (spec: string, moduleName: string, moduleDesc: string, moduleNotes: string, previousModules: string, interfaceDoc: string) =>
   `あなたは優秀なフロントエンドエンジニアです。
 以下の仕様に従って、指定されたモジュールのJavaScriptコードを生成してください。
 
 【全体仕様書】
 ${spec}
 
+${interfaceDoc ? `【★全モジュールのインターフェース定義★】\n以下はプロジェクト全体の設計図です。このモジュールで定義すべきクラス名・メソッド名はここに記載されています。\n他のモジュールのインターフェースも記載されていますが、まだ実装されていないモジュールのクラスは使用できません。\n\n${interfaceDoc}\n` : ''}
 【モジュール情報】
 名前：${moduleName}
 説明：${moduleDesc}
 実装の注意点：${moduleNotes}
 
-${previousModules ? `【既存のモジュールコード】\n以下のコードは既に定義済みです。このコード内のクラス名・関数名だけが使用可能です。\n${previousModules}` : '【既存のモジュールコード】\nまだ何も定義されていません。全て自分で定義してください。'}
+${previousModules ? `【既存のモジュールコード（実装済み）】\n以下のコードは既に定義済みです。このコード内のクラス名・関数名だけが使用可能です。\n${previousModules}` : '【既存のモジュールコード】\nまだ何も定義されていません。全て自分で定義してください。'}
 
 【ルール】
 ・このモジュールの担当部分のみを実装する
@@ -49,12 +50,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { spec, moduleName, moduleDescription, implementationNotes, previousModules } = await req.json() as {
+    const { spec, moduleName, moduleDescription, implementationNotes, previousModules, interfaceDoc } = await req.json() as {
       spec: string;
       moduleName: string;
       moduleDescription: string;
       implementationNotes: string;
       previousModules: string;
+      interfaceDoc?: string;
     };
 
     if (!spec || !moduleName) {
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
       },
       messages: [{
         role: 'user',
-        content: MODULE_PROMPT(spec, moduleName, moduleDescription || '', implementationNotes || '', previousModules || ''),
+        content: MODULE_PROMPT(spec, moduleName, moduleDescription || '', implementationNotes || '', previousModules || '', interfaceDoc || ''),
       }],
     });
 
