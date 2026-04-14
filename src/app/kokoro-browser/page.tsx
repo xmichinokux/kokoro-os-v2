@@ -111,7 +111,7 @@ export default function KokoroBrowserPage() {
   useEffect(() => {
     getAllNotes().then(all => {
       setLocalPublicNotes(
-        all.filter(n => n.isPublic).map(n => ({
+        all.filter(n => n.isPublic && !n.isProduct).map(n => ({
           id: n.id,
           title: n.title,
           body: n.body,
