@@ -2,46 +2,40 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
-const INTEGRATE_PROMPT = (allModules: string, integrationNotes: string, designDoc: string) =>
+// モジュール名一覧だけ渡して、HTMLシェル+初期化コードだけ生成させる
+const SHELL_PROMPT = (moduleNames: string, integrationNotes: string, designDoc: string) =>
   `あなたは優秀なソフトウェアアーキテクトです。
-以下のモジュールを統合して、完全に動作するシングルHTMLファイルを生成してください。
+以下の設計書とモジュール構成に基づいて、HTMLシェル（外枠）と初期化コードを生成してください。
+
+【重要】モジュールのコード本体は別途挿入します。あなたが生成するのは以下だけです：
+1. <!DOCTYPE html>〜<head>（meta, title, CDN script/link, style）
+2. <body>内のHTML要素（canvas, div等）
+3. 初期化スクリプト（モジュールを正しい順序で起動するコード）
+4. </body></html>
+
+モジュールコードが入る場所に「// __MODULES__」というプレースホルダーを1つだけ置いてください。
 
 【設計書】
 ${designDoc}
 
-【生成されたモジュール】
-${allModules}
+【モジュール構成】
+${moduleNames}
 
 【統合の注意点】
 ${integrationNotes}
 
 【特に注意すること】
-・各モジュールの初期化順序を設計書通りに守る
-・Phaser 3を使う場合はdocument.readyState確認後に起動する
-・シーン遷移（タイトル→ゲーム）はPhaser.Scene.startを使う
-・グローバル変数の競合を避ける
+・Phaser 3を使う場合はtype: Phaser.CANVASを使用する
+・document.readyStateを確認してから初期化する
 ・タッチイベントとマウスイベントを両方対応する
 
 【ルール】
 ・HTMLコードのみを返す（説明文・マークダウン不要）
-・<!DOCTYPE html>から始まる完全なHTMLを出力する
-・全モジュールのコードを<script>タグ内に統合する
-・外部ライブラリはCDN経由で読み込む
-・動作確認済みの各モジュールを壊さないように統合する
+・<!DOCTYPE html>から始まる
 ・日本語対応（Noto Sans JPをGoogle Fontsから読み込む）
 ・モバイル対応（viewportメタタグ必須）
-・Phaser 3を使う場合はtype: Phaser.CANVASを使用する
-・document.readyStateを確認してから初期化する
 ・マークダウンのコードブロックは使わない
 ・<!DOCTYPE html>から始めてください`;
-
-// レスポンスのcontent配列からtextを抽出（thinking部分をスキップ）
-function extractText(content: { type: string; text?: string }[]): string {
-  for (const block of content) {
-    if (block.type === 'text' && block.text) return block.text;
-  }
-  return '';
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,16 +54,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'モジュールが必要です' }, { status: 400 });
     }
 
-    const allModules = modules
-      .map((m, i) => `=== Module ${i + 1}: ${m.name} ===\n${m.code}`)
-      .join('\n\n');
+    // モジュール名と説明だけ渡す（コード本体は渡さない→プロンプト軽量化）
+    const moduleNames = modules
+      .map((m, i) => `Module ${i + 1}: ${m.name}`)
+      .join('\n');
 
     const body = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8000,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 1024,
+      },
       messages: [{
         role: 'user',
-        content: INTEGRATE_PROMPT(allModules, integrationNotes || '', designDoc || ''),
+        content: SHELL_PROMPT(moduleNames, integrationNotes || '', designDoc || ''),
       }],
     });
 
@@ -100,22 +99,48 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    let code = extractText(data.content).trim();
+    // thinking部分をスキップしてtextのみ取得
+    let shell = '';
+    for (const block of data.content) {
+      if (block.type === 'text' && block.text) { shell = block.text; break; }
+    }
+    shell = shell.trim();
 
     // コードブロックが含まれていたら除去
-    const codeBlockMatch = code.match(/```(?:html|HTML)?\s*\n([\s\S]*?)```/);
+    const codeBlockMatch = shell.match(/```(?:html|HTML)?\s*\n([\s\S]*?)```/);
     if (codeBlockMatch) {
-      code = codeBlockMatch[1].trim();
+      shell = codeBlockMatch[1].trim();
     }
 
     // <!DOCTYPE html> より前のテキストを除去
-    const doctypeIndex = code.indexOf('<!DOCTYPE');
-    if (doctypeIndex > 0) {
-      code = code.substring(doctypeIndex);
-    }
-    const doctypeLower = code.indexOf('<!doctype');
-    if (doctypeLower > 0) {
-      code = code.substring(doctypeLower);
+    const doctypeIndex = shell.indexOf('<!DOCTYPE');
+    if (doctypeIndex > 0) shell = shell.substring(doctypeIndex);
+    const doctypeLower = shell.indexOf('<!doctype');
+    if (doctypeLower > 0) shell = shell.substring(doctypeLower);
+
+    // フロントエンドでモジュールコードを挿入するため、シェルとモジュールコードを分けて返す
+    const allModuleCode = modules
+      .map(m => `// === ${m.name} ===\n${m.code}`)
+      .join('\n\n');
+
+    // __MODULES__ プレースホルダーにモジュールコードを挿入
+    let code: string;
+    if (shell.includes('// __MODULES__')) {
+      code = shell.replace('// __MODULES__', allModuleCode);
+    } else {
+      // プレースホルダーがない場合は</script>の前に挿入
+      const scriptCloseIndex = shell.lastIndexOf('</script>');
+      if (scriptCloseIndex > 0) {
+        code = shell.slice(0, scriptCloseIndex) + '\n' + allModuleCode + '\n' + shell.slice(scriptCloseIndex);
+      } else {
+        // scriptタグもない場合は</body>の前に挿入
+        const bodyCloseIndex = shell.lastIndexOf('</body>');
+        if (bodyCloseIndex > 0) {
+          code = shell.slice(0, bodyCloseIndex) + '<script>\n' + allModuleCode + '\n</script>\n' + shell.slice(bodyCloseIndex);
+        } else {
+          code = shell + '\n<script>\n' + allModuleCode + '\n</script>';
+        }
+      }
     }
 
     return NextResponse.json({ code });
