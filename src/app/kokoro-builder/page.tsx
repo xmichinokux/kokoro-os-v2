@@ -17,13 +17,14 @@ const BUILD_OPTIONS: { value: BuildType; label: string; desc: string }[] = [
 export default function KokoroBuilderPage() {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const blobUrlRef = useRef<string | null>(null);
+  const prevBlobUrlRef = useRef<string | null>(null);
 
   const [spec, setSpec] = useState('');
   const [buildType, setBuildType] = useState<BuildType>('html');
   const [fromGatekeeper, setFromGatekeeper] = useState(false);
   const [phase, setPhase] = useState<'input' | 'generating' | 'done'>('input');
   const [generatedCode, setGeneratedCode] = useState('');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -45,7 +46,7 @@ export default function KokoroBuilderPage() {
   // blob URL cleanup
   useEffect(() => {
     return () => {
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
     };
   }, []);
 
@@ -55,6 +56,7 @@ export default function KokoroBuilderPage() {
     setPhase('generating');
     setError('');
     setGeneratedCode('');
+    setPreviewUrl(null);
     setShowCode(false);
     setCopied(false);
 
@@ -77,10 +79,11 @@ export default function KokoroBuilderPage() {
       setGeneratedCode(code);
 
       // iframeにプレビュー表示
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
       const blob = new Blob([code], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
-      blobUrlRef.current = url;
+      prevBlobUrlRef.current = url;
+      setPreviewUrl(url);
 
       setPhase('done');
     } catch (e) {
@@ -279,7 +282,7 @@ export default function KokoroBuilderPage() {
             }}>
               <iframe
                 ref={iframeRef}
-                src={blobUrlRef.current || undefined}
+                src={previewUrl || undefined}
                 scrolling="yes"
                 style={{
                   width: '100%', height: 667, border: 'none', display: 'block',
@@ -319,7 +322,7 @@ export default function KokoroBuilderPage() {
               >{showCode ? 'コードを隠す' : 'コードを見る'}</button>
 
               <button
-                onClick={() => { setPhase('input'); setGeneratedCode(''); setError(''); setShowCode(false); setCopied(false); if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; } }}
+                onClick={() => { setPhase('input'); setGeneratedCode(''); setPreviewUrl(null); setError(''); setShowCode(false); setCopied(false); if (prevBlobUrlRef.current) { URL.revokeObjectURL(prevBlobUrlRef.current); prevBlobUrlRef.current = null; } }}
                 style={{
                   ...mono, fontSize: 10, letterSpacing: '0.12em',
                   background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
