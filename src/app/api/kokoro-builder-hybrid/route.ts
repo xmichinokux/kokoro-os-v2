@@ -80,14 +80,14 @@ export async function POST(req: NextRequest) {
       }
 
       const body = JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8000,
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 16000,
         messages: [{ role: 'user', content: CLAUDE_PROMPT(instruction, spec || '') }],
       });
 
-      // 529 Overloaded 自動リトライ
+      // 529 Overloaded 自動リトライ（指数バックオフ）
       let res: Response | null = null;
-      for (let attempt = 0; attempt < 5; attempt++) {
+      for (let attempt = 0; attempt < 8; attempt++) {
         res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -98,7 +98,8 @@ export async function POST(req: NextRequest) {
           body,
         });
         if (res.status !== 529) break;
-        await new Promise(r => setTimeout(r, 3000));
+        const waitMs = Math.min(3000 * Math.pow(1.5, attempt), 15000);
+        await new Promise(r => setTimeout(r, waitMs));
       }
 
       if (!res || !res.ok) {

@@ -156,7 +156,7 @@ export default function KokoroBuilderPage() {
   const [copied, setCopied] = useState(false);
 
   // Hybrid用
-  const [hybridPhase, setHybridPhase] = useState<'input' | 'step1_loading' | 'step1_done' | 'step2_loading' | 'done'>('input');
+  const [hybridPhase, setHybridPhase] = useState<'input' | 'step1_loading' | 'step1_done' | 'step2_loading' | 'runtime_testing' | 'done'>('input');
   const [geminiInstruction, setGeminiInstruction] = useState('');
 
   // Modular用
@@ -264,68 +264,6 @@ export default function KokoroBuilderPage() {
     }
   }, [spec, apiFetch]);
 
-  // === Hybrid Step 2 ===
-  const handleHybridStep2 = useCallback(async () => {
-    if (!geminiInstruction) return;
-    setHybridPhase('step2_loading');
-    setPhase('generating');
-    setError('');
-    setGeneratedCode('');
-    setPreviewUrl(null);
-    setShowCode(false);
-    setCopied(false);
-    try {
-      const data = await apiFetch('/api/kokoro-builder-hybrid', { spec: spec.trim(), step: 'claude', instruction: geminiInstruction });
-      showPreview(data.code as string);
-      setHybridPhase('done');
-      localStorage.removeItem(STORAGE_KEY_INSTRUCTION);
-      localStorage.removeItem(STORAGE_KEY_SPEC);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'コード生成に失敗しました');
-      setHybridPhase('step1_done');
-      setPhase('input');
-    }
-  }, [spec, geminiInstruction, showPreview, apiFetch]);
-
-  // === Modular Step 1a: 設計書生成 ===
-  const handleModularDesign = useCallback(async () => {
-    if (!spec.trim()) return;
-    setModularPhase('designing');
-    setError('');
-    setModules([]);
-    setIntegrationNotes('');
-    setDesignDoc('');
-    try {
-      const data = await apiFetch('/api/builder-split', { spec: spec.trim() });
-      if (!data.designDoc) throw new Error('設計書の生成に失敗しました');
-      setDesignDoc(data.designDoc);
-      setModularPhase('design_done');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '設計書の生成に失敗しました');
-      setModularPhase('input');
-    }
-  }, [spec, apiFetch]);
-
-  // === Modular Step 1b: モジュール分割 ===
-  const handleModularSplit = useCallback(async () => {
-    if (!designDoc) return;
-    setModularPhase('splitting');
-    setError('');
-    setModules([]);
-    setIntegrationNotes('');
-    try {
-      const data = await apiFetch('/api/builder-split-modules', { designDoc });
-      if (!data.modules || !Array.isArray(data.modules)) throw new Error('モジュール一覧の取得に失敗しました');
-      const mods: GeneratedModule[] = (data.modules as ModuleInfo[]).map(m => ({ ...m, code: '', state: 'pending' as ModuleState }));
-      setModules(mods);
-      setIntegrationNotes(data.integration_notes || '');
-      setModularPhase('split_done');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'モジュール分割に失敗しました');
-      setModularPhase('design_done');
-    }
-  }, [designDoc, apiFetch]);
-
   // === ランタイムエラー検出 ===
   const injectErrorSnippet = useCallback((html: string): string => {
     const snippet = `<script>
@@ -392,6 +330,118 @@ export default function KokoroBuilderPage() {
       }, 5000);
     });
   }, [injectErrorSnippet]);
+
+  // === Hybrid Step 2 ===
+  const handleHybridStep2 = useCallback(async () => {
+    if (!geminiInstruction) return;
+    setHybridPhase('step2_loading');
+    setPhase('generating');
+    setError('');
+    setGeneratedCode('');
+    setPreviewUrl(null);
+    setShowCode(false);
+    setCopied(false);
+    setValidationLog([]);
+    try {
+      const data = await apiFetch('/api/kokoro-builder-hybrid', { spec: spec.trim(), step: 'claude', instruction: geminiInstruction });
+      let currentCode = data.code as string;
+
+      // ランタイムテストループ（最大3ラウンド）
+      const MAX_RT_ROUNDS = 3;
+      const logs: string[] = [];
+
+      for (let rtRound = 0; rtRound < MAX_RT_ROUNDS; rtRound++) {
+        setHybridPhase('runtime_testing');
+        logs.push(`▶ ランタイムテスト ${rtRound + 1}/${MAX_RT_ROUNDS}...`);
+        setValidationLog([...logs]);
+
+        const runtimeErrors = await testRuntimeErrors(currentCode);
+
+        if (runtimeErrors.length === 0) {
+          logs.push(`✓ ランタイムエラーなし${rtRound > 0 ? `（修正${rtRound}回で成功）` : ''}`);
+          setValidationLog([...logs]);
+          break;
+        }
+
+        // 最終ラウンド
+        if (rtRound === MAX_RT_ROUNDS - 1) {
+          logs.push(`△ ${runtimeErrors.length}件のランタイムエラーが残っていますが、プレビューを表示します`);
+          runtimeErrors.forEach(e => logs.push(`  - ${e}`));
+          setValidationLog([...logs]);
+          break;
+        }
+
+        // エラーをAPIに送って修正
+        logs.push(`  → ${runtimeErrors.length}件のランタイムエラーを修正中...`);
+        runtimeErrors.slice(0, 5).forEach(e => logs.push(`  - ${e}`));
+        setValidationLog([...logs]);
+
+        try {
+          const fixData = await apiFetch('/api/builder-runtime-fix', {
+            html: currentCode,
+            errors: runtimeErrors.slice(0, 10),
+            designDoc: geminiInstruction, // Hybridでは設計書=geminiInstruction
+          });
+          currentCode = fixData.code as string;
+          logs.push(`  ✓ 修正コードを受信`);
+          setValidationLog([...logs]);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'エラー';
+          logs.push(`  ✗ 修正失敗: ${msg}`);
+          setValidationLog([...logs]);
+          break;
+        }
+      }
+
+      showPreview(currentCode);
+      setHybridPhase('done');
+      localStorage.removeItem(STORAGE_KEY_INSTRUCTION);
+      localStorage.removeItem(STORAGE_KEY_SPEC);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'コード生成に失敗しました');
+      setHybridPhase('step1_done');
+      setPhase('input');
+    }
+  }, [spec, geminiInstruction, showPreview, apiFetch, testRuntimeErrors]);
+
+  // === Modular Step 1a: 設計書生成 ===
+  const handleModularDesign = useCallback(async () => {
+    if (!spec.trim()) return;
+    setModularPhase('designing');
+    setError('');
+    setModules([]);
+    setIntegrationNotes('');
+    setDesignDoc('');
+    try {
+      const data = await apiFetch('/api/builder-split', { spec: spec.trim() });
+      if (!data.designDoc) throw new Error('設計書の生成に失敗しました');
+      setDesignDoc(data.designDoc);
+      setModularPhase('design_done');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '設計書の生成に失敗しました');
+      setModularPhase('input');
+    }
+  }, [spec, apiFetch]);
+
+  // === Modular Step 1b: モジュール分割 ===
+  const handleModularSplit = useCallback(async () => {
+    if (!designDoc) return;
+    setModularPhase('splitting');
+    setError('');
+    setModules([]);
+    setIntegrationNotes('');
+    try {
+      const data = await apiFetch('/api/builder-split-modules', { designDoc });
+      if (!data.modules || !Array.isArray(data.modules)) throw new Error('モジュール一覧の取得に失敗しました');
+      const mods: GeneratedModule[] = (data.modules as ModuleInfo[]).map(m => ({ ...m, code: '', state: 'pending' as ModuleState }));
+      setModules(mods);
+      setIntegrationNotes(data.integration_notes || '');
+      setModularPhase('split_done');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'モジュール分割に失敗しました');
+      setModularPhase('design_done');
+    }
+  }, [designDoc, apiFetch]);
 
   // === ランタイムテスト+自動修正ループ ===
   const runRuntimeTestLoop = useCallback(async (initialCode: string, logs: string[]) => {
@@ -846,7 +896,7 @@ export default function KokoroBuilderPage() {
         )}
 
         {/* === Hybrid Step 1完了 === */}
-        {isHybrid && (hybridPhase === 'step1_done' || hybridPhase === 'step2_loading') && phase !== 'done' && (
+        {isHybrid && (hybridPhase === 'step1_done' || hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing') && phase !== 'done' && (
           <div>
             <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase', marginBottom: 16 }}>
               // Step 1完了 — Geminiの設計書
@@ -856,17 +906,30 @@ export default function KokoroBuilderPage() {
                 {geminiInstruction}
               </pre>
             </div>
-            <button onClick={handleHybridStep2} disabled={hybridPhase === 'step2_loading'} style={{
+            <button onClick={handleHybridStep2} disabled={hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing'} style={{
               ...mono, fontSize: 11, letterSpacing: '0.16em', background: accentColor, border: 'none', color: '#fff',
-              padding: '14px 32px', borderRadius: 4, cursor: hybridPhase === 'step2_loading' ? 'not-allowed' : 'pointer',
-              opacity: hybridPhase === 'step2_loading' ? 0.5 : 1, display: 'block', width: '100%', marginBottom: 12,
+              padding: '14px 32px', borderRadius: 4, cursor: (hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing') ? 'not-allowed' : 'pointer',
+              opacity: (hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing') ? 0.5 : 1, display: 'block', width: '100%', marginBottom: 12,
             }}>
-              {hybridPhase === 'step2_loading' ? '// Claudeが実装中...' : 'Step 2: Claudeで実装する'}
+              {hybridPhase === 'runtime_testing' ? '// ランタイムテスト中...' : hybridPhase === 'step2_loading' ? '// Claudeが実装中...' : 'Step 2: Claudeで実装する'}
             </button>
-            {hybridPhase === 'step2_loading' && <PersonaLoading />}
-            <button onClick={handleReset} disabled={hybridPhase === 'step2_loading'} style={{
+            {(hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing') && <PersonaLoading />}
+
+            {/* ランタイムテストログ（Hybrid） */}
+            {validationLog.length > 0 && (hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing') && (
+              <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 14, marginBottom: 16, maxHeight: 200, overflowY: 'auto' }}>
+                {validationLog.map((log, i) => (
+                  <div key={i} style={{
+                    ...mono, fontSize: 10, lineHeight: 1.8,
+                    color: log.startsWith('✓') ? '#4ade80' : log.startsWith('✗') || log.startsWith('△') ? '#f87171' : log.startsWith('▶') ? '#60a5fa' : '#9ca3af',
+                  }}>{log}</div>
+                ))}
+              </div>
+            )}
+
+            <button onClick={handleReset} disabled={hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing'} style={{
               ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
-              padding: '10px 20px', borderRadius: 4, cursor: hybridPhase === 'step2_loading' ? 'not-allowed' : 'pointer', display: 'block', width: '100%',
+              padding: '10px 20px', borderRadius: 4, cursor: (hybridPhase === 'step2_loading' || hybridPhase === 'runtime_testing') ? 'not-allowed' : 'pointer', display: 'block', width: '100%',
             }}>最初からやり直す</button>
           </div>
         )}
@@ -1030,6 +1093,21 @@ export default function KokoroBuilderPage() {
               <button onClick={() => setShowCode(prev => !prev)} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>{showCode ? 'コードを隠す' : 'コードを見る'}</button>
               <button onClick={handleReset} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>もう一度</button>
             </div>
+
+            {/* ランタイムテスト結果（Hybrid） */}
+            {isHybrid && validationLog.length > 0 && (
+              <details style={{ marginTop: 20 }} open>
+                <summary style={{ ...mono, fontSize: 10, letterSpacing: '0.1em', color: '#60a5fa', cursor: 'pointer', padding: '8px 0' }}>ランタイムテスト結果</summary>
+                <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 14, maxHeight: 200, overflowY: 'auto', marginTop: 8 }}>
+                  {validationLog.map((log, i) => (
+                    <div key={i} style={{
+                      ...mono, fontSize: 10, lineHeight: 1.8,
+                      color: log.startsWith('✓') ? '#4ade80' : log.startsWith('✗') || log.startsWith('△') ? '#f87171' : log.startsWith('▶') ? '#60a5fa' : '#9ca3af',
+                    }}>{log}</div>
+                  ))}
+                </div>
+              </details>
+            )}
 
             {/* Geminiの設計書（Hybrid） */}
             {isHybrid && geminiInstruction && (
