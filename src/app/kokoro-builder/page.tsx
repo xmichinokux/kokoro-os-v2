@@ -33,7 +33,6 @@ type GeneratedModule = ModuleInfo & { code: string; state: ModuleState };
 export default function KokoroBuilderPage() {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const prevBlobUrlRef = useRef<string | null>(null);
 
   const [spec, setSpec] = useState('');
   const [buildType, setBuildType] = useState<BuildType>('html');
@@ -81,21 +80,10 @@ export default function KokoroBuilderPage() {
     } catch { /* ignore */ }
   }, []);
 
-  // blob URL cleanup
-  useEffect(() => {
-    return () => {
-      if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
-    };
-  }, []);
-
-  // プレビュー表示共通処理
+  // プレビュー表示共通処理（srcdoc方式）
   const showPreview = useCallback((code: string) => {
     setGeneratedCode(code);
-    if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
-    const blob = new Blob([code], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    prevBlobUrlRef.current = url;
-    setPreviewUrl(url);
+    setPreviewUrl(code); // srcdocに直接HTMLを渡す
     setPhase('done');
   }, []);
 
@@ -345,7 +333,6 @@ export default function KokoroBuilderPage() {
     setCurrentModuleIndex(-1);
     localStorage.removeItem(STORAGE_KEY_INSTRUCTION);
     localStorage.removeItem(STORAGE_KEY_SPEC);
-    if (prevBlobUrlRef.current) { URL.revokeObjectURL(prevBlobUrlRef.current); prevBlobUrlRef.current = null; }
   }, []);
 
   const isHybrid = buildType === 'hybrid';
@@ -598,9 +585,9 @@ export default function KokoroBuilderPage() {
             </div>
 
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto', marginBottom: 20, background: '#f8f9fa', resize: 'vertical', minHeight: 400 }}>
-              <iframe ref={iframeRef} src={previewUrl || undefined} scrolling="yes"
+              <iframe ref={iframeRef} srcDoc={previewUrl || undefined} scrolling="yes"
                 style={{ width: '100%', height: 667, border: 'none', display: 'block' }}
-                sandbox="allow-scripts allow-same-origin allow-popups" title="Builder Preview" />
+                sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Builder Preview" />
             </div>
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
