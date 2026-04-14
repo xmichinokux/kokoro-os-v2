@@ -167,5 +167,13 @@ export async function togglePin(id: string): Promise<void> {
 }
 
 export function createNoteId(): string {
-  return `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  // Supabase の notes.id は uuid 型なので UUID v4 を生成
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // fallback
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
