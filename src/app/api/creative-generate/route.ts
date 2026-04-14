@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase/server';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 // Supabaseから感性マップを取得
 async function fetchAestheticMap(): Promise<string> {

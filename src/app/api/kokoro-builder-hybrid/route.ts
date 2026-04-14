@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+export const maxDuration = 120;
+
 const GEMINI_PROMPT = (spec: string) => `あなたは優秀なソフトウェアアーキテクトです。
 以下の仕様書を深く読んで、シングルHTMLファイルで実装するための
 詳細な実装指示書を作成してください。
