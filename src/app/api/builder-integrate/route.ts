@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const INTEGRATE_PROMPT = (spec: string, allModules: string, integrationNotes: string) =>
+const INTEGRATE_PROMPT = (spec: string, allModules: string, integrationNotes: string, moduleDesignInfo: string) =>
   `あなたは優秀なソフトウェアアーキテクトです。
 以下のモジュールを統合して、完全に動作するシングルHTMLファイルを生成してください。
 
 【全体仕様書】
 ${spec}
 
+【モジュール設計情報】
+${moduleDesignInfo}
+
 【生成されたモジュール】
 ${allModules}
 
 【統合の注意点】
 ${integrationNotes}
+
+【特に注意すること】
+・各モジュールの初期化順序を設計情報通りに守る
+・Phaser 3を使う場合はdocument.readyState確認後に起動する
+・シーン遷移（タイトル→ゲーム）はPhaser.Scene.startを使う
+・グローバル変数の競合を避ける
+・タッチイベントとマウスイベントを両方対応する
 
 【ルール】
 ・HTMLコードのみを返す（説明文・マークダウン不要）
@@ -34,10 +44,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { spec, modules, integrationNotes } = await req.json() as {
+    const { spec, modules, integrationNotes, moduleDesigns } = await req.json() as {
       spec: string;
       modules: { name: string; code: string }[];
       integrationNotes: string;
+      moduleDesigns?: { id: number; name: string; description: string; dependencies: number[]; implementation_notes: string }[];
     };
 
     if (!spec || !modules || modules.length === 0) {
@@ -48,9 +59,16 @@ export async function POST(req: NextRequest) {
       .map((m, i) => `=== Module ${i + 1}: ${m.name} ===\n${m.code}`)
       .join('\n\n');
 
+    // モジュール設計情報を整形
+    const moduleDesignInfo = moduleDesigns
+      ? moduleDesigns.map((m, i) =>
+          `Module ${m.id}: ${m.name}\n  説明: ${m.description}\n  依存: [${m.dependencies.join(', ')}]\n  注意点: ${m.implementation_notes}`
+        ).join('\n\n')
+      : '（設計情報なし）';
+
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContent(INTEGRATE_PROMPT(spec, allModules, integrationNotes || ''));
+    const result = await model.generateContent(INTEGRATE_PROMPT(spec, allModules, integrationNotes || '', moduleDesignInfo));
     let code = result.response.text().trim();
 
     // コードブロックが含まれていたら除去
