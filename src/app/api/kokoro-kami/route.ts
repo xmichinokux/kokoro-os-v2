@@ -1,32 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const KAMI_SYSTEM = `あなたはKokoro OSのKamiアシスタントです。ユーザーの要求に合った表構造を生成してください。
+export const maxDuration = 60;
 
-以下のJSONのみを返してください：
+// フル生成: マスター式から表全体を生成
+const GENERATE_SYSTEM = `あなたはKokoro OSの表計算エンジンです。
+ユーザーの自然言語の「式」から、構造化されたデータ表を生成します。
+
+ユーザーが求めるデータを正確に計算・調査して表にしてください。
+実用的で正確なデータを重視してください。
+
+以下のJSON**のみ**を返してください（説明文やマークダウン不要）:
 {
   "title": "表のタイトル",
-  "columns": ["列名1", "列名2", "列名3", ...],
-  "rows": [
-    ["値1", "値2", "値3", ...],
-    ["値1", "値2", "値3", ...]
+  "columns": [
+    {"id": "col_1", "name": "列名1"},
+    {"id": "col_2", "name": "列名2", "formula": "この列のデータの求め方（あれば）"}
   ],
-  "description": "この表の使い方・ポイント（80文字以内）"
+  "rows": [
+    ["値1", "値2"],
+    ["値1", "値2"]
+  ],
+  "description": "この表の説明（50文字以内）"
 }
 
-・実用的なサンプルデータを3〜5行入れてください
-・列は3〜7個が適切
-・ユーザーが編集しやすい構造にしてください`;
+・データは5〜15行が目安（ユーザーの要求に応じて調整）
+・列は3〜8個が適切
+・数値データは正確に。推定の場合は「約」をつける
+・列のformulaは「この列がどう計算されるか」の説明（例: "人口÷面積"、"前月比で計算"）`;
 
-export async function POST(req: NextRequest) {
-  const { text } = await req.json();
+// 列追加: 既存データに新しい列を計算して追加
+const ADD_COLUMN_SYSTEM = `あなたはKokoro OSの表計算エンジンです。
+既存の表に新しい列を追加計算します。
 
-  try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
-    }
+既存の列名とデータ、追加したい列の説明が与えられます。
+既存データを参照して新しい列の値を計算してください。
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+以下のJSON**のみ**を返してください:
+{
+  "column": {"id": "col_new", "name": "列名", "formula": "計算方法の説明"},
+  "values": ["行1の値", "行2の値", ...]
+}
+
+・valuesの数は既存の行数と一致させてください
+・既存データから論理的に導出できる値を生成してください`;
+
+// 行追加: 既存データのパターンに合わせて行を追加
+const ADD_ROWS_SYSTEM = `あなたはKokoro OSの表計算エンジンです。
+既存の表にデータ行を追加します。
+
+既存の列構造とデータが与えられます。
+ユーザーの指示に従って新しい行を生成してください。
+
+以下のJSON**のみ**を返してください:
+{
+  "rows": [
+    ["値1", "値2", ...],
+    ["値1", "値2", ...]
+  ]
+}
+
+・列数は既存の表と一致させてください
+・既存データのパターンと整合性のあるデータを生成してください`;
+
+async function callClaude(system: string, userMessage: string, maxTokens = 2000): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY が設定されていません');
+
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -35,26 +77,124 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1000,
-        system: KAMI_SYSTEM,
-        messages: [{ role: 'user', content: text }],
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: 'user', content: userMessage }],
       }),
     });
+    if (res.status !== 529) break;
+    await new Promise(r => setTimeout(r, Math.min(2000 * Math.pow(1.5, attempt), 10000)));
+  }
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || 'Anthropic API error');
+  if (!res || !res.ok) {
+    const err = await res?.json().catch(() => ({})) as { error?: { message?: string } };
+    throw new Error(err?.error?.message || `Claude API error (${res?.status})`);
+  }
+
+  const data = await res.json();
+  return data.content[0].text as string;
+}
+
+function extractJson(text: string): unknown {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('JSONの解析に失敗しました');
+  return JSON.parse(match[0]);
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { action } = body as { action: string };
+
+    // =====================
+    // フル生成
+    // =====================
+    if (action === 'generate') {
+      const { formula } = body as { formula: string };
+      if (!formula?.trim()) {
+        return NextResponse.json({ error: '式を入力してください' }, { status: 400 });
+      }
+
+      const raw = await callClaude(GENERATE_SYSTEM, formula.trim(), 4000);
+      const parsed = extractJson(raw) as {
+        title: string;
+        columns: { id: string; name: string; formula?: string }[];
+        rows: string[][];
+        description: string;
+      };
+
+      // idが無い列にidを付与
+      parsed.columns = (parsed.columns || []).map((c, i) => ({
+        id: c.id || `col_${i + 1}`,
+        name: c.name,
+        formula: c.formula,
+      }));
+
+      return NextResponse.json({ data: parsed });
     }
 
-    const data = await res.json();
-    const raw = data.content[0].text as string;
+    // =====================
+    // 列追加
+    // =====================
+    if (action === 'addColumn') {
+      const { columns, rows, columnDescription } = body as {
+        columns: { name: string }[];
+        rows: string[][];
+        columnDescription: string;
+      };
 
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) {
-      return NextResponse.json({ error: 'JSONの解析に失敗しました' }, { status: 500 });
+      const context = `【既存の表】
+列: ${columns.map(c => c.name).join(', ')}
+データ:
+${rows.slice(0, 20).map(r => r.join('\t')).join('\n')}
+
+【追加したい列】
+${columnDescription}`;
+
+      const raw = await callClaude(ADD_COLUMN_SYSTEM, context);
+      const parsed = extractJson(raw) as {
+        column: { id: string; name: string; formula?: string };
+        values: string[];
+      };
+
+      return NextResponse.json({ data: parsed });
     }
-    const parsed = JSON.parse(match[0]);
-    return NextResponse.json({ data: parsed });
+
+    // =====================
+    // 行追加
+    // =====================
+    if (action === 'addRows') {
+      const { columns, rows, instruction } = body as {
+        columns: { name: string }[];
+        rows: string[][];
+        instruction: string;
+      };
+
+      const context = `【既存の表】
+列: ${columns.map(c => c.name).join(', ')}
+データ（${rows.length}行）:
+${rows.slice(0, 10).map(r => r.join('\t')).join('\n')}
+${rows.length > 10 ? `...（他${rows.length - 10}行）` : ''}
+
+【追加指示】
+${instruction || '同じパターンで3行追加してください'}`;
+
+      const raw = await callClaude(ADD_ROWS_SYSTEM, context);
+      const parsed = extractJson(raw) as { rows: string[][] };
+
+      return NextResponse.json({ data: parsed });
+    }
+
+    // =====================
+    // 旧互換: text → generate
+    // =====================
+    if (body.text) {
+      const raw = await callClaude(GENERATE_SYSTEM, body.text.trim(), 2000);
+      const parsed = extractJson(raw);
+      return NextResponse.json({ data: parsed });
+    }
+
+    return NextResponse.json({ error: '不明なアクションです' }, { status: 400 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
