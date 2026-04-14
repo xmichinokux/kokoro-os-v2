@@ -30,6 +30,92 @@ type ModuleInfo = {
 type ModuleState = 'pending' | 'generating' | 'done' | 'error';
 type GeneratedModule = ModuleInfo & { code: string; state: ModuleState };
 
+// ===== 統合コードの静的バリデーション =====
+type ValidationIssue = { type: string; message: string; moduleHint?: string };
+
+function validateGeneratedCode(code: string, moduleNames: string[]): { valid: boolean; issues: ValidationIssue[] } {
+  const issues: ValidationIssue[] = [];
+
+  // scriptタグの中身を全て抽出
+  const scriptParts: string[] = [];
+  const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+  let sm;
+  while ((sm = scriptRegex.exec(code)) !== null) scriptParts.push(sm[1]);
+  const scriptContent = scriptParts.join('\n');
+
+  // 1. export/import文の検出
+  const exportLines = scriptContent.match(/^\s*(export\s+(default\s+)?(class|function|const|let|var|async))/gm);
+  if (exportLines) issues.push({ type: 'export', message: `export文が${exportLines.length}箇所あります（インラインscriptでは動作しません）` });
+
+  const importLines = scriptContent.match(/^\s*import\s+/gm);
+  if (importLines) issues.push({ type: 'import', message: `import文が${importLines.length}箇所あります（インラインscriptでは動作しません）` });
+
+  // 2. <script type="module">の検出
+  if (/<script\s[^>]*type\s*=\s*["']module["']/i.test(code)) {
+    issues.push({ type: 'module_script', message: '<script type="module">が使われています' });
+  }
+
+  // 3. 定義済みクラスを収集
+  const definedClasses = new Set<string>();
+  const classDefRegex = /class\s+(\w+)/g;
+  let cm;
+  while ((cm = classDefRegex.exec(scriptContent)) !== null) definedClasses.add(cm[1]);
+
+  // Phaser系と標準クラスはスキップ
+  const builtinPrefixes = ['Phaser', 'Map', 'Set', 'Array', 'Object', 'Error', 'Promise', 'Date', 'RegExp', 'URL', 'Image', 'Audio', 'WebSocket', 'Event', 'HTMLElement', 'Blob', 'File', 'FormData', 'AbortController', 'Int8Array', 'Uint8Array', 'Float32Array'];
+
+  const isKnownClass = (name: string) =>
+    definedClasses.has(name) || builtinPrefixes.some(p => name === p || name.startsWith(p + '.'));
+
+  // 4. 未定義クラスの new を検出
+  const newRegex = /new\s+([A-Z]\w*)\s*\(/g;
+  const undefinedNews = new Set<string>();
+  while ((cm = newRegex.exec(scriptContent)) !== null) {
+    if (!isKnownClass(cm[1])) undefinedNews.add(cm[1]);
+  }
+  if (undefinedNews.size > 0) {
+    // どのモジュールが参照しているか特定
+    const hint = findModuleWithPattern(scriptContent, moduleNames, [...undefinedNews].map(c => `new ${c}`));
+    issues.push({ type: 'undefined_new', message: `未定義のクラスをnewしています: ${[...undefinedNews].join(', ')}`, moduleHint: hint });
+  }
+
+  // 5. 未定義クラスの extends を検出
+  const extendsRegex = /extends\s+([A-Z]\w*(?:\.\w+)*)/g;
+  const undefinedExtends = new Set<string>();
+  while ((cm = extendsRegex.exec(scriptContent)) !== null) {
+    const base = cm[1].split('.')[0];
+    if (!isKnownClass(base) && !isKnownClass(cm[1])) undefinedExtends.add(cm[1]);
+  }
+  if (undefinedExtends.size > 0) {
+    const hint = findModuleWithPattern(scriptContent, moduleNames, [...undefinedExtends].map(c => `extends ${c}`));
+    issues.push({ type: 'undefined_extends', message: `未定義のクラスを継承しています: ${[...undefinedExtends].join(', ')}`, moduleHint: hint });
+  }
+
+  // 6. Phaser.Gameの重複初期化
+  const gameCount = (scriptContent.match(/new\s+Phaser\.Game\s*\(/g) || []).length;
+  if (gameCount > 1) {
+    issues.push({ type: 'duplicate_init', message: `Phaser.Gameが${gameCount}回初期化されています（1回にしてください）` });
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+
+// どのモジュールが問題のパターンを含んでいるか特定
+function findModuleWithPattern(fullCode: string, moduleNames: string[], patterns: string[]): string | undefined {
+  // モジュールコード区間を「// === ModuleName ===」で分割
+  for (const name of moduleNames) {
+    const marker = `// === ${name} ===`;
+    const startIdx = fullCode.indexOf(marker);
+    if (startIdx < 0) continue;
+    const nextMarkerIdx = fullCode.indexOf('// === ', startIdx + marker.length);
+    const moduleCode = nextMarkerIdx > 0 ? fullCode.slice(startIdx, nextMarkerIdx) : fullCode.slice(startIdx);
+    for (const pattern of patterns) {
+      if (moduleCode.includes(pattern)) return name;
+    }
+  }
+  return undefined;
+}
+
 export default function KokoroBuilderPage() {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -49,7 +135,8 @@ export default function KokoroBuilderPage() {
   const [geminiInstruction, setGeminiInstruction] = useState('');
 
   // Modular用
-  const [modularPhase, setModularPhase] = useState<'input' | 'designing' | 'design_done' | 'splitting' | 'split_done' | 'building' | 'integrating' | 'done'>('input');
+  const [modularPhase, setModularPhase] = useState<'input' | 'designing' | 'design_done' | 'splitting' | 'split_done' | 'building' | 'integrating' | 'validating' | 'fixing' | 'done'>('input');
+  const [validationLog, setValidationLog] = useState<string[]>([]);
   const [modules, setModules] = useState<GeneratedModule[]>([]);
   const [integrationNotes, setIntegrationNotes] = useState('');
   const [designDoc, setDesignDoc] = useState('');
@@ -287,25 +374,105 @@ export default function KokoroBuilderPage() {
       if (!moduleSuccess) return;
     }
 
-    // 全モジュール完了 → 統合
-    setModularPhase('integrating');
-    setCurrentModuleIndex(-1);
-    try {
-      const modulesForIntegration = updated
-        .filter(m => m.state === 'done')
-        .map(m => ({ name: m.name, code: m.code }));
+    // 全モジュール完了 → 統合 → バリデーション → 自動修正ループ（最大2ラウンド）
+    const MAX_FIX_ROUNDS = 2;
+    const logs: string[] = [];
 
-      const data = await apiFetch('/api/builder-integrate', {
-        modules: modulesForIntegration,
-        integrationNotes,
-        designDoc,
-      });
+    for (let round = 0; round <= MAX_FIX_ROUNDS; round++) {
+      // 統合
+      setModularPhase('integrating');
+      setCurrentModuleIndex(-1);
+      let integratedCode: string;
+      try {
+        const modulesForIntegration = updated
+          .filter(m => m.state === 'done')
+          .map(m => ({ name: m.name, code: m.code }));
 
-      showPreview(data.code as string);
-      setModularPhase('done');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '統合に失敗しました');
-      setModularPhase('split_done');
+        const data = await apiFetch('/api/builder-integrate', {
+          modules: modulesForIntegration,
+          integrationNotes,
+          designDoc,
+        });
+        integratedCode = data.code as string;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '統合に失敗しました');
+        setModularPhase('split_done');
+        return;
+      }
+
+      // バリデーション
+      setModularPhase('validating');
+      const moduleNames = updated.filter(m => m.state === 'done').map(m => m.name);
+      const validation = validateGeneratedCode(integratedCode, moduleNames);
+
+      if (validation.valid) {
+        logs.push(`✓ バリデーション通過${round > 0 ? `（修正${round}回目で成功）` : ''}`);
+        setValidationLog([...logs]);
+        showPreview(integratedCode);
+        setModularPhase('done');
+        return;
+      }
+
+      // 最終ラウンドならエラーがあっても結果を表示
+      if (round === MAX_FIX_ROUNDS) {
+        logs.push(`△ ${validation.issues.length}件の問題が残っていますが、プレビューを表示します`);
+        validation.issues.forEach(issue => logs.push(`  - ${issue.message}`));
+        setValidationLog([...logs]);
+        showPreview(integratedCode);
+        setModularPhase('done');
+        return;
+      }
+
+      // 自動修正: 問題のあるモジュールを特定して再生成
+      setModularPhase('fixing');
+      const issueMessages = validation.issues.map(i => i.message).join('\n');
+      logs.push(`⟳ 修正ラウンド${round + 1}: ${validation.issues.length}件の問題を検出`);
+      validation.issues.forEach(issue => logs.push(`  - ${issue.message}`));
+      setValidationLog([...logs]);
+
+      // 問題モジュールを特定（ヒントがあればそれ、なければ最後のモジュールを再生成）
+      const hintedModules = new Set(validation.issues.map(i => i.moduleHint).filter(Boolean));
+      const modulesToFix = hintedModules.size > 0
+        ? updated.filter(m => hintedModules.has(m.name))
+        : [updated[updated.length - 1]]; // 最後のモジュール（統合系が多い）
+
+      for (const mod of modulesToFix) {
+        const idx = updated.findIndex(m => m.id === mod.id);
+        if (idx < 0) continue;
+
+        logs.push(`  → Module「${mod.name}」を再生成中...`);
+        setValidationLog([...logs]);
+        setCurrentModuleIndex(idx);
+        updated[idx] = { ...updated[idx], state: 'generating' };
+        setModules([...updated]);
+
+        const previousCode = updated
+          .filter(m => updated[idx].dependencies.includes(m.id) && m.state === 'done')
+          .map(m => `// === ${m.name} ===\n${m.code}`)
+          .join('\n\n');
+
+        try {
+          const data = await apiFetch('/api/builder-module', {
+            spec: spec.trim(),
+            moduleName: updated[idx].name,
+            moduleDescription: updated[idx].description,
+            implementationNotes: updated[idx].implementation_notes + `\n\n【前回の統合で検出された問題（必ず修正すること）】\n${issueMessages}`,
+            previousModules: previousCode,
+            interfaceDoc: currentInterfaceDoc,
+          });
+          updated[idx] = { ...updated[idx], code: data.code as string, state: 'done' };
+          setModules([...updated]);
+          logs.push(`  ✓ Module「${mod.name}」の再生成完了`);
+          setValidationLog([...logs]);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'エラー';
+          logs.push(`  ✗ Module「${mod.name}」の再生成失敗: ${msg}`);
+          setValidationLog([...logs]);
+          // 再生成失敗でも続行（元のコードで統合を試みる）
+          updated[idx] = { ...updated[idx], state: 'done' };
+          setModules([...updated]);
+        }
+      }
     }
   }, [modules, spec, integrationNotes, designDoc, interfaceDoc, apiFetch, showPreview]);
 
@@ -396,6 +563,7 @@ export default function KokoroBuilderPage() {
     setIntegrationNotes('');
     setDesignDoc('');
     setInterfaceDoc('');
+    setValidationLog([]);
     setCurrentModuleIndex(-1);
     localStorage.removeItem(STORAGE_KEY_INSTRUCTION);
     localStorage.removeItem(STORAGE_KEY_SPEC);
@@ -585,7 +753,7 @@ export default function KokoroBuilderPage() {
         )}
 
         {/* === Modular: モジュール一覧 + ビルド === */}
-        {isModular && (modularPhase === 'split_done' || modularPhase === 'building' || modularPhase === 'integrating') && phase !== 'done' && (
+        {isModular && (modularPhase === 'split_done' || modularPhase === 'building' || modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') && phase !== 'done' && (
           <div>
             <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#f59e0b', textTransform: 'uppercase', marginBottom: 16 }}>
               // モジュール構成
@@ -624,19 +792,34 @@ export default function KokoroBuilderPage() {
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
-                  {modularPhase === 'integrating' ? '統合中...' : `${doneCount}/${modules.length} 完了`}
+                  {modularPhase === 'integrating' ? '統合中...'
+                    : modularPhase === 'validating' ? '検証中...'
+                    : modularPhase === 'fixing' ? '自動修正中...'
+                    : `${doneCount}/${modules.length} 完了`}
                 </span>
               </div>
               <div style={{ height: 4, background: '#e5e7eb', borderRadius: 2 }}>
                 <div style={{
                   height: '100%', borderRadius: 2, transition: 'width 0.3s ease',
-                  background: modularPhase === 'integrating' ? '#059669' : '#f59e0b',
-                  width: modularPhase === 'integrating' ? '100%' : `${(doneCount / modules.length) * 100}%`,
+                  background: (modularPhase === 'integrating' || modularPhase === 'validating') ? '#059669' : modularPhase === 'fixing' ? '#ef4444' : '#f59e0b',
+                  width: (modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') ? '100%' : `${(doneCount / modules.length) * 100}%`,
                 }} />
               </div>
             </div>
 
-            {modularPhase === 'integrating' && <PersonaLoading />}
+            {(modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') && <PersonaLoading />}
+
+            {/* バリデーションログ */}
+            {validationLog.length > 0 && (
+              <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 14, marginBottom: 16, maxHeight: 200, overflowY: 'auto' }}>
+                {validationLog.map((log, i) => (
+                  <div key={i} style={{
+                    ...mono, fontSize: 10, lineHeight: 1.8,
+                    color: log.startsWith('✓') ? '#4ade80' : log.startsWith('✗') || log.startsWith('△') ? '#f87171' : log.startsWith('⟳') ? '#fbbf24' : '#9ca3af',
+                  }}>{log}</div>
+                ))}
+              </div>
+            )}
 
             {/* 設計書の参照（開閉式） */}
             {designDoc && (
