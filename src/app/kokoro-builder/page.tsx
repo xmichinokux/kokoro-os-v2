@@ -638,6 +638,18 @@ export default function KokoroBuilderPage() {
 
             {modularPhase === 'integrating' && <PersonaLoading />}
 
+            {/* 設計書の参照（開閉式） */}
+            {designDoc && (
+              <details style={{ marginBottom: 16 }}>
+                <summary style={{ ...mono, fontSize: 10, letterSpacing: '0.1em', color: '#f59e0b', cursor: 'pointer', padding: '8px 0' }}>
+                  設計書を見る
+                </summary>
+                <div style={{ background: '#f8f9fa', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 8, padding: 16, maxHeight: 400, overflowY: 'auto', marginTop: 8 }}>
+                  <pre style={{ fontSize: 12, lineHeight: 1.8, color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", whiteSpace: 'pre-wrap', margin: 0 }}>{designDoc}</pre>
+                </div>
+              </details>
+            )}
+
             {/* ビルド開始ボタン（split_doneのとき） */}
             {modularPhase === 'split_done' && (
               <div style={{ display: 'flex', gap: 10 }}>
