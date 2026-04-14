@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const maxDuration = 60;
 
@@ -20,6 +19,36 @@ ${spec}
 ・外部リソース（フォント・画像・音声など）
 ・エラーハンドリング方針`;
 
+async function callGemini(apiKey: string, prompt: string): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini API error (${res.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts
+    ?.filter((p: { text?: string }) => p.text)
+    ?.map((p: { text: string }) => p.text)
+    ?.join('') ?? '';
+
+  if (!text) throw new Error('Geminiから応答がありませんでした');
+  return text.trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -33,18 +62,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '仕様書が必要です' }, { status: 400 });
     }
 
-    const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { thinkingConfig: { thinkingBudget: 0 } } as never,
-    });
-
-    const designResult = await model.generateContent(DESIGN_PROMPT(spec));
-    const designDoc = designResult.response.text().trim();
-
-    if (!designDoc) {
-      throw new Error('設計書の生成に失敗しました');
-    }
+    const designDoc = await callGemini(geminiKey, DESIGN_PROMPT(spec));
 
     return NextResponse.json({ designDoc });
   } catch (e) {

@@ -183,7 +183,8 @@ export default function KokoroBuilderPage() {
     setDesignDoc('');
     try {
       const data = await apiFetch('/api/builder-split', { spec: spec.trim() });
-      setDesignDoc(data.designDoc || '');
+      if (!data.designDoc) throw new Error('設計書の生成に失敗しました');
+      setDesignDoc(data.designDoc);
       setModularPhase('design_done');
     } catch (e) {
       setError(e instanceof Error ? e.message : '設計書の生成に失敗しました');
@@ -200,6 +201,7 @@ export default function KokoroBuilderPage() {
     setIntegrationNotes('');
     try {
       const data = await apiFetch('/api/builder-split-modules', { designDoc });
+      if (!data.modules || !Array.isArray(data.modules)) throw new Error('モジュール一覧の取得に失敗しました');
       const mods: GeneratedModule[] = (data.modules as ModuleInfo[]).map(m => ({ ...m, code: '', state: 'pending' as ModuleState }));
       setModules(mods);
       setIntegrationNotes(data.integration_notes || '');
