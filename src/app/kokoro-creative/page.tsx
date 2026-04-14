@@ -56,6 +56,11 @@ export default function KokoroCreativePage() {
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  // === 自律調整 (Phase 3) ===
+  const [autoAdjusting, setAutoAdjusting] = useState(false);
+  const [adjustLog, setAdjustLog] = useState<{ round: number; evaluation: string; adjustments: string; score: number }[]>([]);
+  const [adjustScore, setAdjustScore] = useState<number | null>(null);
+
   // 感性マップ確認
   useEffect(() => {
     fetch('/api/drive-cache')
@@ -259,6 +264,73 @@ export default function KokoroCreativePage() {
     setEffectChain(prev => [...prev, newEffect]);
   }, []);
 
+  // === AI自律調整 (Phase 3) ===
+  const handleAutoAdjust = useCallback(async () => {
+    if (!previewCanvasRef.current || !sourceCanvasRef.current) return;
+    setAutoAdjusting(true);
+    setError('');
+    setAdjustLog([]);
+    setAdjustScore(null);
+
+    const MAX_ROUNDS = 3;
+    let currentChain = [...effectChain];
+
+    for (let round = 1; round <= MAX_ROUNDS; round++) {
+      try {
+        // 現在のエフェクト適用結果をキャプチャ
+        const resultCanvas = applyEffectChain(sourceCanvasRef.current, currentChain);
+        // 画像サイズを縮小（API送信用、最大600px）
+        const sendCanvas = document.createElement('canvas');
+        const scale = Math.min(1, 600 / Math.max(resultCanvas.width, resultCanvas.height));
+        sendCanvas.width = Math.round(resultCanvas.width * scale);
+        sendCanvas.height = Math.round(resultCanvas.height * scale);
+        const sendCtx = sendCanvas.getContext('2d')!;
+        sendCtx.drawImage(resultCanvas, 0, 0, sendCanvas.width, sendCanvas.height);
+        const imageBase64 = sendCanvas.toDataURL('image/jpeg', 0.7);
+
+        const currentEffects = currentChain.map(e => ({
+          type: e.type, label: e.label, intensity: e.intensity, enabled: e.enabled,
+        }));
+
+        const data = await apiFetch('/api/creative-auto-adjust', {
+          imageBase64,
+          currentEffects,
+          round,
+          styleHint: styleInput || '',
+        }, 30000);
+
+        const logEntry = {
+          round,
+          evaluation: data.evaluation || '評価なし',
+          adjustments: data.adjustments || '調整なし',
+          score: data.score ?? 0,
+        };
+        setAdjustLog(prev => [...prev, logEntry]);
+        setAdjustScore(data.score ?? 0);
+
+        // エフェクトを更新
+        if (data.effects && data.effects.length > 0) {
+          const labeled = data.effects.map((e: EffectParam) => {
+            const info = ALL_EFFECTS.find(ae => ae.type === e.type);
+            return { ...e, label: info?.label || e.type };
+          });
+          currentChain = labeled;
+          setEffectChain(labeled);
+        }
+
+        // done=true or score >= 80 なら終了
+        if (data.done || (data.score && data.score >= 80)) {
+          break;
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '自律調整に失敗しました');
+        break;
+      }
+    }
+
+    setAutoAdjusting(false);
+  }, [effectChain, styleInput, apiFetch]);
+
   // PNGエクスポート
   const handleExportProcPng = useCallback(() => {
     const canvas = previewCanvasRef.current;
@@ -278,6 +350,7 @@ export default function KokoroCreativePage() {
   const handleProcReset = useCallback(() => {
     setProcPhase('upload'); setImageLoaded(false); setEffectChain([]);
     sourceCanvasRef.current = null; setError(''); setStyleInput('');
+    setAdjustLog([]); setAdjustScore(null); setAutoAdjusting(false);
   }, []);
 
   // ========================
@@ -555,13 +628,65 @@ export default function KokoroCreativePage() {
                   </div>
                 </details>
 
+                {/* AI自律調整 */}
+                <div style={{ marginBottom: 20, padding: '16px', background: '#fdf2f8', border: '1px solid #fce7f3', borderRadius: 8 }}>
+                  <div style={{ ...mono, fontSize: 9, letterSpacing: '0.12em', color: accentColor, marginBottom: 10 }}>
+                    AI AUTO-ADJUST — 感性マップと照合して自動調整
+                  </div>
+                  <button onClick={handleAutoAdjust} disabled={autoAdjusting || effectChain.length === 0} style={{
+                    ...mono, fontSize: 11, letterSpacing: '0.14em',
+                    background: autoAdjusting ? '#9ca3af' : accentColor,
+                    border: 'none', color: '#fff', padding: '10px 24px', borderRadius: 4,
+                    cursor: autoAdjusting || effectChain.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: effectChain.length === 0 ? 0.5 : 1,
+                  }}>
+                    {autoAdjusting ? '調整中...' : '自律調整を実行'}
+                  </button>
+                  {effectChain.length === 0 && (
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                      まずプリセットやAI提案でエフェクトを追加してください
+                    </div>
+                  )}
+
+                  {/* 調整ログ */}
+                  {adjustLog.length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      {adjustLog.map((log, i) => (
+                        <div key={i} style={{ padding: '8px 12px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ ...mono, fontSize: 9, color: accentColor }}>Round {log.round}</span>
+                            <span style={{
+                              ...mono, fontSize: 10, fontWeight: 700,
+                              color: log.score >= 80 ? '#059669' : log.score >= 50 ? '#f59e0b' : '#ef4444',
+                            }}>Score: {log.score}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: '#374151', marginBottom: 2 }}>{log.evaluation}</div>
+                          <div style={{ fontSize: 11, color: '#6b7280' }}>{log.adjustments}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* スコアバッジ */}
+                  {adjustScore !== null && !autoAdjusting && (
+                    <div style={{
+                      display: 'inline-block', marginTop: 8, padding: '4px 12px', borderRadius: 20,
+                      ...mono, fontSize: 10, fontWeight: 700,
+                      background: adjustScore >= 80 ? '#d1fae5' : adjustScore >= 50 ? '#fef3c7' : '#fee2e2',
+                      color: adjustScore >= 80 ? '#059669' : adjustScore >= 50 ? '#d97706' : '#dc2626',
+                    }}>
+                      感性マッチ: {adjustScore}/100
+                    </div>
+                  )}
+                </div>
+
                 {/* アクションボタン */}
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <button onClick={handleExportProcPng} style={{
                     ...mono, fontSize: 10, letterSpacing: '0.12em', background: accentColor, border: 'none', color: '#fff',
                     padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
                   }}>Export PNG</button>
-                  <button onClick={() => { setEffectChain([]); }} style={{
+                  <button onClick={() => { setEffectChain([]); setAdjustLog([]); setAdjustScore(null); }} style={{
                     ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
                     padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
                   }}>エフェクトをリセット</button>
