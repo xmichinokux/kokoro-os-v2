@@ -916,15 +916,16 @@ export default function KokoroCreativePage() {
               <div>
                 <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase', marginBottom: 16 }}>// ベクター生成完了</div>
 
-                {/* SVGプレビュー */}
+                {/* SVGプレビュー（iframe方式で確実に表示） */}
                 <div style={{
                   border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 20,
-                  background: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center',
-                  padding: 16, minHeight: 400,
+                  background: '#f8f9fa', minHeight: 400,
                 }}>
-                  <div
-                    dangerouslySetInnerHTML={{ __html: vecSvg }}
-                    style={{ maxWidth: '100%', maxHeight: 600 }}
+                  <iframe
+                    srcDoc={`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f8f9fa}svg{max-width:100%;max-height:100vh;width:auto;height:auto}</style></head><body>${vecSvg}</body></html>`}
+                    style={{ width: '100%', height: 600, border: 'none', display: 'block' }}
+                    sandbox="allow-scripts"
+                    title="Vector Preview"
                   />
                 </div>
 

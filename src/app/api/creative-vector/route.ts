@@ -70,7 +70,11 @@ ${designDoc}
    - SVGコードのみを返す（<svg>で始まり</svg>で終わる）
    - マークダウンのコードブロックは使わない
 
-2. **グループ構造**:
+2. **サイズ属性**:
+   - <svg> タグに必ず width="800" height="800" viewBox="0 0 800 800" を全て含める
+   - width/heightが無いとブラウザで表示されないため、絶対に省略しない
+
+3. **グループ構造**:
    - 各要素を <g id="g-xxx"> でグループ化（設計書のID通り）
    - transform属性で位置・回転・スケールを制御
    - 後からTunerで操作できるように、主要な数値をわかりやすく配置
@@ -208,9 +212,19 @@ function extractSvg(text: string): string {
 
   // <svg>.....</svg> を抽出
   const svgMatch = text.match(/<svg[\s\S]*<\/svg>/);
-  if (svgMatch) return svgMatch[0].trim();
+  let svg = svgMatch ? svgMatch[0].trim() : text;
 
-  return text;
+  // width/height 属性がない場合に追加（表示サイズ確保）
+  if (svg.startsWith('<svg') && !svg.match(/\bwidth\s*=/)) {
+    svg = svg.replace('<svg', '<svg width="800" height="800"');
+  }
+
+  // viewBox がない場合に追加
+  if (svg.startsWith('<svg') && !svg.includes('viewBox')) {
+    svg = svg.replace('<svg', '<svg viewBox="0 0 800 800"');
+  }
+
+  return svg;
 }
 
 export async function POST(req: NextRequest) {
