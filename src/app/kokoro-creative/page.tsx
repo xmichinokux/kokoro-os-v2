@@ -13,6 +13,8 @@ const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#e11d48';
 
 type Mode = 'generate' | 'process' | 'vector';
+type VecEditEntry = { instruction: string; svg: string };
+
 
 const GEN_PRESETS = [
   { label: '幾何学パターン', prompt: '幾何学的な模様を使った抽象アート。三角形、円、線が重なり合う美しいパターン。' },
@@ -64,12 +66,19 @@ export default function KokoroCreativePage() {
   // === Vector モード ===
   const [vecSubject, setVecSubject] = useState('');
   const [vecStyle, setVecStyle] = useState('');
-  const [vecPhase, setVecPhase] = useState<'input' | 'generating' | 'done'>('input');
+  const [vecPhase, setVecPhase] = useState<'input' | 'generating' | 'done' | 'editing'>('input');
   const [vecSvg, setVecSvg] = useState('');
   const [vecDesignDoc, setVecDesignDoc] = useState('');
   const [vecProgress, setVecProgress] = useState('');
   const [vecLog, setVecLog] = useState<string[]>([]);
   const [vecShowCode, setVecShowCode] = useState(false);
+
+  // === Vector Edit ===
+  const vecFileInputRef = useRef<HTMLInputElement>(null);
+  const [vecEditInstruction, setVecEditInstruction] = useState('');
+  const [vecEditHistory, setVecEditHistory] = useState<VecEditEntry[]>([]);
+  const [vecEditLoading, setVecEditLoading] = useState(false);
+  const [vecShowHistory, setVecShowHistory] = useState(false);
 
   // 感性マップ確認
   useEffect(() => {
@@ -462,7 +471,74 @@ export default function KokoroCreativePage() {
   const handleVecReset = useCallback(() => {
     setVecPhase('input'); setVecSvg(''); setVecDesignDoc('');
     setVecProgress(''); setVecLog([]); setVecShowCode(false); setError('');
+    setVecEditHistory([]); setVecEditInstruction(''); setVecShowHistory(false);
   }, []);
+
+  // === Vector Edit 関数 ===
+  const handleVecEdit = useCallback(async () => {
+    if (!vecEditInstruction.trim() || !vecSvg) return;
+    setVecEditLoading(true); setError('');
+    try {
+      // 現在の状態を履歴に保存
+      setVecEditHistory(prev => [...prev, { instruction: vecEditInstruction.trim(), svg: vecSvg }]);
+      const data = await apiFetch('/api/creative-vector-edit', {
+        svg: vecSvg, instruction: vecEditInstruction.trim(),
+      });
+      setVecSvg(data.svg as string);
+      setVecEditInstruction('');
+    } catch (e) {
+      // 失敗時は履歴を戻す
+      setVecEditHistory(prev => prev.slice(0, -1));
+      setError(e instanceof Error ? e.message : '編集に失敗しました');
+    } finally { setVecEditLoading(false); }
+  }, [vecSvg, vecEditInstruction, apiFetch]);
+
+  const handleVecEditUndo = useCallback(() => {
+    if (vecEditHistory.length === 0) return;
+    const last = vecEditHistory[vecEditHistory.length - 1];
+    setVecSvg(last.svg);
+    setVecEditHistory(prev => prev.slice(0, -1));
+  }, [vecEditHistory]);
+
+  const handleVecLoadSvg = useCallback((content: string) => {
+    // SVG抽出
+    const svgMatch = content.match(/<svg[\s\S]*<\/svg>/);
+    let svg = svgMatch ? svgMatch[0].trim() : content.trim();
+    if (!svg.includes('<svg')) { setError('有効なSVGが見つかりません'); return; }
+    // width/height補完
+    if (!svg.match(/\bwidth\s*=/)) svg = svg.replace('<svg', '<svg width="800" height="800"');
+    if (!svg.includes('viewBox')) svg = svg.replace('<svg', '<svg viewBox="0 0 800 800"');
+    setVecSvg(svg);
+    setVecEditHistory([]); setVecEditInstruction(''); setError('');
+    setVecPhase('editing');
+  }, []);
+
+  const handleVecFileDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => handleVecLoadSvg(reader.result as string);
+      reader.readAsText(file);
+    }
+  }, [handleVecLoadSvg]);
+
+  const handleVecFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => handleVecLoadSvg(reader.result as string);
+      reader.readAsText(file);
+    }
+  }, [handleVecLoadSvg]);
+
+  const handleVecPaste = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text.includes('<svg')) handleVecLoadSvg(text);
+      else setError('クリップボードにSVGが見つかりません');
+    } catch { setError('クリップボードの読み取りに失敗しました'); }
+  }, [handleVecLoadSvg]);
 
   // PNGエクスポート
   const handleExportProcPng = useCallback(() => {
@@ -510,7 +586,7 @@ export default function KokoroCreativePage() {
               Kokoro <span style={{ color: accentColor }}>Creative</span>
             </div>
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>
-              {mode === 'generate' ? '感性からビジュアルを生成する' : mode === 'process' ? '画像にエフェクトを適用する' : 'インテントからベクターを生成する'}
+              {mode === 'generate' ? '感性からビジュアルを生成する' : mode === 'process' ? '画像にエフェクトを適用する' : vecPhase === 'editing' ? 'SVGを自然言語で編集する' : 'インテントからベクターを生成する'}
             </span>
           </div>
         </div>
@@ -892,6 +968,33 @@ export default function KokoroCreativePage() {
                   padding: '14px 32px', borderRadius: 4, cursor: vecSubject.trim() ? 'pointer' : 'not-allowed',
                   marginTop: 8, opacity: vecSubject.trim() ? 1 : 0.5, display: 'block', width: '100%',
                 }}>Generate Vector</button>
+
+                {/* SVG読み込み（Edit モード直行） */}
+                <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid #e5e7eb' }}>
+                  <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#6b7280', textTransform: 'uppercase', marginBottom: 12 }}>
+                    // 既存のSVGを読み込んで編集する
+                  </div>
+                  <div
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={handleVecFileDrop}
+                    onClick={() => vecFileInputRef.current?.click()}
+                    style={{
+                      border: '2px dashed #d1d5db', borderRadius: 12, padding: '32px 20px',
+                      textAlign: 'center', cursor: 'pointer', transition: 'border-color 0.2s', background: '#fafafa',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = accentColor)}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#d1d5db')}
+                  >
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>SVGファイルをドロップまたはクリック</div>
+                    <div style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>SVG ファイル</div>
+                  </div>
+                  <input ref={vecFileInputRef} type="file" accept=".svg,image/svg+xml" style={{ display: 'none' }} onChange={handleVecFileSelect} />
+                  <button onClick={handleVecPaste} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.1em', background: '#fff', border: '1px solid #d1d5db',
+                    color: '#6b7280', padding: '8px 16px', borderRadius: 4, cursor: 'pointer', marginTop: 10, width: '100%',
+                  }}>📋 クリップボードからSVGを貼り付け</button>
+                </div>
               </div>
             )}
 
@@ -943,6 +1046,10 @@ export default function KokoroCreativePage() {
                     ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #f59e0b', color: '#f59e0b',
                     padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
                   }}>Tuner →</button>
+                  <button onClick={() => { setVecPhase('editing'); setVecEditHistory([]); setVecEditInstruction(''); setVecShowCode(false); }} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: `1px solid ${accentColor}`, color: accentColor,
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>Edit →</button>
                   <button onClick={() => setVecShowCode(p => !p)} style={{
                     ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
                     padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
@@ -974,6 +1081,133 @@ export default function KokoroCreativePage() {
                     </div>
                   </details>
                 )}
+
+                {/* SVGコード */}
+                {vecShowCode && (
+                  <div style={{ marginTop: 20, position: 'relative' }}>
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(vecSvg); } catch { /* */ } }} style={{ ...mono, fontSize: 9, position: 'absolute', top: 10, right: 10, zIndex: 10, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '5px 12px', borderRadius: 3, cursor: 'pointer' }}>Copy</button>
+                    <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 20, maxHeight: 400, overflowY: 'auto' }}>
+                      <pre style={{ fontSize: 10, lineHeight: 1.5, color: '#d4d4d4', fontFamily: "'Space Mono', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>{vecSvg}</pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============================================ */}
+            {/* Vector Edit モード */}
+            {/* ============================================ */}
+            {vecPhase === 'editing' && vecSvg && (
+              <div>
+                <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: accentColor, textTransform: 'uppercase', marginBottom: 16 }}>
+                  // SVG Edit — 自然言語で修正指示
+                </div>
+
+                {/* SVGプレビュー */}
+                <div style={{
+                  border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 20,
+                  background: '#f8f9fa', minHeight: 350,
+                }}>
+                  <iframe
+                    srcDoc={`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f8f9fa}svg{max-width:100%;max-height:100vh;width:auto;height:auto}</style></head><body>${vecSvg}</body></html>`}
+                    style={{ width: '100%', height: 500, border: 'none', display: 'block' }}
+                    sandbox="allow-scripts"
+                    title="SVG Edit Preview"
+                  />
+                </div>
+
+                {/* 編集指示入力 */}
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af', display: 'block', marginBottom: 8 }}>
+                    EDIT INSTRUCTION
+                  </label>
+                  <textarea
+                    value={vecEditInstruction}
+                    onChange={e => setVecEditInstruction(e.target.value)}
+                    placeholder="例: 背景色を暖色系にして / 目をもっと大きくして / ハッチングの密度を上げて / 全体のカラーパレットをサイバーパンク風にして"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !vecEditLoading) {
+                        e.preventDefault(); handleVecEdit();
+                      }
+                    }}
+                    style={{
+                      width: '100%', minHeight: 80, resize: 'vertical',
+                      fontFamily: "'Noto Sans JP', sans-serif", fontSize: 13, lineHeight: 1.8,
+                      background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, padding: 14,
+                      outline: 'none', color: '#374151',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                    <button onClick={handleVecEdit} disabled={!vecEditInstruction.trim() || vecEditLoading} style={{
+                      ...mono, fontSize: 11, letterSpacing: '0.14em', flex: 1,
+                      background: vecEditLoading ? '#9ca3af' : accentColor,
+                      border: 'none', color: '#fff', padding: '12px 24px', borderRadius: 4,
+                      cursor: vecEditInstruction.trim() && !vecEditLoading ? 'pointer' : 'not-allowed',
+                      opacity: vecEditInstruction.trim() ? 1 : 0.5,
+                    }}>
+                      {vecEditLoading ? '修正中...' : 'Apply Edit'}
+                    </button>
+                    <button onClick={handleVecEditUndo} disabled={vecEditHistory.length === 0 || vecEditLoading} style={{
+                      ...mono, fontSize: 10, letterSpacing: '0.1em',
+                      background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
+                      padding: '12px 16px', borderRadius: 4,
+                      cursor: vecEditHistory.length > 0 && !vecEditLoading ? 'pointer' : 'not-allowed',
+                      opacity: vecEditHistory.length > 0 ? 1 : 0.4,
+                    }}>↩ Undo</button>
+                  </div>
+                  <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 6 }}>
+                    ⌘/Ctrl + Enter で実行 ・ 編集 {vecEditHistory.length} 回
+                  </div>
+                </div>
+
+                {/* 編集履歴 */}
+                {vecEditHistory.length > 0 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <button onClick={() => setVecShowHistory(p => !p)} style={{
+                      ...mono, fontSize: 10, letterSpacing: '0.1em', color: '#60a5fa',
+                      background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 0',
+                    }}>
+                      {vecShowHistory ? '▼' : '▶'} 編集履歴（{vecEditHistory.length}件）
+                    </button>
+                    {vecShowHistory && (
+                      <div style={{ marginTop: 8, background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                        {vecEditHistory.map((entry, i) => (
+                          <div key={i} style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '6px 0', borderBottom: i < vecEditHistory.length - 1 ? '1px solid #e5e7eb' : 'none',
+                          }}>
+                            <span style={{ ...mono, fontSize: 9, color: '#9ca3af', minWidth: 20 }}>#{i + 1}</span>
+                            <span style={{ fontSize: 12, color: '#374151', flex: 1 }}>{entry.instruction}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* アクションボタン */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button onClick={handleExportSvg} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: accentColor, border: 'none', color: '#fff',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>Export SVG</button>
+                  <button onClick={handleExportVecPng} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: `1px solid ${accentColor}`, color: accentColor,
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>Export PNG</button>
+                  <button onClick={handleVecToTuner} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #f59e0b', color: '#f59e0b',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>Tuner →</button>
+                  <button onClick={() => setVecShowCode(p => !p)} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>{vecShowCode ? 'コードを隠す' : 'SVGコードを見る'}</button>
+                  <button onClick={handleVecReset} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>新規作成に戻る</button>
+                </div>
 
                 {/* SVGコード */}
                 {vecShowCode && (
