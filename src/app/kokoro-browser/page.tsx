@@ -210,26 +210,32 @@ export default function KokoroBrowserPage() {
   // タブ選択時に自動Web検索 + 商品検索
   useEffect(() => {
     const gamesen = allGamesen.find(g => g.id === selectedId);
-    if (gamesen && gamesen.keywords.length > 0 && selectedId !== SONOTA_ID) {
+    const hasKeywords = gamesen && gamesen.keywords.length > 0 && selectedId !== SONOTA_ID;
+
+    if (hasKeywords) {
       searchWeb(gamesen.keywords, selectedId);
-      // 商品検索
-      if (productCacheRef.current[selectedId]) {
-        setProducts(productCacheRef.current[selectedId]);
-      } else {
-        setProductLoading(true);
-        fetch(`/api/kokoro-products?keywords=${encodeURIComponent(gamesen.keywords.join(','))}`)
-          .then(r => r.json())
-          .then(data => {
-            const prods = (data.products || []) as ProductNote[];
-            setProducts(prods);
-            productCacheRef.current[selectedId] = prods;
-          })
-          .catch(() => setProducts([]))
-          .finally(() => setProductLoading(false));
-      }
     } else {
       setWebResults([]);
-      setProducts([]);
+    }
+
+    // 商品検索（キーワードありならフィルタ、なしなら全商品）
+    const productKey = selectedId || '__all__';
+    if (productCacheRef.current[productKey]) {
+      setProducts(productCacheRef.current[productKey]);
+    } else {
+      setProductLoading(true);
+      const url = hasKeywords
+        ? `/api/kokoro-products?keywords=${encodeURIComponent(gamesen.keywords.join(','))}`
+        : '/api/kokoro-products';
+      fetch(url)
+        .then(r => r.json())
+        .then(data => {
+          const prods = (data.products || []) as ProductNote[];
+          setProducts(prods);
+          productCacheRef.current[productKey] = prods;
+        })
+        .catch(() => setProducts([]))
+        .finally(() => setProductLoading(false));
     }
   }, [selectedId, allGamesen, searchWeb]);
 
