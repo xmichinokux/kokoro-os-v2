@@ -44,7 +44,10 @@ export async function POST(req: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: { thinkingConfig: { thinkingBudget: 0 } } as never,
+    });
 
     const splitResult = await model.generateContent(SPLIT_PROMPT(designDoc));
     const splitText = splitResult.response.text().trim();
