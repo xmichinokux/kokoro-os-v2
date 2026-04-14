@@ -24,6 +24,8 @@ export type KokoroNote = {
   productExternalUrl?: string;    // 外部決済リンク（Stripe Payment Links, BOOTH等）
   productType?: ProductType;
   authorName?: string;            // 売り手の表示名
+  aiPricedAmount?: number;        // AI鑑定額（AI値付けを採用した場合）
+  showAiBadge?: boolean;          // AI鑑定バッジ表示フラグ
 };
 
 export type ProductType = 'pdf' | 'data' | 'svg' | 'html' | 'text' | 'other';

@@ -1059,6 +1059,15 @@ function ProductTimelineItem({
           <span style={{ ...mono, fontSize: 10, color: '#f59e0b', fontWeight: 700 }}>
             ¥{product.productPrice.toLocaleString()}
           </span>
+          {product.showAiBadge && product.aiPricedAmount && (
+            <span style={{
+              ...mono, fontSize: 7, color: '#fff', background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+              padding: '2px 7px', borderRadius: 10, fontWeight: 700,
+              letterSpacing: '0.06em', boxShadow: '0 1px 3px #f59e0b44',
+            }}>
+              AI鑑定 ¥{product.aiPricedAmount.toLocaleString()}
+            </span>
+          )}
           <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
             by {product.authorName}
           </span>
