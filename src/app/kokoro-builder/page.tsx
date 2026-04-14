@@ -273,14 +273,16 @@ export default function KokoroBuilderPage() {
 
             {/* iframeプレビュー */}
             <div style={{
-              border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden',
-              marginBottom: 20, background: '#fff',
+              border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto',
+              marginBottom: 20, background: '#f8f9fa',
+              resize: 'vertical', minHeight: 400,
             }}>
               <iframe
                 ref={iframeRef}
                 src={blobUrlRef.current || undefined}
+                scrolling="yes"
                 style={{
-                  width: '100%', height: 500, border: 'none', display: 'block',
+                  width: '100%', height: 667, border: 'none', display: 'block',
                 }}
                 sandbox="allow-scripts allow-same-origin allow-popups"
                 title="Builder Preview"
