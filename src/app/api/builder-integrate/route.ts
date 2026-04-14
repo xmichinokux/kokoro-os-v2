@@ -10,10 +10,15 @@ const SHELL_PROMPT = (moduleNames: string, integrationNotes: string, designDoc: 
 【重要】モジュールのコード本体は別途挿入します。あなたが生成するのは以下だけです：
 1. <!DOCTYPE html>〜<head>（meta, title, CDN script/link, style）
 2. <body>内のHTML要素（canvas, div等）
-3. 初期化スクリプト（モジュールを正しい順序で起動するコード）
+3. 初期化スクリプト（// __MODULES__ の後に、モジュールを起動するコード）
 4. </body></html>
 
-モジュールコードが入る場所に「// __MODULES__」というプレースホルダーを1つだけ置いてください。
+【HTMLの構造（この通りに書いてください）】
+<script>
+// __MODULES__
+
+// ここに初期化コードを書く
+</script>
 
 【設計書】
 ${designDoc}
@@ -28,7 +33,6 @@ ${integrationNotes}
 ・Phaser 3を使う場合はtype: Phaser.CANVASを使用する
 ・document.readyStateを確認してから初期化する
 ・タッチイベントとマウスイベントを両方対応する
-・ゲームやアプリの初期化（new Phaser.Game等）は初期化スクリプト内で1回だけ行う（重複初期化しない）
 
 【ルール】
 ・HTMLコードのみを返す（説明文・マークダウン不要）
@@ -38,11 +42,15 @@ ${integrationNotes}
 ・マークダウンのコードブロックは使わない
 ・<!DOCTYPE html>から始めてください
 
-【絶対に守ること】
+【絶対に守ること（違反したらコードが動かなくなります）】
 ・<script type="module">は使わない。必ず通常の<script>タグを使う
 ・import文やexport文は使わない（ESモジュール構文は禁止）
-・// __MODULES__ プレースホルダーは通常の<script>タグの中に置く
-・モジュールコードはグローバルスコープで実行される前提で初期化コードを書く`;
+・// __MODULES__ プレースホルダーは通常の<script>タグの中に1つだけ置く
+・モジュールコードはグローバルスコープで実行される前提で初期化コードを書く
+・★最重要★ ゲームやアプリの初期化（new Phaser.Game等）は初期化コード内で1回だけ行う。モジュール内でも初期化が行われる可能性があるため、初期化コードでは「まだ初期化されていない場合のみ」初期化する（例：if (!window.gameInstance) { window.gameInstance = new Phaser.Game(config); }）
+・Phaserのシーンクラスはモジュール内で定義済みなので、初期化コードではscene配列にそれらのクラスを渡すだけでよい
+・初期化コードでは、モジュール内で定義されたクラス名をそのまま使う（自分で新しいクラスを定義しない）
+・アセットファイル（画像・音声ファイル）は存在しない前提で書く。ロード画面では代替テクスチャ（矩形・円）を使う`;
 
 export async function POST(req: NextRequest) {
   try {
