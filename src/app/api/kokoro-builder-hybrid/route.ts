@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { spec, step } = await req.json() as { spec: string; step: 'gemini' | 'claude'; instruction?: string };
+    const { spec, step, instruction } = await req.json() as { spec: string; step: 'gemini' | 'claude'; instruction?: string };
 
     if (!spec) {
       return NextResponse.json({ error: '仕様書が必要です' }, { status: 400 });
@@ -69,13 +69,12 @@ export async function POST(req: NextRequest) {
       const genAI = new GoogleGenerativeAI(geminiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const result = await model.generateContent(GEMINI_PROMPT(spec));
-      const instruction = result.response.text();
-      return NextResponse.json({ instruction });
+      const generatedInstruction = result.response.text();
+      return NextResponse.json({ instruction: generatedInstruction });
     }
 
     // Step 2: Claudeでコード生成
     if (step === 'claude') {
-      const { instruction } = await req.json() as { spec: string; step: 'claude'; instruction: string };
       if (!instruction) {
         return NextResponse.json({ error: '実装指示書が必要です' }, { status: 400 });
       }
