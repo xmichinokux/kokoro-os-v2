@@ -90,19 +90,23 @@ export default function KokoroBuilderPage() {
   // API呼び出しヘルパー
   const apiFetch = useCallback(async (url: string, body: Record<string, unknown>, timeoutMs = 120000) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutId = setTimeout(() => controller.abort('タイムアウト'), timeoutMs);
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const text = await res.text();
       let data;
       try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
       if (data.error) throw new Error(data.error);
       return data;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'TimeoutError') throw new Error('タイムアウト：サーバーからの応答がありません');
+      if (e instanceof DOMException && e.name === 'AbortError') throw new Error('タイムアウト');
+      throw e;
     } finally {
       clearTimeout(timeoutId);
     }
