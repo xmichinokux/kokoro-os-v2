@@ -97,6 +97,17 @@ export default function KokoroNotePage() {
   const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
   const [editImageBase64, setEditImageBase64] = useState<string | null>(null);
 
+  // 商品登録用state
+  const [showProductForm, setShowProductForm] = useState(false);
+  const [productPrice, setProductPrice] = useState(0);
+  const [productDescription, setProductDescription] = useState('');
+  const [productExternalUrl, setProductExternalUrl] = useState('');
+  const [productType, setProductType] = useState('pdf');
+  const [productAuthorName, setProductAuthorName] = useState('');
+  const [productRegistering, setProductRegistering] = useState(false);
+  const [aiPricing, setAiPricing] = useState<{ suggestedPrice: number; evaluation: string; reason: string; shouldRaise: boolean; raiseMessage: string } | null>(null);
+  const [aiPricingLoading, setAiPricingLoading] = useState(false);
+
   const tagCloud = useMemo(
     () => buildTagCloud(notes, { maxItems: 20 }),
     [notes]
@@ -1008,7 +1019,186 @@ export default function KokoroNotePage() {
           >
             {selectedNote.isPublic ? '🌐 公開中 → 非公開にする' : '🌐 Browserに公開する'}
           </button>
+
+          {/* 商品として登録ボタン */}
+          {!selectedNote.isProduct ? (
+            <button
+              onClick={() => {
+                setShowProductForm(true);
+                setProductPrice(0);
+                setProductDescription('');
+                setProductExternalUrl('');
+                setProductType('pdf');
+                setProductAuthorName('');
+                setAiPricing(null);
+              }}
+              style={{
+                fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+                padding:'8px 16px', borderRadius:6, cursor:'pointer', marginLeft:8,
+                background:'#fef3c7', color:'#92400e', border:'1px solid #fde68a',
+              }}
+            >
+              🏷 商品として登録する
+            </button>
+          ) : (
+            <span style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#f59e0b', marginLeft:8 }}>
+              🏷 商品 ¥{selectedNote.productPrice?.toLocaleString()} ({selectedNote.productType})
+            </span>
+          )}
         </div>
+
+        {/* 商品登録フォーム */}
+        {showProductForm && !selectedNote.isProduct && (
+          <div style={{
+            padding:'20px', background:'#fffbeb', border:'1px solid #fde68a',
+            borderRadius:8, marginBottom:16,
+          }}>
+            <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.12em', color:'#92400e', marginBottom:16 }}>
+              // 商品として登録
+            </div>
+
+            {/* AI値付け */}
+            <div style={{ marginBottom:16, padding:'12px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:6 }}>
+              <button
+                onClick={async () => {
+                  setAiPricingLoading(true);
+                  try {
+                    const res = await fetch('/api/kokoro-product-pricing', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        title: selectedNote.title,
+                        body: selectedNote.body,
+                        productType,
+                        userPrice: productPrice || undefined,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+                    setAiPricing(data.data);
+                    if (data.data.suggestedPrice && (!productPrice || data.data.suggestedPrice > productPrice)) {
+                      setProductPrice(data.data.suggestedPrice);
+                    }
+                  } catch (e) {
+                    console.error(e);
+                  } finally { setAiPricingLoading(false); }
+                }}
+                disabled={aiPricingLoading}
+                style={{
+                  fontFamily:"'Space Mono', monospace", fontSize:10,
+                  padding:'8px 16px', borderRadius:4, cursor: aiPricingLoading ? 'not-allowed' : 'pointer',
+                  background: aiPricingLoading ? '#9ca3af' : '#f59e0b', color:'#fff', border:'none',
+                  marginBottom: aiPricing ? 8 : 0,
+                }}
+              >
+                {aiPricingLoading ? '査定中...' : '🤖 AI値付け'}
+              </button>
+              {aiPricing && (
+                <div style={{ marginTop:8 }}>
+                  <div style={{ fontSize:13, color:'#374151', lineHeight:1.8, marginBottom:4 }}>
+                    {aiPricing.evaluation}
+                  </div>
+                  <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>{aiPricing.reason}</div>
+                  {aiPricing.shouldRaise && aiPricing.raiseMessage && (
+                    <div style={{
+                      fontSize:12, color:'#b45309', fontWeight:600,
+                      padding:'6px 10px', background:'#fef3c7', borderRadius:4, marginTop:4,
+                    }}>
+                      💡 {aiPricing.raiseMessage}
+                    </div>
+                  )}
+                  <div style={{ fontFamily:"'Space Mono', monospace", fontSize:11, color:'#f59e0b', fontWeight:700, marginTop:4 }}>
+                    提案価格: ¥{aiPricing.suggestedPrice.toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* フォーム */}
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <div>
+                <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>価格（円）</label>
+                <input type="number" value={productPrice} onChange={e => setProductPrice(Math.max(0, parseInt(e.target.value) || 0))}
+                  style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:14, outline:'none', boxSizing:'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>商品の説明</label>
+                <textarea value={productDescription} onChange={e => setProductDescription(e.target.value)}
+                  placeholder="この作品について一言"
+                  style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', minHeight:60, resize:'vertical', boxSizing:'border-box', fontFamily:"'Noto Sans JP', sans-serif" }} />
+              </div>
+              <div>
+                <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>外部決済URL（Stripe Payment Links, BOOTH等）</label>
+                <input type="url" value={productExternalUrl} onChange={e => setProductExternalUrl(e.target.value)}
+                  placeholder="https://..."
+                  style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', boxSizing:'border-box', fontFamily:"'Space Mono', monospace" }} />
+              </div>
+              <div style={{ display:'flex', gap:10 }}>
+                <div style={{ flex:1 }}>
+                  <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>商品タイプ</label>
+                  <select value={productType} onChange={e => setProductType(e.target.value)}
+                    style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', background:'#fff' }}>
+                    <option value="pdf">PDF（文章）</option>
+                    <option value="data">データ（表・CSV）</option>
+                    <option value="svg">SVG（ベクター）</option>
+                    <option value="html">HTML（Web作品）</option>
+                    <option value="text">テキスト</option>
+                    <option value="other">その他</option>
+                  </select>
+                </div>
+                <div style={{ flex:1 }}>
+                  <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>出品者名</label>
+                  <input type="text" value={productAuthorName} onChange={e => setProductAuthorName(e.target.value)}
+                    placeholder="表示名"
+                    style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', boxSizing:'border-box' }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display:'flex', gap:8, marginTop:16 }}>
+              <button
+                onClick={async () => {
+                  setProductRegistering(true);
+                  try {
+                    const res = await fetch('/api/kokoro-products', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        noteId: selectedNote.id,
+                        productPrice,
+                        productDescription,
+                        productExternalUrl,
+                        productType,
+                        authorName: productAuthorName || '匿名',
+                      }),
+                    });
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+                    // ローカルのnoteも更新
+                    const all = await getAllNotes();
+                    setNotes(all);
+                    setShowProductForm(false);
+                  } catch (e) {
+                    alert(e instanceof Error ? e.message : '登録に失敗しました');
+                  } finally { setProductRegistering(false); }
+                }}
+                disabled={productRegistering || !productPrice}
+                style={{
+                  fontFamily:"'Space Mono', monospace", fontSize:10, letterSpacing:'0.1em',
+                  padding:'10px 24px', borderRadius:4, cursor: productRegistering || !productPrice ? 'not-allowed' : 'pointer',
+                  background: productRegistering ? '#9ca3af' : '#f59e0b', color:'#fff', border:'none',
+                  opacity: productPrice ? 1 : 0.5,
+                }}
+              >
+                {productRegistering ? '登録中...' : '🏷 商品として登録'}
+              </button>
+              <button onClick={() => setShowProductForm(false)}
+                style={{ fontFamily:"'Space Mono', monospace", fontSize:10, padding:'10px 16px', borderRadius:4, cursor:'pointer', background:'transparent', color:'#9ca3af', border:'1px solid #e5e7eb' }}>
+                キャンセル
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* AI自動判定の誘導ボタン（1つだけ） */}
         <div style={{ marginBottom:16 }}>

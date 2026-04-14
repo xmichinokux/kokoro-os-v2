@@ -6,7 +6,7 @@ import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
 import { getAllNotes } from '@/lib/kokoro/noteStorage';
-import type { PublicNote, GamesenNote } from '@/types/browser';
+import type { PublicNote, GamesenNote, ProductNote } from '@/types/browser';
 
 const SOURCE_LABELS: Record<string, string> = {
   talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き',
@@ -38,9 +38,14 @@ type WebResult = {
   category: string;
 };
 
+const PRODUCT_TYPE_LABELS: Record<string, string> = {
+  pdf: 'PDF', data: 'Data', svg: 'SVG', html: 'HTML', text: 'Text', other: 'Other',
+};
+
 type TimelineItem =
   | { type: 'note'; data: PublicNote }
-  | { type: 'web'; data: WebResult };
+  | { type: 'web'; data: WebResult }
+  | { type: 'product'; data: ProductNote };
 
 function loadCustomGamesen(): GamesenNote[] {
   if (typeof window === 'undefined') return [];
@@ -81,6 +86,11 @@ export default function KokoroBrowserPage() {
   const [hasAestheticMap, setHasAestheticMap] = useState(false);
   const searchCacheRef = useRef<Record<string, WebResult[]>>({});
   const lastSearchIdRef = useRef<string>('');
+
+  // 商品
+  const [products, setProducts] = useState<ProductNote[]>([]);
+  const [productLoading, setProductLoading] = useState(false);
+  const productCacheRef = useRef<Record<string, ProductNote[]>>({});
 
   useEffect(() => {
     setCustomGamesen(loadCustomGamesen());
@@ -197,40 +207,89 @@ export default function KokoroBrowserPage() {
     }
   }, []);
 
-  // タブ選択時に自動Web検索
+  // タブ選択時に自動Web検索 + 商品検索
   useEffect(() => {
     const gamesen = allGamesen.find(g => g.id === selectedId);
     if (gamesen && gamesen.keywords.length > 0 && selectedId !== SONOTA_ID) {
       searchWeb(gamesen.keywords, selectedId);
+      // 商品検索
+      if (productCacheRef.current[selectedId]) {
+        setProducts(productCacheRef.current[selectedId]);
+      } else {
+        setProductLoading(true);
+        fetch(`/api/kokoro-products?keywords=${encodeURIComponent(gamesen.keywords.join(','))}`)
+          .then(r => r.json())
+          .then(data => {
+            const prods = (data.products || []) as ProductNote[];
+            setProducts(prods);
+            productCacheRef.current[selectedId] = prods;
+          })
+          .catch(() => setProducts([]))
+          .finally(() => setProductLoading(false));
+      }
     } else {
       setWebResults([]);
+      setProducts([]);
     }
   }, [selectedId, allGamesen, searchWeb]);
+
+  // ブックマークトグル
+  const handleBookmark = useCallback(async (noteId: string) => {
+    try {
+      const res = await fetch('/api/kokoro-bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteId }),
+      });
+      const data = await res.json();
+      if (data.error) return;
+      // ローカル状態を更新
+      setProducts(prev => prev.map(p =>
+        p.id === noteId ? {
+          ...p,
+          isBookmarked: data.bookmarked,
+          bookmarkCount: p.bookmarkCount + (data.bookmarked ? 1 : -1),
+        } : p
+      ));
+      // キャッシュも更新
+      if (productCacheRef.current[selectedId]) {
+        productCacheRef.current[selectedId] = productCacheRef.current[selectedId].map(p =>
+          p.id === noteId ? {
+            ...p,
+            isBookmarked: data.bookmarked,
+            bookmarkCount: p.bookmarkCount + (data.bookmarked ? 1 : -1),
+          } : p
+        );
+      }
+    } catch { /* ignore */ }
+  }, [selectedId]);
 
   // ========================
   // 統合タイムライン
   // ========================
   const timeline = useMemo<TimelineItem[]>(() => {
-    const notes: TimelineItem[] = displayedNotes.map(n => ({ type: 'note' as const, data: n }));
-    const webs: TimelineItem[] = webResults.map(w => ({ type: 'web' as const, data: w }));
+    const noteItems: TimelineItem[] = displayedNotes.map(n => ({ type: 'note' as const, data: n }));
+    const webItems: TimelineItem[] = webResults.map(w => ({ type: 'web' as const, data: w }));
+    const productItems: TimelineItem[] = products.map(p => ({ type: 'product' as const, data: p }));
 
-    if (notes.length === 0) return webs;
-    if (webs.length === 0) return notes;
+    const all = [...noteItems, ...webItems, ...productItems];
+    if (all.length === 0) return [];
 
-    // インターリーブ: Note と Web を交互に混ぜる
+    // インターリーブ: Note → Product → Web を混ぜる
     const merged: TimelineItem[] = [];
-    let ni = 0, wi = 0;
-    // 最初の2つはNote（自分の思考を先に見せる）
-    while (ni < Math.min(2, notes.length)) {
-      merged.push(notes[ni++]);
+    let ni = 0, pi = 0, wi = 0;
+    // 最初に自分のNoteを2つ
+    while (ni < Math.min(2, noteItems.length)) {
+      merged.push(noteItems[ni++]);
     }
-    // 残りを交互に
-    while (ni < notes.length || wi < webs.length) {
-      if (wi < webs.length) merged.push(webs[wi++]);
-      if (ni < notes.length) merged.push(notes[ni++]);
+    // 残りを交互に（Product → Web → Note の順）
+    while (ni < noteItems.length || pi < productItems.length || wi < webItems.length) {
+      if (pi < productItems.length) merged.push(productItems[pi++]);
+      if (wi < webItems.length) merged.push(webItems[wi++]);
+      if (ni < noteItems.length) merged.push(noteItems[ni++]);
     }
     return merged;
-  }, [displayedNotes, webResults]);
+  }, [displayedNotes, webResults, products]);
 
   // ========================
   // ゲーセンノート CRUD
@@ -654,8 +713,9 @@ export default function KokoroBrowserPage() {
           display: 'flex', gap: 12, alignItems: 'center',
         }}>
           <span>// {displayedNotes.length} Notes</span>
+          {products.length > 0 && <span>+ {products.length} Products</span>}
           {webResults.length > 0 && <span>+ {webResults.length} Web</span>}
-          {webLoading && <span style={{ color: '#7c3aed' }}>⟳ Web検索中...</span>}
+          {(webLoading || productLoading) && <span style={{ color: '#7c3aed' }}>⟳ 検索中...</span>}
         </div>
 
         {/* Web検索エラー */}
@@ -686,6 +746,14 @@ export default function KokoroBrowserPage() {
                   accentColor={currentGamesen.color}
                   isLast={idx === timeline.length - 1}
                   onClick={() => router.push(`/kokoro-browser/${item.data.id}`)}
+                />
+              ) : item.type === 'product' ? (
+                <ProductTimelineItem
+                  key={item.data.id}
+                  product={item.data}
+                  accentColor={currentGamesen.color}
+                  isLast={idx === timeline.length - 1}
+                  onBookmark={handleBookmark}
                 />
               ) : (
                 <WebTimelineItem
@@ -925,6 +993,150 @@ function WebTimelineItem({
           </div>
         )}
       </a>
+    </div>
+  );
+}
+
+/* ─── Product タイムラインアイテム ─── */
+function ProductTimelineItem({
+  product, accentColor, isLast, onBookmark,
+}: {
+  product: ProductNote;
+  accentColor: string;
+  isLast: boolean;
+  onBookmark: (noteId: string) => void;
+}) {
+  const mono = { fontFamily: "'Space Mono', monospace" };
+
+  return (
+    <div style={{ display: 'flex', gap: 16 }}>
+      {/* タイムライン軸 */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        flexShrink: 0, paddingTop: 20,
+      }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: 1,
+          background: '#f59e0b', flexShrink: 0,
+          boxShadow: '0 0 0 2px #f59e0b22',
+          transform: 'rotate(45deg)',
+        }} />
+        {!isLast && (
+          <div style={{
+            width: 1, flex: 1, minHeight: 24,
+            background: '#e5e7eb', marginTop: 4,
+          }} />
+        )}
+      </div>
+
+      {/* カード */}
+      <div style={{
+        flex: 1, padding: '16px 0 24px',
+      }}>
+        {/* バッジ行 */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap',
+        }}>
+          <span style={{
+            ...mono, fontSize: 8, color: '#fff', background: '#f59e0b',
+            padding: '1px 6px', borderRadius: 4, letterSpacing: '0.08em',
+          }}>
+            Product
+          </span>
+          <span style={{
+            ...mono, fontSize: 8, color: '#f59e0b',
+            border: '1px solid #f59e0b33',
+            padding: '1px 6px', borderRadius: 8,
+          }}>
+            {PRODUCT_TYPE_LABELS[product.productType] || product.productType}
+          </span>
+          <span style={{ ...mono, fontSize: 10, color: '#f59e0b', fontWeight: 700 }}>
+            ¥{product.productPrice.toLocaleString()}
+          </span>
+          <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
+            by {product.authorName}
+          </span>
+        </div>
+
+        {/* タイトル */}
+        <div style={{
+          fontSize: 15, fontWeight: 600,
+          fontFamily: 'Noto Serif JP, serif',
+          color: '#1a1a1a', marginBottom: 6,
+          lineHeight: 1.5,
+        }}>
+          {product.title}
+        </div>
+
+        {/* 商品説明 */}
+        {product.productDescription && (
+          <div style={{
+            fontSize: 13, color: '#6b7280',
+            fontFamily: 'Noto Serif JP, serif',
+            lineHeight: 1.8,
+            marginBottom: 8,
+          }}>
+            {product.productDescription}
+          </div>
+        )}
+
+        {/* 本文プレビュー */}
+        {product.body && !product.productDescription && (
+          <div style={{
+            fontSize: 13, color: '#9ca3af',
+            fontFamily: 'Noto Serif JP, serif',
+            lineHeight: 1.8,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            marginBottom: 8,
+          }}>
+            {product.body}
+          </div>
+        )}
+
+        {/* アクション行 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+          {/* ブックマーク */}
+          <button
+            onClick={() => onBookmark(product.id)}
+            style={{
+              ...mono, fontSize: 9, cursor: 'pointer',
+              background: 'transparent', border: 'none',
+              color: product.isBookmarked ? '#f59e0b' : '#9ca3af',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            {product.isBookmarked ? '★' : '☆'} {product.bookmarkCount}
+          </button>
+
+          {/* 外部決済リンク */}
+          {product.productExternalUrl && (
+            <a
+              href={product.productExternalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                ...mono, fontSize: 9, letterSpacing: '0.08em',
+                color: '#f59e0b', textDecoration: 'none',
+                padding: '3px 10px', border: '1px solid #fde68a',
+                borderRadius: 4,
+              }}
+            >
+              購入する →
+            </a>
+          )}
+
+          {/* タグ */}
+          {product.tags?.slice(0, 3).map(tag => (
+            <span key={tag} style={{
+              ...mono, fontSize: 8, color: '#9ca3af',
+              background: '#f3f4f6', padding: '1px 6px', borderRadius: 8,
+            }}>{tag}</span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

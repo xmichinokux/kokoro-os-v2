@@ -16,7 +16,17 @@ export type KokoroNote = {
   linkedPersona?: string;
   pinned: boolean;
   isPublic?: boolean;
+
+  // 商品フィールド
+  isProduct?: boolean;
+  productPrice?: number;          // 円
+  productDescription?: string;
+  productExternalUrl?: string;    // 外部決済リンク（Stripe Payment Links, BOOTH等）
+  productType?: ProductType;
+  authorName?: string;            // 売り手の表示名
 };
+
+export type ProductType = 'pdf' | 'data' | 'svg' | 'html' | 'text' | 'other';
 
 export type NoteSearchHit = {
   noteId: string;
