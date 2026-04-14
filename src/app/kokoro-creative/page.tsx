@@ -12,7 +12,7 @@ import {
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#e11d48';
 
-type Mode = 'generate' | 'process';
+type Mode = 'generate' | 'process' | 'vector';
 
 const GEN_PRESETS = [
   { label: '幾何学パターン', prompt: '幾何学的な模様を使った抽象アート。三角形、円、線が重なり合う美しいパターン。' },
@@ -60,6 +60,16 @@ export default function KokoroCreativePage() {
   const [autoAdjusting, setAutoAdjusting] = useState(false);
   const [adjustLog, setAdjustLog] = useState<{ round: number; evaluation: string; adjustments: string; score: number }[]>([]);
   const [adjustScore, setAdjustScore] = useState<number | null>(null);
+
+  // === Vector モード ===
+  const [vecSubject, setVecSubject] = useState('');
+  const [vecStyle, setVecStyle] = useState('');
+  const [vecPhase, setVecPhase] = useState<'input' | 'generating' | 'done'>('input');
+  const [vecSvg, setVecSvg] = useState('');
+  const [vecDesignDoc, setVecDesignDoc] = useState('');
+  const [vecProgress, setVecProgress] = useState('');
+  const [vecLog, setVecLog] = useState<string[]>([]);
+  const [vecShowCode, setVecShowCode] = useState(false);
 
   // 感性マップ確認
   useEffect(() => {
@@ -331,6 +341,129 @@ export default function KokoroCreativePage() {
     setAutoAdjusting(false);
   }, [effectChain, styleInput, apiFetch]);
 
+  // ========================
+  // Vector モード関数
+  // ========================
+  const handleVectorGenerate = useCallback(async () => {
+    if (!vecSubject.trim()) return;
+    setVecPhase('generating'); setError(''); setVecSvg(''); setVecDesignDoc('');
+    setVecLog([]); setVecShowCode(false);
+    const logs: string[] = [];
+
+    try {
+      // Step 1: Logic Layer（Gemini 構造設計）
+      setVecProgress('Logic Layer: 構造設計中...');
+      logs.push('▶ Logic Layer: 構造を設計中...'); setVecLog([...logs]);
+      const logicData = await apiFetch('/api/creative-vector', {
+        subject: vecSubject.trim(), style: vecStyle.trim(), step: 'logic',
+      });
+      const designDoc = logicData.designDoc as string;
+      setVecDesignDoc(designDoc);
+      logs.push('✓ 構造設計書を受信'); setVecLog([...logs]);
+
+      // Step 2: Styling Layer（Claude Sonnet SVG生成）
+      setVecProgress('Styling Layer: SVGコード生成中...');
+      logs.push('▶ Styling Layer: SVGコードを生成中...'); setVecLog([...logs]);
+      const styleData = await apiFetch('/api/creative-vector', {
+        subject: vecSubject.trim(), style: vecStyle.trim(), step: 'styling', designDoc,
+      });
+      let currentSvg = styleData.svg as string;
+      let currentErrors = (styleData.errors as string[]) || [];
+
+      if (currentErrors.length > 0) {
+        logs.push(`  △ ${currentErrors.length}件の問題を検出`);
+        currentErrors.forEach(e => logs.push(`    - ${e}`));
+        setVecLog([...logs]);
+      } else {
+        logs.push('✓ SVGコードを受信（エラーなし）'); setVecLog([...logs]);
+      }
+
+      // Step 3: Debug Layer（Haiku デバッグループ、最大5回）
+      const MAX_DEBUG_ROUNDS = 5;
+      for (let round = 0; round < MAX_DEBUG_ROUNDS; round++) {
+        if (currentErrors.length === 0) break;
+
+        setVecProgress(`Debug Layer: 修正中... (${round + 1}/${MAX_DEBUG_ROUNDS})`);
+        logs.push(`▶ Debug Layer: ラウンド ${round + 1}/${MAX_DEBUG_ROUNDS}...`); setVecLog([...logs]);
+
+        try {
+          const debugData = await apiFetch('/api/creative-vector', {
+            subject: vecSubject.trim(), style: vecStyle.trim(), step: 'debug',
+            designDoc, svg: currentSvg,
+          });
+
+          if (debugData.fixed) {
+            currentSvg = debugData.svg as string;
+            currentErrors = (debugData.errors as string[]) || [];
+            if (currentErrors.length === 0) {
+              logs.push(`✓ 修正完了（ラウンド${round + 1}）`); setVecLog([...logs]);
+            } else {
+              logs.push(`  △ 残り${currentErrors.length}件`);
+              currentErrors.forEach(e => logs.push(`    - ${e}`));
+              setVecLog([...logs]);
+            }
+          } else {
+            logs.push('✓ 問題なし'); setVecLog([...logs]);
+            break;
+          }
+        } catch (dbgErr) {
+          logs.push(`  ✗ デバッグ失敗: ${dbgErr instanceof Error ? dbgErr.message : 'エラー'}`);
+          setVecLog([...logs]);
+          break;
+        }
+      }
+
+      setVecSvg(currentSvg);
+      setVecPhase('done');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'エラーが発生しました');
+      setVecPhase('input');
+    }
+  }, [vecSubject, vecStyle, apiFetch]);
+
+  // SVGダウンロード
+  const handleExportSvg = useCallback(() => {
+    if (!vecSvg) return;
+    const blob = new Blob([vecSvg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `kokoro-vector-${new Date().toISOString().slice(0, 10)}.svg`;
+    a.click(); URL.revokeObjectURL(url);
+  }, [vecSvg]);
+
+  // SVG → PNG変換エクスポート
+  const handleExportVecPng = useCallback(() => {
+    if (!vecSvg) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1600; canvas.height = 1600;
+    const ctx = canvas.getContext('2d')!;
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, 1600, 1600);
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `kokoro-vector-${new Date().toISOString().slice(0, 10)}.png`;
+      a.click();
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(vecSvg)));
+  }, [vecSvg]);
+
+  // Tunerへ渡す（SVGをHTMLとして渡す）
+  const handleVecToTuner = useCallback(() => {
+    if (!vecSvg) return;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Vector Art</title><style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f8f9fa}svg{max-width:100%;max-height:100vh}</style></head><body>${vecSvg}</body></html>`;
+    localStorage.setItem('kokoro_world_input', JSON.stringify({
+      strategyHtml: html, strategyText: `${vecSubject} / ${vecStyle}`,
+      savedAt: new Date().toISOString(), source: 'creative-vector',
+    }));
+    router.push('/kokoro-tuner');
+  }, [vecSvg, vecSubject, vecStyle, router]);
+
+  const handleVecReset = useCallback(() => {
+    setVecPhase('input'); setVecSvg(''); setVecDesignDoc('');
+    setVecProgress(''); setVecLog([]); setVecShowCode(false); setError('');
+  }, []);
+
   // PNGエクスポート
   const handleExportProcPng = useCallback(() => {
     const canvas = previewCanvasRef.current;
@@ -377,7 +510,7 @@ export default function KokoroCreativePage() {
               Kokoro <span style={{ color: accentColor }}>Creative</span>
             </div>
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>
-              {mode === 'generate' ? '感性からビジュアルを生成する' : '画像にエフェクトを適用する'}
+              {mode === 'generate' ? '感性からビジュアルを生成する' : mode === 'process' ? '画像にエフェクトを適用する' : 'インテントからベクターを生成する'}
             </span>
           </div>
         </div>
@@ -390,7 +523,7 @@ export default function KokoroCreativePage() {
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '32px 28px 100px' }}>
         {/* モード切替タブ */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 32, borderBottom: '2px solid #e5e7eb' }}>
-          {([['generate', 'Generate'], ['process', 'Process']] as [Mode, string][]).map(([m, label]) => (
+          {([['generate', 'Generate'], ['process', 'Process'], ['vector', 'Vector']] as [Mode, string][]).map(([m, label]) => (
             <button key={m} onClick={() => setMode(m)} style={{
               ...mono, fontSize: 11, letterSpacing: '0.14em', padding: '10px 24px',
               background: 'transparent', border: 'none', cursor: 'pointer',
@@ -409,7 +542,7 @@ export default function KokoroCreativePage() {
             background: '#f0fdf4', border: '1px solid #bbf7d0',
             padding: '8px 14px', borderRadius: 4, marginBottom: 20,
           }}>
-            ✓ 感性マップを検出 — {mode === 'generate' ? '生成' : 'AI提案'}に反映されます
+            ✓ 感性マップを検出 — {mode === 'vector' ? 'ベクター生成' : mode === 'generate' ? '生成' : 'AI提案'}に反映されます
           </div>
         )}
 
@@ -695,6 +828,161 @@ export default function KokoroCreativePage() {
                     padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
                   }}>別の画像を読み込む</button>
                 </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ============================================ */}
+        {/* Vector モード */}
+        {/* ============================================ */}
+        {mode === 'vector' && (
+          <>
+            {vecPhase === 'input' && (
+              <div>
+                <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: accentColor, textTransform: 'uppercase', marginBottom: 16 }}>
+                  // インテント → ベクターマッピング
+                </div>
+                <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.8, marginBottom: 20, padding: '12px 16px', background: '#fdf2f8', borderRadius: 8, border: '1px solid #fce7f3' }}>
+                  主題とスタイルを分けて入力してください。<br/>
+                  AIが構造設計 → SVG生成 → 自律デバッグ（最大5回）を実行します。
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af', display: 'block', marginBottom: 6 }}>SUBJECT（主題）</label>
+                  <input
+                    value={vecSubject} onChange={e => setVecSubject(e.target.value)}
+                    placeholder="例: カーネル・サンダース（ケンタッキーおじさん）"
+                    style={{ width: '100%', fontSize: 13, padding: '12px 14px', border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', fontFamily: "'Noto Sans JP', sans-serif", color: '#374151' }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af', display: 'block', marginBottom: 6 }}>STYLE（作風・質感）</label>
+                  <input
+                    value={vecStyle} onChange={e => setVecStyle(e.target.value)}
+                    placeholder="例: 大友克洋風（緻密な線画、メカニカルなディテール、ハッチング影）"
+                    style={{ width: '100%', fontSize: 13, padding: '12px 14px', border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', fontFamily: "'Noto Sans JP', sans-serif", color: '#374151' }}
+                  />
+                </div>
+
+                {/* スタイルプリセット */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af', marginBottom: 8 }}>STYLE PRESETS</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {[
+                      { label: '大友克洋風', val: '大友克洋風（緻密な線画、メカニカルなディテール、ハッチング影、情報密度が高い）' },
+                      { label: '浮世絵風', val: '浮世絵風（太い輪郭線、平面的な塗り、限定色パレット、波・雲のパターン）' },
+                      { label: 'ミニマル', val: 'ミニマルモダン（最小限の線、幾何学的な単純化、余白を活かす、モノトーン）' },
+                      { label: 'コミック', val: 'アメコミ風（太いアウトライン、ハーフトーン、鮮やかな原色、ポップ）' },
+                      { label: '設計図風', val: '設計図・ブループリント風（細い線、寸法線、注釈テキスト、グリッド背景、青白配色）' },
+                    ].map(p => (
+                      <button key={p.label} onClick={() => setVecStyle(p.val)} style={{
+                        fontSize: 11, color: vecStyle === p.val ? '#fff' : '#6b7280',
+                        background: vecStyle === p.val ? accentColor : '#f3f4f6',
+                        border: 'none', padding: '6px 14px', borderRadius: 20, cursor: 'pointer',
+                        fontFamily: "'Noto Sans JP', sans-serif",
+                      }}>{p.label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <button onClick={handleVectorGenerate} disabled={!vecSubject.trim()} style={{
+                  ...mono, fontSize: 11, letterSpacing: '0.16em', background: accentColor, border: 'none', color: '#fff',
+                  padding: '14px 32px', borderRadius: 4, cursor: vecSubject.trim() ? 'pointer' : 'not-allowed',
+                  marginTop: 8, opacity: vecSubject.trim() ? 1 : 0.5, display: 'block', width: '100%',
+                }}>Generate Vector</button>
+              </div>
+            )}
+
+            {vecPhase === 'generating' && (
+              <div style={{ textAlign: 'center', paddingTop: 60 }}>
+                <div style={{ ...mono, fontSize: 11, letterSpacing: '0.16em', color: accentColor }}>// {vecProgress || '生成中...'}</div>
+                <PersonaLoading />
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
+                  Logic → Styling → Debug の3レイヤーで構築中
+                </div>
+                {vecLog.length > 0 && (
+                  <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 14, marginTop: 24, maxHeight: 250, overflowY: 'auto', textAlign: 'left' }}>
+                    {vecLog.map((log, i) => (
+                      <div key={i} style={{ ...mono, fontSize: 10, lineHeight: 1.8, color: log.startsWith('✓') ? '#4ade80' : log.startsWith('✗') ? '#f87171' : log.startsWith('▶') ? '#60a5fa' : log.startsWith('  △') ? '#fbbf24' : '#9ca3af' }}>{log}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {vecPhase === 'done' && vecSvg && (
+              <div>
+                <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase', marginBottom: 16 }}>// ベクター生成完了</div>
+
+                {/* SVGプレビュー */}
+                <div style={{
+                  border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 20,
+                  background: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center',
+                  padding: 16, minHeight: 400,
+                }}>
+                  <div
+                    dangerouslySetInnerHTML={{ __html: vecSvg }}
+                    style={{ maxWidth: '100%', maxHeight: 600 }}
+                  />
+                </div>
+
+                {/* アクションボタン */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button onClick={handleExportSvg} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: accentColor, border: 'none', color: '#fff',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>Export SVG</button>
+                  <button onClick={handleExportVecPng} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: `1px solid ${accentColor}`, color: accentColor,
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>Export PNG</button>
+                  <button onClick={handleVecToTuner} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #f59e0b', color: '#f59e0b',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>Tuner →</button>
+                  <button onClick={() => setVecShowCode(p => !p)} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>{vecShowCode ? 'コードを隠す' : 'SVGコードを見る'}</button>
+                  <button onClick={handleVecReset} style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}>もう一度</button>
+                </div>
+
+                {/* ビルドログ */}
+                {vecLog.length > 0 && (
+                  <details style={{ marginTop: 20 }} open>
+                    <summary style={{ ...mono, fontSize: 10, color: '#60a5fa', cursor: 'pointer', padding: '8px 0' }}>ビルドログ</summary>
+                    <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 14, maxHeight: 200, overflowY: 'auto', marginTop: 8 }}>
+                      {vecLog.map((log, i) => (
+                        <div key={i} style={{ ...mono, fontSize: 10, lineHeight: 1.8, color: log.startsWith('✓') ? '#4ade80' : log.startsWith('✗') ? '#f87171' : log.startsWith('▶') ? '#60a5fa' : log.startsWith('  △') ? '#fbbf24' : '#9ca3af' }}>{log}</div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {/* 設計書 */}
+                {vecDesignDoc && (
+                  <details style={{ marginTop: 20 }}>
+                    <summary style={{ ...mono, fontSize: 10, color: '#3b82f6', cursor: 'pointer', padding: '8px 0' }}>Logic Layer 設計書を見る</summary>
+                    <div style={{ background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
+                      <pre style={{ fontSize: 12, lineHeight: 1.8, color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", whiteSpace: 'pre-wrap', margin: 0 }}>{vecDesignDoc}</pre>
+                    </div>
+                  </details>
+                )}
+
+                {/* SVGコード */}
+                {vecShowCode && (
+                  <div style={{ marginTop: 20, position: 'relative' }}>
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(vecSvg); } catch { /* */ } }} style={{ ...mono, fontSize: 9, position: 'absolute', top: 10, right: 10, zIndex: 10, background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '5px 12px', borderRadius: 3, cursor: 'pointer' }}>Copy</button>
+                    <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 20, maxHeight: 400, overflowY: 'auto' }}>
+                      <pre style={{ fontSize: 10, lineHeight: 1.5, color: '#d4d4d4', fontFamily: "'Space Mono', monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>{vecSvg}</pre>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>
