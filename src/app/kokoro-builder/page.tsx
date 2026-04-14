@@ -272,6 +272,16 @@ export default function KokoroBuilderPage() {
     router.push('/kokoro-world');
   }, [generatedCode, spec, router]);
 
+  // Tunerへ渡す
+  const handleToTuner = useCallback(() => {
+    if (!generatedCode) return;
+    localStorage.setItem('kokoro_world_input', JSON.stringify({
+      strategyHtml: generatedCode, strategyText: spec,
+      savedAt: new Date().toISOString(), source: 'builder',
+    }));
+    router.push('/kokoro-tuner');
+  }, [generatedCode, spec, router]);
+
   // リセット
   const handleReset = useCallback(() => {
     setPhase('input');
@@ -398,6 +408,7 @@ export default function KokoroBuilderPage() {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button onClick={handleDownload} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: accentColor, border: 'none', color: '#fff', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>Download ↓</button>
               <button onClick={handleToWorld} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #10b981', color: '#10b981', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>World →</button>
+              <button onClick={handleToTuner} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #f59e0b', color: '#f59e0b', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>Tuner →</button>
               <button onClick={() => setShowCode(prev => !prev)} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>{showCode ? 'コードを隠す' : 'コードを見る'}</button>
               <button onClick={handleReset} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>もう一度</button>
             </div>

@@ -134,6 +134,13 @@ const APPS: App[] = [
     ready: true,
   },
   {
+    icon: "🎛️",
+    name: "Kokoro Tuner",
+    desc: "生成したHTMLのパラメータを視覚的に調整。",
+    href: "/kokoro-tuner",
+    ready: true,
+  },
+  {
     icon: "🌍",
     name: "Kokoro World",
     desc: "企画書から動くデモページを自動生成。",
