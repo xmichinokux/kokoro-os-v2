@@ -8,7 +8,7 @@ const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#7c3aed';
 
 const CATEGORIES: { value: ParamCategory; label: string; icon: string }[] = [
-  { value: 'balance', label: 'ゲームバランス', icon: '⚖️' },
+  { value: 'balance', label: '数値パラメータ', icon: '⚙️' },
   { value: 'design', label: 'デザイン', icon: '🎨' },
   { value: 'text', label: 'テキスト', icon: '✏️' },
 ];
