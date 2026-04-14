@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase/server';
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 // Supabaseから感性マップを取得
 async function fetchAestheticMap(): Promise<string> {
@@ -28,7 +28,8 @@ async function fetchAestheticMap(): Promise<string> {
     }
 
     const combined = parts.join('\n\n');
-    return combined.length > 3000 ? combined.slice(0, 3000) + '...(省略)' : combined;
+    // Creative用は1500文字に制限（設計プロンプトが長くなりすぎ防止）
+    return combined.length > 1500 ? combined.slice(0, 1500) + '...(省略)' : combined;
   } catch {
     return '';
   }
@@ -37,33 +38,34 @@ async function fetchAestheticMap(): Promise<string> {
 // Step 1: Gemini設計（ビジュアル技法・パラメータ設計）
 const DESIGN_PROMPT = (spec: string, aestheticMap: string) =>
   `あなたはビジュアルアート・ジェネラティブデザインの専門家です。
-以下の仕様を読んで、SVG/Canvas/p5.jsで実装するための詳細な設計書を作成してください。
+以下の仕様を読んで、SVG/Canvas/p5.jsで実装するための**簡潔な**設計書を作成してください。
 
 【仕様】
 ${spec}
 ${aestheticMap ? `
 【ユーザーの美意識・感性マップ】
-以下はユーザーの創作物から分析した美的感覚・価値観・構造化の傾向です。
-色彩選択・構図・余白・動き・テクスチャなどの視覚要素に、この感性を深く反映してください。
+色彩・構図・動きに以下の傾向を反映してください（要約的に取り入れること）。
 
 ${aestheticMap}
 ` : ''}
-【設計書に含めること】
-1. 表現技法の選択理由（SVG / Canvas 2D / p5.js / CSS Art）
-2. 使用するライブラリとCDN URL（p5.jsの場合: https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js）
-3. カラーパレット（具体的な#hex値を5〜8色）
-4. 構図・レイアウト設計（黄金比、グリッド、放射状、フラクタル等）
-5. アニメーション設計（動きの種類・速度・イージング）
-6. パラメータ一覧（調整可能にすべき値: 色数、密度、速度、サイズ等）
-7. 実装の優先順位と注意点
-8. レスポンシブ対応方針
+【設計書に含めること（各項目3〜5行以内で簡潔に）】
+1. 表現技法（SVG / Canvas 2D / p5.js）とCDN URL
+2. カラーパレット（#hex値を5〜8色、1行で列挙）
+3. 構図の方針（1〜2文）
+4. アニメーション（動きの種類と速度を箇条書き）
+5. configオブジェクトのキー一覧（名前と型のみ、コード不要）
+6. 実装上の注意点（3項目以内）
+
+【絶対に守ること】
+・設計書は**2000文字以内**に収めてください
+・HTMLコード、JavaScript、CSSは**一切書かないでください**（コードはClaudeが書きます）
+・configオブジェクトは**キー名と説明**だけ書いてください（値やコードブロックは不要）
+・冗長な解説・感性マップの引用・背景説明は省いてください
 
 【制約】
-・シングルHTMLファイルで完結
-・ブラウザで直接動作（サーバー不要）
-・CDN経由でライブラリを読み込む
-・パラメータはJavaScriptのconfigオブジェクトとして定義（後からTunerで調整可能にするため）
-・生成物はCanvasまたはSVG要素として出力（PNG/SVGエクスポート可能にするため）`;
+・シングルHTMLファイル、ブラウザで直接動作、CDN読み込み
+・パラメータはconfigオブジェクトに集約（Tunerで調整可能にするため）
+・出力はCanvasまたはSVG要素（PNG/SVGエクスポート可能）`;
 
 // Step 2: Claude実装
 const IMPLEMENT_PROMPT = (instruction: string, spec: string) =>
@@ -201,7 +203,15 @@ export async function POST(req: NextRequest) {
       }
       // 感性マップを取得（失敗しても続行）
       const aestheticMap = await fetchAestheticMap();
-      const designDoc = await callGemini(geminiKey, DESIGN_PROMPT(spec, aestheticMap));
+      let designDoc = await callGemini(geminiKey, DESIGN_PROMPT(spec, aestheticMap));
+
+      // Geminiがコードを含めてしまった場合、コードブロックを除去
+      designDoc = designDoc.replace(/```[\s\S]*?```/g, '[コード省略]');
+      // 設計書が長すぎる場合は切り詰め（Claudeへの入力を制限）
+      if (designDoc.length > 4000) {
+        designDoc = designDoc.slice(0, 4000) + '\n...(設計書省略)';
+      }
+
       return NextResponse.json({ instruction: designDoc, hasAestheticMap: !!aestheticMap });
     }
 
@@ -210,7 +220,11 @@ export async function POST(req: NextRequest) {
       if (!instruction) {
         return NextResponse.json({ error: '設計書が必要です' }, { status: 400 });
       }
-      const code = await callClaude(anthropicKey, IMPLEMENT_PROMPT(instruction, spec || ''));
+      // 設計書が巨大な場合の安全弁（クライアントから直接渡される場合）
+      const trimmedInstruction = instruction.length > 4000
+        ? instruction.slice(0, 4000) + '\n...(設計書省略)'
+        : instruction;
+      const code = await callClaude(anthropicKey, IMPLEMENT_PROMPT(trimmedInstruction, spec || ''));
       return NextResponse.json({ code });
     }
 
