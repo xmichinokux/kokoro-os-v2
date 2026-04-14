@@ -7,12 +7,15 @@ import PersonaLoading from '@/components/PersonaLoading';
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#7c3aed';
 
-type BuildType = 'html' | 'auto';
+type BuildType = 'html' | 'hybrid' | 'auto';
 
 const BUILD_OPTIONS: { value: BuildType; label: string; desc: string }[] = [
-  { value: 'html', label: 'シングルHTMLファイル', desc: 'CDN経由で外部ライブラリを読み込み。すぐ動く。' },
+  { value: 'html', label: 'シングルHTMLファイル（Claude）', desc: 'CDN経由で外部ライブラリを読み込み。すぐ動く。' },
+  { value: 'hybrid', label: 'Hybrid（Gemini設計 + Claude実装）', desc: 'Geminiが設計→Claudeが実装。高品質。' },
   { value: 'auto', label: 'AIに任せる', desc: '仕様書から最適なライブラリを自動選択。' },
 ];
+
+type HybridStep = 'idle' | 'gemini' | 'claude';
 
 export default function KokoroBuilderPage() {
   const router = useRouter();
@@ -28,6 +31,11 @@ export default function KokoroBuilderPage() {
   const [error, setError] = useState('');
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Hybrid用
+  const [hybridStep, setHybridStep] = useState<HybridStep>('idle');
+  const [geminiInstruction, setGeminiInstruction] = useState('');
+  const [showInstruction, setShowInstruction] = useState(false);
 
   // Gatekeeperからの読み込み
   useEffect(() => {
@@ -50,8 +58,19 @@ export default function KokoroBuilderPage() {
     };
   }, []);
 
-  // コード生成
-  const handleBuild = useCallback(async () => {
+  // プレビュー表示共通処理
+  const showPreview = useCallback((code: string) => {
+    setGeneratedCode(code);
+    if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
+    const blob = new Blob([code], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    prevBlobUrlRef.current = url;
+    setPreviewUrl(url);
+    setPhase('done');
+  }, []);
+
+  // 通常モード（html / auto）のコード生成
+  const handleBuildNormal = useCallback(async () => {
     if (!spec.trim()) return;
     setPhase('generating');
     setError('');
@@ -59,6 +78,8 @@ export default function KokoroBuilderPage() {
     setPreviewUrl(null);
     setShowCode(false);
     setCopied(false);
+    setGeminiInstruction('');
+    setShowInstruction(false);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000);
@@ -74,18 +95,7 @@ export default function KokoroBuilderPage() {
       let data;
       try { data = JSON.parse(text); } catch { throw new Error(`サーバーエラー（${res.status}）: ${text.slice(0, 100)}`); }
       if (data.error) throw new Error(data.error);
-
-      const code = data.code as string;
-      setGeneratedCode(code);
-
-      // iframeにプレビュー表示
-      if (prevBlobUrlRef.current) URL.revokeObjectURL(prevBlobUrlRef.current);
-      const blob = new Blob([code], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      prevBlobUrlRef.current = url;
-      setPreviewUrl(url);
-
-      setPhase('done');
+      showPreview(data.code as string);
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
         setError('タイムアウト: コード生成に時間がかかりすぎました。');
@@ -96,7 +106,84 @@ export default function KokoroBuilderPage() {
     } finally {
       clearTimeout(timeoutId);
     }
-  }, [spec, buildType]);
+  }, [spec, buildType, showPreview]);
+
+  // Hybridモードのコード生成（2段階）
+  const handleBuildHybrid = useCallback(async () => {
+    if (!spec.trim()) return;
+    setPhase('generating');
+    setError('');
+    setGeneratedCode('');
+    setPreviewUrl(null);
+    setShowCode(false);
+    setCopied(false);
+    setGeminiInstruction('');
+    setShowInstruction(false);
+    setHybridStep('gemini');
+
+    try {
+      // Step 1: Geminiで実装指示書を生成
+      const controller1 = new AbortController();
+      const timeoutId1 = setTimeout(() => controller1.abort(), 120000);
+
+      let instruction: string;
+      try {
+        const res1 = await fetch('/api/kokoro-builder-hybrid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spec: spec.trim(), step: 'gemini' }),
+          signal: controller1.signal,
+        });
+        const text1 = await res1.text();
+        let data1;
+        try { data1 = JSON.parse(text1); } catch { throw new Error(`サーバーエラー（${res1.status}）: ${text1.slice(0, 100)}`); }
+        if (data1.error) throw new Error(data1.error);
+        instruction = data1.instruction as string;
+        setGeminiInstruction(instruction);
+      } finally {
+        clearTimeout(timeoutId1);
+      }
+
+      // Step 2: Claudeでコード生成
+      setHybridStep('claude');
+      const controller2 = new AbortController();
+      const timeoutId2 = setTimeout(() => controller2.abort(), 120000);
+
+      try {
+        const res2 = await fetch('/api/kokoro-builder-hybrid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spec: spec.trim(), step: 'claude', instruction }),
+          signal: controller2.signal,
+        });
+        const text2 = await res2.text();
+        let data2;
+        try { data2 = JSON.parse(text2); } catch { throw new Error(`サーバーエラー（${res2.status}）: ${text2.slice(0, 100)}`); }
+        if (data2.error) throw new Error(data2.error);
+        showPreview(data2.code as string);
+      } finally {
+        clearTimeout(timeoutId2);
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setError('タイムアウト: 処理に時間がかかりすぎました。');
+      } else {
+        setError(e instanceof Error ? e.message : 'コード生成に失敗しました');
+      }
+      setPhase('input');
+    } finally {
+      setHybridStep('idle');
+    }
+  }, [spec, showPreview]);
+
+  // ビルド実行（タイプに応じて分岐）
+  const handleBuild = useCallback(() => {
+    if (buildType === 'hybrid') {
+      handleBuildHybrid();
+    } else {
+      handleBuildNormal();
+    }
+  }, [buildType, handleBuildHybrid, handleBuildNormal]);
 
   // HTMLダウンロード
   const handleDownload = useCallback(() => {
@@ -138,6 +225,23 @@ export default function KokoroBuilderPage() {
     }));
     router.push('/kokoro-world');
   }, [generatedCode, spec, router]);
+
+  // リセット
+  const handleReset = useCallback(() => {
+    setPhase('input');
+    setGeneratedCode('');
+    setPreviewUrl(null);
+    setError('');
+    setShowCode(false);
+    setCopied(false);
+    setGeminiInstruction('');
+    setShowInstruction(false);
+    setHybridStep('idle');
+    if (prevBlobUrlRef.current) {
+      URL.revokeObjectURL(prevBlobUrlRef.current);
+      prevBlobUrlRef.current = null;
+    }
+  }, []);
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
@@ -257,13 +361,47 @@ export default function KokoroBuilderPage() {
         {/* 生成中 */}
         {phase === 'generating' && (
           <div style={{ textAlign: 'center', paddingTop: 60 }}>
-            <div style={{ ...mono, fontSize: 11, letterSpacing: '0.16em', color: accentColor }}>
-              // コードを生成しています...
-            </div>
-            <PersonaLoading />
-            <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
-              仕様書の複雑さにより1〜2分かかる場合があります
-            </div>
+            {buildType === 'hybrid' ? (
+              <>
+                {/* Hybrid: 2段階表示 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  {/* Step 1 */}
+                  <div style={{
+                    padding: '16px 20px', borderRadius: 8,
+                    background: hybridStep === 'gemini' ? 'rgba(59,130,246,0.06)' : hybridStep === 'claude' ? 'rgba(16,185,129,0.06)' : '#f8f9fa',
+                    border: `1px solid ${hybridStep === 'gemini' ? 'rgba(59,130,246,0.3)' : hybridStep === 'claude' ? 'rgba(16,185,129,0.3)' : '#e5e7eb'}`,
+                  }}>
+                    <div style={{ ...mono, fontSize: 10, letterSpacing: '0.14em', color: hybridStep === 'gemini' ? '#3b82f6' : '#059669', marginBottom: 8 }}>
+                      Step 1: {hybridStep === 'gemini' ? 'Geminiが仕様書を分析中...' : 'Geminiの分析完了 ✓'}
+                    </div>
+                    {hybridStep === 'gemini' && <PersonaLoading />}
+                  </div>
+
+                  {/* Step 2 */}
+                  <div style={{
+                    padding: '16px 20px', borderRadius: 8,
+                    background: hybridStep === 'claude' ? 'rgba(124,58,237,0.06)' : '#f8f9fa',
+                    border: `1px solid ${hybridStep === 'claude' ? 'rgba(124,58,237,0.3)' : '#e5e7eb'}`,
+                    opacity: hybridStep === 'gemini' ? 0.4 : 1,
+                  }}>
+                    <div style={{ ...mono, fontSize: 10, letterSpacing: '0.14em', color: hybridStep === 'claude' ? accentColor : '#9ca3af', marginBottom: 8 }}>
+                      Step 2: {hybridStep === 'claude' ? 'Claudeがコードを生成中...' : 'Claudeの実装（待機中）'}
+                    </div>
+                    {hybridStep === 'claude' && <PersonaLoading />}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ ...mono, fontSize: 11, letterSpacing: '0.16em', color: accentColor }}>
+                  // コードを生成しています...
+                </div>
+                <PersonaLoading />
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
+                  仕様書の複雑さにより1〜2分かかる場合があります
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -322,7 +460,7 @@ export default function KokoroBuilderPage() {
               >{showCode ? 'コードを隠す' : 'コードを見る'}</button>
 
               <button
-                onClick={() => { setPhase('input'); setGeneratedCode(''); setPreviewUrl(null); setError(''); setShowCode(false); setCopied(false); if (prevBlobUrlRef.current) { URL.revokeObjectURL(prevBlobUrlRef.current); prevBlobUrlRef.current = null; } }}
+                onClick={handleReset}
                 style={{
                   ...mono, fontSize: 10, letterSpacing: '0.12em',
                   background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
@@ -330,6 +468,37 @@ export default function KokoroBuilderPage() {
                 }}
               >もう一度</button>
             </div>
+
+            {/* Geminiの設計書（Hybridモードのみ） */}
+            {geminiInstruction && (
+              <div style={{ marginTop: 20 }}>
+                <button
+                  onClick={() => setShowInstruction(prev => !prev)}
+                  style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.1em',
+                    background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)',
+                    color: '#3b82f6', padding: '8px 16px', borderRadius: 4, cursor: 'pointer',
+                    width: '100%', textAlign: 'left',
+                  }}
+                >
+                  {showInstruction ? 'Geminiの設計書を隠す ▲' : 'Geminiの設計書を見る ▼'}
+                </button>
+                {showInstruction && (
+                  <div style={{
+                    background: '#f8f9fa', border: '1px solid #e5e7eb', borderTop: 'none',
+                    borderRadius: '0 0 8px 8px', padding: 16, maxHeight: 400, overflowY: 'auto',
+                  }}>
+                    <pre style={{
+                      fontSize: 12, lineHeight: 1.8, color: '#374151',
+                      fontFamily: "'Noto Sans JP', sans-serif",
+                      whiteSpace: 'pre-wrap', margin: 0,
+                    }}>
+                      {geminiInstruction}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* コードプレビュー（トグル） */}
             {showCode && (
