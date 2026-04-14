@@ -8,7 +8,33 @@ export type PublicNote = {
   source: 'manual' | 'talk' | 'zen' | 'emi';
   createdAt: string;
   isPublic: true;
-  authorLabel?: string; // 将来用。今はモックで固定
+  authorLabel?: string;
+};
+
+// 商品Note（EC機能）
+export type ProductNote = {
+  id: string;
+  title: string;
+  body?: string;
+  tags?: string[];
+  source: string;
+  createdAt: string;
+  authorName: string;
+  authorId: string;
+  productPrice: number;
+  productDescription: string;
+  productExternalUrl: string;
+  productType: string;
+  bookmarkCount: number;
+  isBookmarked?: boolean;
+};
+
+// ブックマーク
+export type Bookmark = {
+  id: string;
+  userId: string;
+  noteId: string;
+  createdAt: string;
 };
 
 // ゲーセンノート（視点の束）
