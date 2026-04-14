@@ -95,6 +95,12 @@ function dbToNote(row: Record<string, unknown>): KokoroNote {
     tags: (row.tags as string[]) ?? [],
     pinned: false,
     isPublic: (row.is_public as boolean) ?? false,
+    isProduct: (row.is_product as boolean) ?? false,
+    productPrice: (row.product_price as number) ?? undefined,
+    productDescription: (row.product_description as string) ?? undefined,
+    productExternalUrl: (row.product_external_url as string) ?? undefined,
+    productType: (row.product_type as KokoroNote['productType']) ?? undefined,
+    authorName: (row.author_name as string) ?? undefined,
   };
 }
 
