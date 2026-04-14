@@ -52,6 +52,7 @@ export default function KokoroBuilderPage() {
   const [modularPhase, setModularPhase] = useState<'input' | 'splitting' | 'split_done' | 'building' | 'integrating' | 'done'>('input');
   const [modules, setModules] = useState<GeneratedModule[]>([]);
   const [integrationNotes, setIntegrationNotes] = useState('');
+  const [designDoc, setDesignDoc] = useState('');
   const [currentModuleIndex, setCurrentModuleIndex] = useState(-1);
 
   // Gatekeeperからの読み込み
@@ -179,11 +180,13 @@ export default function KokoroBuilderPage() {
     setError('');
     setModules([]);
     setIntegrationNotes('');
+    setDesignDoc('');
     try {
       const data = await apiFetch('/api/builder-split', { spec: spec.trim() });
       const mods: GeneratedModule[] = (data.modules as ModuleInfo[]).map(m => ({ ...m, code: '', state: 'pending' as ModuleState }));
       setModules(mods);
       setIntegrationNotes(data.integration_notes || '');
+      setDesignDoc(data.designDoc || '');
       setModularPhase('split_done');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'モジュール分割に失敗しました');
@@ -249,6 +252,7 @@ export default function KokoroBuilderPage() {
         modules: modulesForIntegration,
         integrationNotes,
         moduleDesigns,
+        designDoc,
       });
 
       showPreview(data.code as string);
@@ -257,7 +261,7 @@ export default function KokoroBuilderPage() {
       setError(e instanceof Error ? e.message : '統合に失敗しました');
       setModularPhase('split_done');
     }
-  }, [modules, spec, integrationNotes, apiFetch, showPreview]);
+  }, [modules, spec, integrationNotes, designDoc, apiFetch, showPreview]);
 
   // === Modular: 失敗モジュールをリトライ ===
   const handleRetryModule = useCallback(async (index: number) => {
@@ -343,6 +347,7 @@ export default function KokoroBuilderPage() {
     setGeminiInstruction('');
     setModules([]);
     setIntegrationNotes('');
+    setDesignDoc('');
     setCurrentModuleIndex(-1);
     localStorage.removeItem(STORAGE_KEY_INSTRUCTION);
     localStorage.removeItem(STORAGE_KEY_SPEC);

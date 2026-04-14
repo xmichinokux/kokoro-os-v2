@@ -3,11 +3,29 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const maxDuration = 60;
 
-const SPLIT_PROMPT = (spec: string) => `あなたは優秀なソフトウェアアーキテクトです。
-以下の仕様書を読んで、実装をモジュールに分割してください。
+const DESIGN_PROMPT = (spec: string) =>
+  `あなたは優秀なソフトウェアアーキテクトです。
+以下の仕様書を読んで、実装のための詳細な設計書を作成してください。
+使用ライブラリ・アーキテクチャ・データ構造・処理フローを明確に定義してください。
 
 【仕様書】
 ${spec}
+
+【設計書に含めること】
+・使用するライブラリとそのバージョン（CDN URL）
+・全体のアーキテクチャ（クラス構成・モジュール構成）
+・主要なデータ構造（変数・オブジェクトの定義）
+・処理フロー（初期化→メインループ→イベント処理）
+・画面構成（HTML/CSS の構造）
+・外部リソース（フォント・画像・音声など）
+・エラーハンドリング方針`;
+
+const SPLIT_PROMPT = (designDoc: string) =>
+  `あなたは優秀なソフトウェアアーキテクトです。
+以下の設計書を読んで、実装をモジュールに分割してください。
+
+【設計書】
+${designDoc}
 
 【ルール】
 ・各モジュールは独立して実装できる単位にする
@@ -44,17 +62,31 @@ export async function POST(req: NextRequest) {
 
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContent(SPLIT_PROMPT(spec));
-    const text = result.response.text().trim();
+
+    // Step 1a: 設計書を生成
+    const designResult = await model.generateContent(DESIGN_PROMPT(spec));
+    const designDoc = designResult.response.text().trim();
+
+    if (!designDoc) {
+      throw new Error('設計書の生成に失敗しました');
+    }
+
+    // Step 1b: 設計書からモジュール分割
+    const splitResult = await model.generateContent(SPLIT_PROMPT(designDoc));
+    const splitText = splitResult.response.text().trim();
 
     // JSONを抽出
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonMatch = splitText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('GeminiからJSONを抽出できませんでした');
+      throw new Error('モジュール分割のJSONを抽出できませんでした');
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-    return NextResponse.json(parsed);
+    return NextResponse.json({
+      designDoc,
+      modules: parsed.modules,
+      integration_notes: parsed.integration_notes,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

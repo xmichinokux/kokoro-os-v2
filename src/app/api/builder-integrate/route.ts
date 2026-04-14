@@ -3,12 +3,15 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const maxDuration = 60;
 
-const INTEGRATE_PROMPT = (spec: string, allModules: string, integrationNotes: string, moduleDesignInfo: string) =>
+const INTEGRATE_PROMPT = (spec: string, allModules: string, integrationNotes: string, moduleDesignInfo: string, designDoc: string) =>
   `あなたは優秀なソフトウェアアーキテクトです。
 以下のモジュールを統合して、完全に動作するシングルHTMLファイルを生成してください。
 
 【全体仕様書】
 ${spec}
+
+【設計書】
+${designDoc}
 
 【モジュール設計情報】
 ${moduleDesignInfo}
@@ -46,11 +49,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { spec, modules, integrationNotes, moduleDesigns } = await req.json() as {
+    const { spec, modules, integrationNotes, moduleDesigns, designDoc } = await req.json() as {
       spec: string;
       modules: { name: string; code: string }[];
       integrationNotes: string;
       moduleDesigns?: { id: number; name: string; description: string; dependencies: number[]; implementation_notes: string }[];
+      designDoc?: string;
     };
 
     if (!spec || !modules || modules.length === 0) {
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContent(INTEGRATE_PROMPT(spec, allModules, integrationNotes || '', moduleDesignInfo));
+    const result = await model.generateContent(INTEGRATE_PROMPT(spec, allModules, integrationNotes || '', moduleDesignInfo, designDoc || '（設計書なし）'));
     let code = result.response.text().trim();
 
     // コードブロックが含まれていたら除去
