@@ -30,8 +30,9 @@ ${previousModules ? `【既存のモジュールコード（実装済み）】\n
 ・全てのクラス・関数・変数はグローバルスコープで定義する
 ・★最重要★ 既存モジュールコードに存在しないクラス・関数・変数は絶対に参照しない。「new SomeManager(this)」のように未定義のクラスをnewしてはいけない。必要なクラスは必ずこのモジュール内で定義する
 ・既存モジュールのクラスを継承する場合、既存コードのクラス名を正確にコピーして使う（例：EnemyクラスがSGEnemyという名前なら「extends SGEnemy」と書く）
-・既存モジュールで定義済みのクラスを再定義しない
+・★重要★ 既存モジュールで定義済みのクラス・定数・変数（const, let, var, class, function）を絶対に再定義しない。たとえ同じ内容でもconst GameConfigを2回書くとエラーになる
 ・ゲームやアプリの初期化（new Phaser.Game等）はこのモジュールでは行わない（初期化は統合時に行う）
+・Phaserのシーンクラス名は、他のモジュールのscene配列から正確に参照できるように、プレフィックスなしのわかりやすい名前にする（例：MainGameSceneではなくSGMainGameSceneにしない。MainGameSceneとする）
 ・Phaserのシーンクラスのconstructor内でsuper({ key: 'シーン名' })を必ず呼ぶ
 ・アセットファイル（画像・音声）は存在しない前提で書く。this.load.image()等は使わず、代わりにthis.add.rectangle()やthis.add.circle()等のプリミティブ描画で代替する`;
 

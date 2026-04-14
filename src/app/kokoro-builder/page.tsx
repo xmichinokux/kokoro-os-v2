@@ -97,6 +97,31 @@ function validateGeneratedCode(code: string, moduleNames: string[]): { valid: bo
     issues.push({ type: 'duplicate_init', message: `Phaser.Gameが${gameCount}回初期化されています（1回にしてください）` });
   }
 
+  // 7. グローバル変数/定数の重複定義を検出
+  const constDefs = new Map<string, number>();
+  const constDefRegex = /(?:^|\n)\s*(?:const|let|var|class|function)\s+(\w+)/g;
+  while ((cm = constDefRegex.exec(scriptContent)) !== null) {
+    const name = cm[1];
+    constDefs.set(name, (constDefs.get(name) || 0) + 1);
+  }
+  const duplicates = [...constDefs.entries()].filter(([, count]) => count > 1).map(([name]) => name);
+  if (duplicates.length > 0) {
+    const hint = findModuleWithPattern(scriptContent, moduleNames, duplicates.map(d => `const ${d}`).concat(duplicates.map(d => `class ${d}`)));
+    issues.push({ type: 'duplicate_def', message: `変数/クラスが重複定義されています: ${duplicates.join(', ')}`, moduleHint: hint });
+  }
+
+  // 8. scene配列で参照されるクラスが未定義でないかチェック
+  const sceneArrayRegex = /scene\s*:\s*\[([^\]]+)\]/g;
+  while ((cm = sceneArrayRegex.exec(scriptContent)) !== null) {
+    const sceneRefs = cm[1].split(',').map(s => s.trim()).filter(s => /^[A-Z]\w*$/.test(s));
+    for (const ref of sceneRefs) {
+      if (!definedClasses.has(ref)) {
+        const hint = findModuleWithPattern(scriptContent, moduleNames, [ref]);
+        issues.push({ type: 'undefined_scene_ref', message: `scene配列で未定義のクラス「${ref}」が参照されています（実際のクラス名を確認してください）`, moduleHint: hint });
+      }
+    }
+  }
+
   return { valid: issues.length === 0, issues };
 }
 
