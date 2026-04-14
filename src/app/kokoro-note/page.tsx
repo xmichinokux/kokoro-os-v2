@@ -298,6 +298,8 @@ export default function KokoroNotePage() {
   const handleTogglePublic = async (id: string) => {
     const note = notes.find(n => n.id === id);
     if (!note) return;
+    // 商品は常に公開（非公開にできない）
+    if (note.isProduct && note.isPublic) return;
     const updated = { ...note, isPublic: !note.isPublic, updatedAt: new Date().toISOString() };
     await saveNote(updated);
     await refresh();
@@ -1007,18 +1009,28 @@ export default function KokoroNotePage() {
 
         {/* 公開/非公開トグル */}
         <div style={{ paddingTop:16, borderTop:'1px solid #e5e7eb', marginBottom:16 }}>
-          <button
-            onClick={() => handleTogglePublic(selectedNote.id)}
-            style={{
+          {selectedNote.isProduct ? (
+            <span style={{
               fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
-              padding:'8px 16px', borderRadius:6, cursor:'pointer',
-              background: selectedNote.isPublic ? '#f0fdf4' : '#f3f4f6',
-              color: selectedNote.isPublic ? '#16a34a' : '#6b7280',
-              border: `1px solid ${selectedNote.isPublic ? '#bbf7d0' : '#e5e7eb'}`,
-            }}
-          >
-            {selectedNote.isPublic ? '🌐 公開中 → 非公開にする' : '🌐 Browserに公開する'}
-          </button>
+              padding:'8px 16px', borderRadius:6, display:'inline-block',
+              background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0',
+            }}>
+              🌐 商品は常に公開されます
+            </span>
+          ) : (
+            <button
+              onClick={() => handleTogglePublic(selectedNote.id)}
+              style={{
+                fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+                padding:'8px 16px', borderRadius:6, cursor:'pointer',
+                background: selectedNote.isPublic ? '#f0fdf4' : '#f3f4f6',
+                color: selectedNote.isPublic ? '#16a34a' : '#6b7280',
+                border: `1px solid ${selectedNote.isPublic ? '#bbf7d0' : '#e5e7eb'}`,
+              }}
+            >
+              {selectedNote.isPublic ? '🌐 公開中 → 非公開にする' : '🌐 Browserに公開する'}
+            </button>
+          )}
 
           {/* 商品として登録ボタン */}
           {!selectedNote.isProduct ? (
