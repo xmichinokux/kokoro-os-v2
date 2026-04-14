@@ -28,6 +28,7 @@ ${integrationNotes}
 ・Phaser 3を使う場合はtype: Phaser.CANVASを使用する
 ・document.readyStateを確認してから初期化する
 ・タッチイベントとマウスイベントを両方対応する
+・ゲームやアプリの初期化（new Phaser.Game等）は初期化スクリプト内で1回だけ行う（重複初期化しない）
 
 【ルール】
 ・HTMLコードのみを返す（説明文・マークダウン不要）
@@ -35,7 +36,13 @@ ${integrationNotes}
 ・日本語対応（Noto Sans JPをGoogle Fontsから読み込む）
 ・モバイル対応（viewportメタタグ必須）
 ・マークダウンのコードブロックは使わない
-・<!DOCTYPE html>から始めてください`;
+・<!DOCTYPE html>から始めてください
+
+【絶対に守ること】
+・<script type="module">は使わない。必ず通常の<script>タグを使う
+・import文やexport文は使わない（ESモジュール構文は禁止）
+・// __MODULES__ プレースホルダーは通常の<script>タグの中に置く
+・モジュールコードはグローバルスコープで実行される前提で初期化コードを書く`;
 
 export async function POST(req: NextRequest) {
   try {
