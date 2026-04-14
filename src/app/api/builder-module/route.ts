@@ -25,6 +25,14 @@ ${previousModules ? `【既存のモジュールコード】\n${previousModules}
 ・マークダウンのコードブロックは使わない
 ・コードのみを返す（説明文不要）`;
 
+// レスポンスのcontent配列からtextを抽出（thinking部分をスキップ）
+function extractText(content: { type: string; text?: string }[]): string {
+  for (const block of content) {
+    if (block.type === 'text' && block.text) return block.text;
+  }
+  return '';
+}
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -45,8 +53,12 @@ export async function POST(req: NextRequest) {
     }
 
     const body = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4000,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 16000,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: 1024,
+      },
       messages: [{
         role: 'user',
         content: MODULE_PROMPT(spec, moduleName, moduleDescription || '', implementationNotes || '', previousModules || ''),
@@ -80,7 +92,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    let code = (data.content[0].text as string).trim();
+    let code = extractText(data.content).trim();
 
     // コードブロックが含まれていたら除去
     const codeBlockMatch = code.match(/```(?:javascript|js|JS)?\s*\n([\s\S]*?)```/);
