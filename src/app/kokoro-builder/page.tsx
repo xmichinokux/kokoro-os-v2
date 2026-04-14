@@ -49,7 +49,7 @@ export default function KokoroBuilderPage() {
   const [geminiInstruction, setGeminiInstruction] = useState('');
 
   // Modular用
-  const [modularPhase, setModularPhase] = useState<'input' | 'splitting' | 'split_done' | 'building' | 'integrating' | 'done'>('input');
+  const [modularPhase, setModularPhase] = useState<'input' | 'designing' | 'design_done' | 'splitting' | 'split_done' | 'building' | 'integrating' | 'done'>('input');
   const [modules, setModules] = useState<GeneratedModule[]>([]);
   const [integrationNotes, setIntegrationNotes] = useState('');
   const [designDoc, setDesignDoc] = useState('');
@@ -173,26 +173,42 @@ export default function KokoroBuilderPage() {
     }
   }, [spec, geminiInstruction, showPreview, apiFetch]);
 
-  // === Modular: モジュール分割 ===
-  const handleModularSplit = useCallback(async () => {
+  // === Modular Step 1a: 設計書生成 ===
+  const handleModularDesign = useCallback(async () => {
     if (!spec.trim()) return;
-    setModularPhase('splitting');
+    setModularPhase('designing');
     setError('');
     setModules([]);
     setIntegrationNotes('');
     setDesignDoc('');
     try {
       const data = await apiFetch('/api/builder-split', { spec: spec.trim() });
-      const mods: GeneratedModule[] = (data.modules as ModuleInfo[]).map(m => ({ ...m, code: '', state: 'pending' as ModuleState }));
-      setModules(mods);
-      setIntegrationNotes(data.integration_notes || '');
       setDesignDoc(data.designDoc || '');
-      setModularPhase('split_done');
+      setModularPhase('design_done');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'モジュール分割に失敗しました');
+      setError(e instanceof Error ? e.message : '設計書の生成に失敗しました');
       setModularPhase('input');
     }
   }, [spec, apiFetch]);
+
+  // === Modular Step 1b: モジュール分割 ===
+  const handleModularSplit = useCallback(async () => {
+    if (!designDoc) return;
+    setModularPhase('splitting');
+    setError('');
+    setModules([]);
+    setIntegrationNotes('');
+    try {
+      const data = await apiFetch('/api/builder-split-modules', { designDoc });
+      const mods: GeneratedModule[] = (data.modules as ModuleInfo[]).map(m => ({ ...m, code: '', state: 'pending' as ModuleState }));
+      setModules(mods);
+      setIntegrationNotes(data.integration_notes || '');
+      setModularPhase('split_done');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'モジュール分割に失敗しました');
+      setModularPhase('design_done');
+    }
+  }, [designDoc, apiFetch]);
 
   // === Modular: 全モジュール順番に生成 ===
   const handleModularBuild = useCallback(async () => {
@@ -393,7 +409,7 @@ export default function KokoroBuilderPage() {
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '48px 28px 100px' }}>
 
         {/* === 入力フェーズ === */}
-        {phase === 'input' && (!isHybrid || hybridPhase === 'input' || hybridPhase === 'step1_loading') && (!isModular || modularPhase === 'input' || modularPhase === 'splitting') && (
+        {phase === 'input' && (!isHybrid || hybridPhase === 'input' || hybridPhase === 'step1_loading') && (!isModular || modularPhase === 'input' || modularPhase === 'designing') && (
           <div>
             <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: accentColor, textTransform: 'uppercase', marginBottom: 16 }}>
               // 仕様書を入力してください
@@ -409,13 +425,13 @@ export default function KokoroBuilderPage() {
               value={spec}
               onChange={e => { setSpec(e.target.value); setFromGatekeeper(false); }}
               placeholder="仕様書をここに貼り付けてください"
-              disabled={hybridPhase === 'step1_loading' || modularPhase === 'splitting'}
+              disabled={hybridPhase === 'step1_loading' || modularPhase === 'designing'}
               style={{
                 width: '100%', minHeight: 200, resize: 'vertical',
                 fontFamily: "'Noto Sans JP', sans-serif", fontSize: 13, lineHeight: 1.8,
                 background: '#f8f9fa', border: '1px solid #d1d5db', borderRadius: 6,
                 padding: 16, outline: 'none', color: '#374151',
-                opacity: (hybridPhase === 'step1_loading' || modularPhase === 'splitting') ? 0.5 : 1,
+                opacity: (hybridPhase === 'step1_loading' || modularPhase === 'designing') ? 0.5 : 1,
               }}
             />
 
@@ -429,7 +445,7 @@ export default function KokoroBuilderPage() {
                   <button
                     key={opt.value}
                     onClick={() => setBuildType(opt.value)}
-                    disabled={hybridPhase === 'step1_loading' || modularPhase === 'splitting'}
+                    disabled={hybridPhase === 'step1_loading' || modularPhase === 'designing'}
                     style={{
                       textAlign: 'left', padding: '10px 14px',
                       background: buildType === opt.value ? 'rgba(124,58,237,0.06)' : '#f8f9fa',
@@ -463,14 +479,14 @@ export default function KokoroBuilderPage() {
               </div>
             ) : isModular ? (
               <div>
-                <button onClick={handleModularSplit} disabled={!spec.trim() || modularPhase === 'splitting'} style={{
+                <button onClick={handleModularDesign} disabled={!spec.trim() || modularPhase === 'designing'} style={{
                   ...mono, fontSize: 11, letterSpacing: '0.16em', background: '#f59e0b', border: 'none', color: '#fff',
-                  padding: '14px 32px', borderRadius: 4, cursor: (!spec.trim() || modularPhase === 'splitting') ? 'not-allowed' : 'pointer',
-                  marginTop: 24, opacity: (!spec.trim() || modularPhase === 'splitting') ? 0.5 : 1, display: 'block', width: '100%',
+                  padding: '14px 32px', borderRadius: 4, cursor: (!spec.trim() || modularPhase === 'designing') ? 'not-allowed' : 'pointer',
+                  marginTop: 24, opacity: (!spec.trim() || modularPhase === 'designing') ? 0.5 : 1, display: 'block', width: '100%',
                 }}>
-                  {modularPhase === 'splitting' ? '// モジュール分割中...' : 'Step 1: モジュールに分割する'}
+                  {modularPhase === 'designing' ? '// Geminiが設計中...' : 'Step 1: Geminiで設計書を生成する'}
                 </button>
-                {modularPhase === 'splitting' && <PersonaLoading />}
+                {modularPhase === 'designing' && <PersonaLoading />}
               </div>
             ) : (
               <button onClick={handleBuild} disabled={!spec.trim()} style={{
@@ -506,6 +522,32 @@ export default function KokoroBuilderPage() {
             <button onClick={handleReset} disabled={hybridPhase === 'step2_loading'} style={{
               ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
               padding: '10px 20px', borderRadius: 4, cursor: hybridPhase === 'step2_loading' ? 'not-allowed' : 'pointer', display: 'block', width: '100%',
+            }}>最初からやり直す</button>
+          </div>
+        )}
+
+        {/* === Modular: 設計書完了 → モジュール分割ボタン === */}
+        {isModular && (modularPhase === 'design_done' || modularPhase === 'splitting') && (
+          <div>
+            <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase', marginBottom: 16 }}>
+              // Step 1完了 — Geminiの設計書
+            </div>
+            <div style={{ background: '#f8f9fa', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, padding: 20, marginBottom: 20, maxHeight: 500, overflowY: 'auto' }}>
+              <pre style={{ fontSize: 12, lineHeight: 1.8, color: '#374151', fontFamily: "'Noto Sans JP', sans-serif", whiteSpace: 'pre-wrap', margin: 0 }}>
+                {designDoc}
+              </pre>
+            </div>
+            <button onClick={handleModularSplit} disabled={modularPhase === 'splitting'} style={{
+              ...mono, fontSize: 11, letterSpacing: '0.16em', background: '#f59e0b', border: 'none', color: '#fff',
+              padding: '14px 32px', borderRadius: 4, cursor: modularPhase === 'splitting' ? 'not-allowed' : 'pointer',
+              opacity: modularPhase === 'splitting' ? 0.5 : 1, display: 'block', width: '100%', marginBottom: 12,
+            }}>
+              {modularPhase === 'splitting' ? '// モジュール分割中...' : 'Step 2: モジュールに分割する'}
+            </button>
+            {modularPhase === 'splitting' && <PersonaLoading />}
+            <button onClick={handleReset} disabled={modularPhase === 'splitting'} style={{
+              ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
+              padding: '10px 20px', borderRadius: 4, cursor: modularPhase === 'splitting' ? 'not-allowed' : 'pointer', display: 'block', width: '100%',
             }}>最初からやり直す</button>
           </div>
         )}
@@ -571,7 +613,7 @@ export default function KokoroBuilderPage() {
                   ...mono, fontSize: 11, letterSpacing: '0.16em', background: accentColor, border: 'none', color: '#fff',
                   padding: '14px 32px', borderRadius: 4, cursor: 'pointer', flex: 1,
                 }}>
-                  Step 2: 全モジュールを生成・統合する
+                  Step 3: 全モジュールを生成・統合する
                 </button>
                 <button onClick={handleReset} style={{
                   ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
