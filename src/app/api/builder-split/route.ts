@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
 
     const designResult = await model.generateContent(DESIGN_PROMPT(spec));
     const designDoc = designResult.response.text().trim();
