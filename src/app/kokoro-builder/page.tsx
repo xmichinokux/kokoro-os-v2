@@ -255,19 +255,9 @@ export default function KokoroBuilderPage() {
         .filter(m => m.state === 'done')
         .map(m => ({ name: m.name, code: m.code }));
 
-      const moduleDesigns = updated.map(m => ({
-        id: m.id,
-        name: m.name,
-        description: m.description,
-        dependencies: m.dependencies,
-        implementation_notes: m.implementation_notes,
-      }));
-
       const data = await apiFetch('/api/builder-integrate', {
-        spec: spec.trim(),
         modules: modulesForIntegration,
         integrationNotes,
-        moduleDesigns,
         designDoc,
       });
 
