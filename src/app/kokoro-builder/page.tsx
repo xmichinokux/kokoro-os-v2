@@ -1059,8 +1059,14 @@ export default function KokoroBuilderPage() {
 
         {/* エラー表示 */}
         {error && (
-          <div style={{ marginTop: 16, ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6 }}>
-            // エラー: {error}
+          <div style={{ marginTop: 16 }}>
+            <div style={{ ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6, marginBottom: 12 }}>
+              // エラー: {error}
+            </div>
+            <button onClick={handleReset} style={{
+              ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #ef4444', color: '#ef4444',
+              padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+            }}>やり直す</button>
           </div>
         )}
       </div>
