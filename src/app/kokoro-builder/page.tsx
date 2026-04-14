@@ -160,13 +160,14 @@ export default function KokoroBuilderPage() {
   const [geminiInstruction, setGeminiInstruction] = useState('');
 
   // Modular用
-  const [modularPhase, setModularPhase] = useState<'input' | 'designing' | 'design_done' | 'splitting' | 'split_done' | 'building' | 'integrating' | 'validating' | 'fixing' | 'done'>('input');
+  const [modularPhase, setModularPhase] = useState<'input' | 'designing' | 'design_done' | 'splitting' | 'split_done' | 'building' | 'integrating' | 'validating' | 'fixing' | 'runtime_testing' | 'done'>('input');
   const [validationLog, setValidationLog] = useState<string[]>([]);
   const [modules, setModules] = useState<GeneratedModule[]>([]);
   const [integrationNotes, setIntegrationNotes] = useState('');
   const [designDoc, setDesignDoc] = useState('');
   const [currentModuleIndex, setCurrentModuleIndex] = useState(-1);
   const [interfaceDoc, setInterfaceDoc] = useState('');
+  const testIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Gatekeeperからの読み込み
   useEffect(() => {
@@ -325,6 +326,125 @@ export default function KokoroBuilderPage() {
     }
   }, [designDoc, apiFetch]);
 
+  // === ランタイムエラー検出 ===
+  const injectErrorSnippet = useCallback((html: string): string => {
+    const snippet = `<script>
+(function(){
+  var errs=[];window.__rtErrs=errs;
+  var origCE=console.error;
+  console.error=function(){var m=Array.prototype.slice.call(arguments).join(' ');errs.push({t:'console.error',m:m});origCE.apply(console,arguments);};
+  window.onerror=function(msg,src,line,col,err){
+    if(src&&(src.indexOf('cdn.jsdelivr')!==-1||src.indexOf('googleapis')!==-1))return;
+    errs.push({t:'onerror',m:String(msg),l:line,c:col,s:err?err.stack:''});
+  };
+  window.addEventListener('unhandledrejection',function(e){
+    errs.push({t:'unhandledrejection',m:String(e.reason),s:e.reason&&e.reason.stack||''});
+  });
+  setTimeout(function(){window.parent.postMessage({type:'KOKORO_RT_ERRORS',errors:errs},'*');},3000);
+})();
+<\/script>`;
+    // <body>の直後に挿入
+    const bodyIdx = html.indexOf('<body>');
+    if (bodyIdx >= 0) {
+      return html.slice(0, bodyIdx + 6) + '\n' + snippet + '\n' + html.slice(bodyIdx + 6);
+    }
+    // <body>がなければ最初の<script>の前に挿入
+    const scriptIdx = html.indexOf('<script');
+    if (scriptIdx >= 0) {
+      return html.slice(0, scriptIdx) + snippet + '\n' + html.slice(scriptIdx);
+    }
+    return html;
+  }, []);
+
+  const testRuntimeErrors = useCallback((html: string): Promise<string[]> => {
+    return new Promise((resolve) => {
+      const modifiedHtml = injectErrorSnippet(html);
+      const iframe = testIframeRef.current;
+      if (!iframe) { resolve([]); return; }
+
+      let resolved = false;
+      const handler = (event: MessageEvent) => {
+        if (resolved) return;
+        if (event.data?.type === 'KOKORO_RT_ERRORS' && event.source === iframe.contentWindow) {
+          resolved = true;
+          window.removeEventListener('message', handler);
+          const errors: string[] = (event.data.errors || []).map((e: { t: string; m: string; l?: number; c?: number; s?: string }) => {
+            if (e.t === 'onerror') return `[Line ${e.l || '?'}] ${e.m}${e.s ? '\n  ' + e.s.split('\n')[0] : ''}`;
+            if (e.t === 'console.error') return `[console.error] ${e.m}`;
+            return `[${e.t}] ${e.m}`;
+          });
+          // iframe停止
+          iframe.srcdoc = '';
+          resolve(errors);
+        }
+      };
+      window.addEventListener('message', handler);
+      iframe.srcdoc = modifiedHtml;
+
+      // 5秒タイムアウト
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          window.removeEventListener('message', handler);
+          iframe.srcdoc = '';
+          resolve([]);
+        }
+      }, 5000);
+    });
+  }, [injectErrorSnippet]);
+
+  // === ランタイムテスト+自動修正ループ ===
+  const runRuntimeTestLoop = useCallback(async (initialCode: string, logs: string[]) => {
+    const MAX_RT_ROUNDS = 3;
+    let currentCode = initialCode;
+
+    for (let rtRound = 0; rtRound < MAX_RT_ROUNDS; rtRound++) {
+      setModularPhase('runtime_testing');
+      logs.push(`▶ ランタイムテスト ${rtRound + 1}/${MAX_RT_ROUNDS}...`);
+      setValidationLog([...logs]);
+
+      const runtimeErrors = await testRuntimeErrors(currentCode);
+
+      if (runtimeErrors.length === 0) {
+        logs.push(`✓ ランタイムエラーなし${rtRound > 0 ? `（修正${rtRound}回で成功）` : ''}`);
+        setValidationLog([...logs]);
+        break;
+      }
+
+      // 最終ラウンド
+      if (rtRound === MAX_RT_ROUNDS - 1) {
+        logs.push(`△ ${runtimeErrors.length}件のランタイムエラーが残っていますが、プレビューを表示します`);
+        runtimeErrors.forEach(e => logs.push(`  - ${e}`));
+        setValidationLog([...logs]);
+        break;
+      }
+
+      // エラーをAPIに送って修正
+      logs.push(`  → ${runtimeErrors.length}件のランタイムエラーを修正中...`);
+      runtimeErrors.slice(0, 5).forEach(e => logs.push(`  - ${e}`));
+      setValidationLog([...logs]);
+
+      try {
+        const fixData = await apiFetch('/api/builder-runtime-fix', {
+          html: currentCode,
+          errors: runtimeErrors.slice(0, 10), // 最大10件に制限
+          designDoc,
+        });
+        currentCode = fixData.code as string;
+        logs.push(`  ✓ 修正コードを受信`);
+        setValidationLog([...logs]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'エラー';
+        logs.push(`  ✗ 修正失敗: ${msg}`);
+        setValidationLog([...logs]);
+        break;
+      }
+    }
+
+    showPreview(currentCode);
+    setModularPhase('done');
+  }, [testRuntimeErrors, apiFetch, designDoc, showPreview]);
+
   // === Modular: 全モジュール順番に生成 ===
   const handleModularBuild = useCallback(async () => {
     if (modules.length === 0) return;
@@ -431,20 +551,19 @@ export default function KokoroBuilderPage() {
       const validation = validateGeneratedCode(integratedCode, moduleNames);
 
       if (validation.valid) {
-        logs.push(`✓ バリデーション通過${round > 0 ? `（修正${round}回目で成功）` : ''}`);
+        logs.push(`✓ 静的バリデーション通過${round > 0 ? `（修正${round}回目で成功）` : ''}`);
         setValidationLog([...logs]);
-        showPreview(integratedCode);
-        setModularPhase('done');
+        // ランタイムテストへ進む
+        await runRuntimeTestLoop(integratedCode, logs);
         return;
       }
 
-      // 最終ラウンドならエラーがあっても結果を表示
+      // 最終ラウンドならエラーがあっても続行
       if (round === MAX_FIX_ROUNDS) {
-        logs.push(`△ ${validation.issues.length}件の問題が残っていますが、プレビューを表示します`);
+        logs.push(`△ ${validation.issues.length}件の静的問題が残っていますが、ランタイムテストに進みます`);
         validation.issues.forEach(issue => logs.push(`  - ${issue.message}`));
         setValidationLog([...logs]);
-        showPreview(integratedCode);
-        setModularPhase('done');
+        await runRuntimeTestLoop(integratedCode, logs);
         return;
       }
 
@@ -499,7 +618,7 @@ export default function KokoroBuilderPage() {
         }
       }
     }
-  }, [modules, spec, integrationNotes, designDoc, interfaceDoc, apiFetch, showPreview]);
+  }, [modules, spec, integrationNotes, designDoc, interfaceDoc, apiFetch, showPreview, runRuntimeTestLoop]);
 
   // === Modular: 失敗モジュールをリトライ ===
   const handleRetryModule = useCallback(async (index: number) => {
@@ -590,6 +709,7 @@ export default function KokoroBuilderPage() {
     setInterfaceDoc('');
     setValidationLog([]);
     setCurrentModuleIndex(-1);
+    if (testIframeRef.current) testIframeRef.current.srcdoc = '';
     localStorage.removeItem(STORAGE_KEY_INSTRUCTION);
     localStorage.removeItem(STORAGE_KEY_SPEC);
   }, []);
@@ -778,7 +898,7 @@ export default function KokoroBuilderPage() {
         )}
 
         {/* === Modular: モジュール一覧 + ビルド === */}
-        {isModular && (modularPhase === 'split_done' || modularPhase === 'building' || modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') && phase !== 'done' && (
+        {isModular && (modularPhase === 'split_done' || modularPhase === 'building' || modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing' || modularPhase === 'runtime_testing') && phase !== 'done' && (
           <div>
             <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#f59e0b', textTransform: 'uppercase', marginBottom: 16 }}>
               // モジュール構成
@@ -818,8 +938,9 @@ export default function KokoroBuilderPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
                   {modularPhase === 'integrating' ? '統合中...'
-                    : modularPhase === 'validating' ? '検証中...'
+                    : modularPhase === 'validating' ? '静的検証中...'
                     : modularPhase === 'fixing' ? '自動修正中...'
+                    : modularPhase === 'runtime_testing' ? '🔄 ランタイムテスト中...'
                     : modularPhase === 'building' && doneCount === 0 && currentModuleIndex < 0 ? 'インターフェース定義を生成中...'
                     : `${doneCount}/${modules.length} 完了`}
                 </span>
@@ -827,13 +948,13 @@ export default function KokoroBuilderPage() {
               <div style={{ height: 4, background: '#e5e7eb', borderRadius: 2 }}>
                 <div style={{
                   height: '100%', borderRadius: 2, transition: 'width 0.3s ease',
-                  background: (modularPhase === 'integrating' || modularPhase === 'validating') ? '#059669' : modularPhase === 'fixing' ? '#ef4444' : '#f59e0b',
-                  width: (modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') ? '100%' : `${(doneCount / modules.length) * 100}%`,
+                  background: modularPhase === 'runtime_testing' ? '#3b82f6' : (modularPhase === 'integrating' || modularPhase === 'validating') ? '#059669' : modularPhase === 'fixing' ? '#ef4444' : '#f59e0b',
+                  width: (modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing' || modularPhase === 'runtime_testing') ? '100%' : `${(doneCount / modules.length) * 100}%`,
                 }} />
               </div>
             </div>
 
-            {(modularPhase === 'building' || modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') && <PersonaLoading />}
+            {(modularPhase === 'building' || modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing' || modularPhase === 'runtime_testing') && <PersonaLoading />}
 
             {/* バリデーションログ */}
             {validationLog.length > 0 && (
@@ -841,7 +962,7 @@ export default function KokoroBuilderPage() {
                 {validationLog.map((log, i) => (
                   <div key={i} style={{
                     ...mono, fontSize: 10, lineHeight: 1.8,
-                    color: log.startsWith('✓') ? '#4ade80' : log.startsWith('✗') || log.startsWith('△') ? '#f87171' : log.startsWith('⟳') ? '#fbbf24' : '#9ca3af',
+                    color: log.startsWith('✓') ? '#4ade80' : log.startsWith('✗') || log.startsWith('△') ? '#f87171' : log.startsWith('⟳') ? '#fbbf24' : log.startsWith('▶') ? '#60a5fa' : '#9ca3af',
                   }}>{log}</div>
                 ))}
               </div>
@@ -943,6 +1064,14 @@ export default function KokoroBuilderPage() {
           </div>
         )}
       </div>
+
+      {/* ランタイムテスト用の非表示iframe */}
+      <iframe
+        ref={testIframeRef}
+        style={{ position: 'fixed', left: -9999, top: -9999, width: 375, height: 667 }}
+        sandbox="allow-scripts allow-same-origin"
+        title="Runtime Test"
+      />
     </div>
   );
 }

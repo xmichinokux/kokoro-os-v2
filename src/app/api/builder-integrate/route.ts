@@ -5,9 +5,9 @@ export const maxDuration = 60;
 // テンプレートベースの統合（LLMを使わない）
 // モジュールコードを固定HTMLシェルに埋め込むだけ
 function buildHTML(modules: { name: string; code: string }[], designDoc: string): string {
-  // 設計書からタイトルを抽出（最初の行 or デフォルト）
-  const titleMatch = designDoc?.match(/(?:タイトル|Title|名前)[：:]?\s*(.+)/i);
-  const title = titleMatch ? titleMatch[1].trim() : 'Kokoro Builder App';
+  // 設計書からタイトルを抽出（「タイトル: xxx」形式のみ、短い文字列に限定）
+  const titleMatch = designDoc?.match(/(?:タイトル|Title)[：:]\s*(.{1,50})$/im);
+  const title = titleMatch ? titleMatch[1].trim().replace(/[<>"]/g, '') : 'Kokoro Builder App';
 
   // Phaserを使うかどうかを判定
   const allCode = modules.map(m => m.code).join('\n');
