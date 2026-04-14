@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const maxDuration = 60;
 
-// 設計書がある場合はspecを省略（設計書に含まれている）
 const INTEGRATE_PROMPT = (allModules: string, integrationNotes: string, designDoc: string) =>
   `あなたは優秀なソフトウェアアーキテクトです。
 以下のモジュールを統合して、完全に動作するシングルHTMLファイルを生成してください。
@@ -39,9 +37,9 @@ ${integrationNotes}
 
 export async function POST(req: NextRequest) {
   try {
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
     }
 
     const { modules, integrationNotes, designDoc } = await req.json() as {
@@ -58,13 +56,43 @@ export async function POST(req: NextRequest) {
       .map((m, i) => `=== Module ${i + 1}: ${m.name} ===\n${m.code}`)
       .join('\n\n');
 
-    const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { thinkingConfig: { thinkingBudget: 0 } } as never,
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 8000,
+      messages: [{
+        role: 'user',
+        content: INTEGRATE_PROMPT(allModules, integrationNotes || '', designDoc || ''),
+      }],
     });
-    const result = await model.generateContent(INTEGRATE_PROMPT(allModules, integrationNotes || '', designDoc || ''));
-    let code = result.response.text().trim();
+
+    // 529 Overloaded 自動リトライ
+    let res: Response | null = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body,
+      });
+      if (res.status !== 529) break;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+
+    if (!res || !res.ok) {
+      const errBody = await res?.text() ?? '';
+      let errMsg = `Claude API error (${res?.status ?? 'unknown'})`;
+      try {
+        const err = JSON.parse(errBody);
+        errMsg = err.error?.message || errMsg;
+      } catch { /* non-JSON */ }
+      throw new Error(errMsg);
+    }
+
+    const data = await res.json();
+    let code = (data.content[0].text as string).trim();
 
     // コードブロックが含まれていたら除去
     const codeBlockMatch = code.match(/```(?:html|HTML)?\s*\n([\s\S]*?)```/);
