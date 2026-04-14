@@ -76,9 +76,9 @@ export async function POST(req: NextRequest) {
       }],
     });
 
-    // 529 Overloaded 自動リトライ
+    // 529 Overloaded 自動リトライ（指数バックオフ）
     let res: Response | null = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
+    for (let attempt = 0; attempt < 8; attempt++) {
       res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -89,7 +89,8 @@ export async function POST(req: NextRequest) {
         body,
       });
       if (res.status !== 529) break;
-      await new Promise(r => setTimeout(r, 3000));
+      const waitMs = Math.min(3000 * Math.pow(1.5, attempt), 15000); // 3s, 4.5s, 6.75s, ... max 15s
+      await new Promise(r => setTimeout(r, waitMs));
     }
 
     if (!res || !res.ok) {

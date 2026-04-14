@@ -255,23 +255,36 @@ export default function KokoroBuilderPage() {
         .map(m => `// === ${m.name} ===\n${m.code}`)
         .join('\n\n');
 
-      try {
-        const data = await apiFetch('/api/builder-module', {
-          spec: spec.trim(),
-          moduleName: updated[i].name,
-          moduleDescription: updated[i].description,
-          implementationNotes: updated[i].implementation_notes,
-          previousModules: previousCode,
-          interfaceDoc: currentInterfaceDoc,
-        });
-        updated[i] = { ...updated[i], code: data.code as string, state: 'done' };
-        setModules([...updated]);
-      } catch (e) {
-        updated[i] = { ...updated[i], state: 'error' };
-        setModules([...updated]);
-        setError(`Module「${updated[i].name}」の生成に失敗: ${e instanceof Error ? e.message : 'エラー'}`);
-        return; // 中断
+      // Overloaded時のフロントエンド側リトライ（最大2回）
+      let moduleSuccess = false;
+      for (let retry = 0; retry < 3; retry++) {
+        try {
+          const data = await apiFetch('/api/builder-module', {
+            spec: spec.trim(),
+            moduleName: updated[i].name,
+            moduleDescription: updated[i].description,
+            implementationNotes: updated[i].implementation_notes,
+            previousModules: previousCode,
+            interfaceDoc: currentInterfaceDoc,
+          });
+          updated[i] = { ...updated[i], code: data.code as string, state: 'done' };
+          setModules([...updated]);
+          moduleSuccess = true;
+          break;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'エラー';
+          if (msg.includes('Overloaded') && retry < 2) {
+            // Overloadedなら待って再試行
+            await new Promise(r => setTimeout(r, 10000));
+            continue;
+          }
+          updated[i] = { ...updated[i], state: 'error' };
+          setModules([...updated]);
+          setError(`Module「${updated[i].name}」の生成に失敗: ${msg}`);
+          return; // 中断
+        }
       }
+      if (!moduleSuccess) return;
     }
 
     // 全モジュール完了 → 統合
