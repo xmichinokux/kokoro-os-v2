@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     // Step 1: Geminiで実装指示書を生成
     if (step === 'gemini') {
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-05-20' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const result = await model.generateContent(GEMINI_PROMPT(spec));
       const instruction = result.response.text();
       return NextResponse.json({ instruction });
