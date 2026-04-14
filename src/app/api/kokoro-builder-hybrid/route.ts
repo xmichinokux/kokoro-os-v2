@@ -115,9 +115,19 @@ export async function POST(req: NextRequest) {
       let code = (data.content[0].text as string).trim();
 
       // コードブロックが含まれていたら除去
-      const codeBlockMatch = code.match(/```(?:html)?\n([\s\S]*?)```/);
+      const codeBlockMatch = code.match(/```(?:html|HTML)?\s*\n([\s\S]*?)```/);
       if (codeBlockMatch) {
         code = codeBlockMatch[1].trim();
+      }
+
+      // <!DOCTYPE html> より前のテキストを除去
+      const doctypeIndex = code.indexOf('<!DOCTYPE');
+      if (doctypeIndex > 0) {
+        code = code.substring(doctypeIndex);
+      }
+      const doctypeLower = code.indexOf('<!doctype');
+      if (doctypeLower > 0) {
+        code = code.substring(doctypeLower);
       }
 
       return NextResponse.json({ code });
