@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+export const maxDuration = 60;
+
 const SPLIT_PROMPT = (spec: string) => `あなたは優秀なソフトウェアアーキテクトです。
 以下の仕様書を読んで、実装をモジュールに分割してください。
 

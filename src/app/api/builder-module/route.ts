@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const maxDuration = 60;
+
 const MODULE_PROMPT = (spec: string, moduleName: string, moduleDesc: string, moduleNotes: string, previousModules: string) =>
   `あなたは優秀なフロントエンドエンジニアです。
 以下の仕様に従って、指定されたモジュールのJavaScriptコードを生成してください。

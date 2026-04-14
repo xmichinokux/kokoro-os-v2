@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+export const maxDuration = 60;
+
 const INTEGRATE_PROMPT = (spec: string, allModules: string, integrationNotes: string, moduleDesignInfo: string) =>
   `あなたは優秀なソフトウェアアーキテクトです。
 以下のモジュールを統合して、完全に動作するシングルHTMLファイルを生成してください。
