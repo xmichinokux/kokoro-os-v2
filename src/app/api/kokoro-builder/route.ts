@@ -21,6 +21,24 @@ ${spec}
 ・モバイル対応（レスポンシブ）
 ・viewportメタタグを必ず含める
 
+【Phaser 3を使う場合の必須設定】
+・typeは必ずPhaser.CANVASを使用する（WEBGLはBlob URL環境で動作しない）
+・parentでゲームを描画するdiv要素のIDを指定する
+・document.readyStateを確認してからゲームを起動する：
+  function startGame() {
+    const config = {
+      type: Phaser.CANVAS,
+      parent: 'game-container',
+      // ...その他の設定
+    };
+    new Phaser.Game(config);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startGame);
+  } else {
+    startGame();
+  }
+
 HTMLコードのみを返してください。
 マークダウンのコードブロックは使わない。
 <!DOCTYPE html>から始めてください。`;
@@ -46,6 +64,24 @@ ${spec}
 ・日本語対応（Noto Sans JPをGoogle Fontsから読み込む）
 ・モバイル対応（レスポンシブ）
 ・viewportメタタグを必ず含める
+
+【Phaser 3を使う場合の必須設定】
+・typeは必ずPhaser.CANVASを使用する（WEBGLはBlob URL環境で動作しない）
+・parentでゲームを描画するdiv要素のIDを指定する
+・document.readyStateを確認してからゲームを起動する：
+  function startGame() {
+    const config = {
+      type: Phaser.CANVAS,
+      parent: 'game-container',
+      // ...その他の設定
+    };
+    new Phaser.Game(config);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startGame);
+  } else {
+    startGame();
+  }
 
 HTMLコードのみを返してください。
 マークダウンのコードブロックは使わない。

@@ -282,7 +282,7 @@ export default function KokoroBuilderPage() {
                 style={{
                   width: '100%', height: 500, border: 'none', display: 'block',
                 }}
-                sandbox="allow-scripts allow-same-origin"
+                sandbox="allow-scripts allow-same-origin allow-popups"
                 title="Builder Preview"
               />
             </div>
