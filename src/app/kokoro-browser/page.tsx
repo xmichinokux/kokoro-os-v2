@@ -1,16 +1,20 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
 import { getAllNotes } from '@/lib/kokoro/noteStorage';
 import type { PublicNote, GamesenNote } from '@/types/browser';
-import type { KokoroNote } from '@/types/note';
 
 const SOURCE_LABELS: Record<string, string> = {
   talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き',
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  news: 'News', blog: 'Blog', essay: 'Essay', creative: 'Creative',
+  tech: 'Tech', culture: 'Culture', other: 'Other',
 };
 
 const SONOTA_ID = 'sonota';
@@ -24,6 +28,19 @@ const SONOTA_GAMESEN: GamesenNote = {
 };
 
 const STORAGE_KEY = 'kokoroBrowserCustomGamesen';
+
+type WebResult = {
+  id: string;
+  title: string;
+  url: string;
+  snippet: string;
+  reason: string;
+  category: string;
+};
+
+type TimelineItem =
+  | { type: 'note'; data: PublicNote }
+  | { type: 'web'; data: WebResult };
 
 function loadCustomGamesen(): GamesenNote[] {
   if (typeof window === 'undefined') return [];
@@ -56,6 +73,14 @@ export default function KokoroBrowserPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editKeywords, setEditKeywords] = useState('');
+
+  // Web検索
+  const [webResults, setWebResults] = useState<WebResult[]>([]);
+  const [webLoading, setWebLoading] = useState(false);
+  const [webError, setWebError] = useState('');
+  const [hasAestheticMap, setHasAestheticMap] = useState(false);
+  const searchCacheRef = useRef<Record<string, WebResult[]>>({});
+  const lastSearchIdRef = useRef<string>('');
 
   useEffect(() => {
     setCustomGamesen(loadCustomGamesen());
@@ -113,7 +138,103 @@ export default function KokoroBrowserPage() {
   const displayedNotes = selectedId === SONOTA_ID ? sonotaNotes : matchedNotes;
   const currentGamesen = selectedId === SONOTA_ID ? SONOTA_GAMESEN : selectedGamesen;
 
-  // ゲーセンノート作成
+  // ========================
+  // Web検索（Gemini Grounding）
+  // ========================
+  const searchWeb = useCallback(async (keywords: string[], tabId: string) => {
+    if (keywords.length === 0) {
+      setWebResults([]);
+      return;
+    }
+
+    // キャッシュチェック
+    if (searchCacheRef.current[tabId]) {
+      setWebResults(searchCacheRef.current[tabId]);
+      return;
+    }
+
+    setWebLoading(true);
+    setWebError('');
+    lastSearchIdRef.current = tabId;
+
+    try {
+      const res = await fetch('/api/kokoro-browser-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      const results: WebResult[] = (data.results || []).map((r: {
+        title: string; url: string; snippet: string; reason: string; category: string;
+      }, i: number) => ({
+        id: `web_${tabId}_${i}`,
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet,
+        reason: r.reason,
+        category: r.category || 'other',
+      }));
+
+      if (data.hasAestheticMap) setHasAestheticMap(true);
+
+      // 現在のタブがまだ選択されていれば結果を表示
+      if (lastSearchIdRef.current === tabId) {
+        setWebResults(results);
+        searchCacheRef.current[tabId] = results;
+      }
+    } catch (e) {
+      if (lastSearchIdRef.current === tabId) {
+        setWebError(e instanceof Error ? e.message : 'Web検索に失敗しました');
+      }
+    } finally {
+      if (lastSearchIdRef.current === tabId) {
+        setWebLoading(false);
+      }
+    }
+  }, []);
+
+  // タブ選択時に自動Web検索
+  useEffect(() => {
+    const gamesen = allGamesen.find(g => g.id === selectedId);
+    if (gamesen && gamesen.keywords.length > 0 && selectedId !== SONOTA_ID) {
+      searchWeb(gamesen.keywords, selectedId);
+    } else {
+      setWebResults([]);
+    }
+  }, [selectedId, allGamesen, searchWeb]);
+
+  // ========================
+  // 統合タイムライン
+  // ========================
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const notes: TimelineItem[] = displayedNotes.map(n => ({ type: 'note' as const, data: n }));
+    const webs: TimelineItem[] = webResults.map(w => ({ type: 'web' as const, data: w }));
+
+    if (notes.length === 0) return webs;
+    if (webs.length === 0) return notes;
+
+    // インターリーブ: Note と Web を交互に混ぜる
+    const merged: TimelineItem[] = [];
+    let ni = 0, wi = 0;
+    // 最初の2つはNote（自分の思考を先に見せる）
+    while (ni < Math.min(2, notes.length)) {
+      merged.push(notes[ni++]);
+    }
+    // 残りを交互に
+    while (ni < notes.length || wi < webs.length) {
+      if (wi < webs.length) merged.push(webs[wi++]);
+      if (ni < notes.length) merged.push(notes[ni++]);
+    }
+    return merged;
+  }, [displayedNotes, webResults]);
+
+  // ========================
+  // ゲーセンノート CRUD
+  // ========================
   const handleCreateGamesen = () => {
     const title = newTitle.trim();
     const keywords = newKeywords.split(/[,、\s]+/).map(k => k.trim()).filter(Boolean);
@@ -136,16 +257,16 @@ export default function KokoroBrowserPage() {
     setSelectedId(newNote.id);
   };
 
-  // ゲーセンノート削除
   const handleDeleteGamesen = (id: string) => {
     const updated = customGamesen.filter(g => g.id !== id);
     setCustomGamesen(updated);
     saveCustomGamesen(updated);
     if (selectedId === id) setSelectedId(GAMESEN_NOTES[0].id);
     setEditingId(null);
+    // キャッシュもクリア
+    delete searchCacheRef.current[id];
   };
 
-  // ゲーセンノート編集保存
   const handleSaveEdit = (id: string) => {
     const title = editTitle.trim();
     const keywords = editKeywords.split(/[,、\s]+/).map(k => k.trim()).filter(Boolean);
@@ -159,7 +280,18 @@ export default function KokoroBrowserPage() {
     setCustomGamesen(updated);
     saveCustomGamesen(updated);
     setEditingId(null);
+    // キーワード変更したのでキャッシュクリア
+    delete searchCacheRef.current[id];
   };
+
+  // 手動リフレッシュ
+  const handleRefreshSearch = useCallback(() => {
+    const gamesen = allGamesen.find(g => g.id === selectedId);
+    if (gamesen && gamesen.keywords.length > 0) {
+      delete searchCacheRef.current[selectedId];
+      searchWeb(gamesen.keywords, selectedId);
+    }
+  }, [selectedId, allGamesen, searchWeb]);
 
   const isCustom = (id: string) => customGamesen.some(g => g.id === id);
 
@@ -168,7 +300,7 @@ export default function KokoroBrowserPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#f8f8f7', color: '#1a1a1a' }}>
 
-      {/* ヘッダー（基本レイアウト） */}
+      {/* ヘッダー */}
       <header style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '12px 20px',
@@ -179,10 +311,15 @@ export default function KokoroBrowserPage() {
           <span style={{ ...mono, fontSize: 13, fontWeight: 700 }}>Kokoro</span>
           <span style={{ ...mono, fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
           <span style={{ ...mono, fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Browser</span>
+          {hasAestheticMap && (
+            <span style={{ ...mono, fontSize: 8, color: '#059669', marginLeft: 8, letterSpacing: '0.1em' }}>
+              ✦ 感性マップ連動中
+            </span>
+          )}
         </div>
-        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
+        <button onClick={() => router.push('/')} title="Home に戻る"
           style={{ ...mono, fontSize: 9, color: '#6b7280', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px', cursor: 'pointer' }}>
-          ← Talk
+          ← Home
         </button>
       </header>
 
@@ -192,7 +329,7 @@ export default function KokoroBrowserPage() {
         borderBottom: '1px solid #e5e7eb',
         position: 'sticky', top: 45, zIndex: 15,
       }}>
-        <div style={{
+        <div className="browser-tabs" style={{
           display: 'flex', overflowX: 'auto',
           padding: '0 12px',
           gap: 2,
@@ -200,7 +337,9 @@ export default function KokoroBrowserPage() {
         }}>
           <style>{`.browser-tabs::-webkit-scrollbar { display: none }`}</style>
           {allGamesen.map(g => {
-            const count = matchNotesToGamesen(allPublicNotes, g).length;
+            const noteCount = matchNotesToGamesen(allPublicNotes, g).length;
+            const webCount = searchCacheRef.current[g.id]?.length || 0;
+            const totalCount = noteCount + webCount;
             return (
               <button
                 key={g.id}
@@ -232,7 +371,7 @@ export default function KokoroBrowserPage() {
                 }}>
                   {g.title}
                 </span>
-                {count > 0 && (
+                {totalCount > 0 && (
                   <span style={{
                     ...mono, fontSize: 8,
                     color: selectedId === g.id ? g.color : '#9ca3af',
@@ -243,7 +382,7 @@ export default function KokoroBrowserPage() {
                     lineHeight: '16px',
                     transition: 'all 0.15s',
                   }}>
-                    {count}
+                    {totalCount}
                   </span>
                 )}
               </button>
@@ -297,10 +436,10 @@ export default function KokoroBrowserPage() {
             );
           })()}
 
-          {/* ＋ ゲーセンノート作成ボタン */}
+          {/* ＋ キーワードタブ作成ボタン */}
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
-            title="ゲーセンノートを作る"
+            title="キーワードタブを作る"
             style={{
               flexShrink: 0,
               padding: '10px 14px',
@@ -321,7 +460,7 @@ export default function KokoroBrowserPage() {
       {/* タイムライン本体 */}
       <main style={{ maxWidth: 680, margin: '0 auto', padding: '24px 20px' }}>
 
-        {/* ゲーセンノート作成フォーム */}
+        {/* キーワードタブ作成フォーム */}
         {showCreateForm && (
           <div style={{
             marginBottom: 20, padding: '20px',
@@ -330,13 +469,13 @@ export default function KokoroBrowserPage() {
             borderRadius: 8,
           }}>
             <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginBottom: 12, letterSpacing: '0.12em' }}>
-              // ゲーセンノートを作る
+              // キーワードタブを作る — Note検索 + Web検索を同時実行
             </div>
             <input
               type="text"
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
-              placeholder="ノート名（例：創作の種）"
+              placeholder="タブ名（例：創作の種、AI倫理、建築美学）"
               style={{
                 width: '100%', padding: '8px 12px',
                 border: '1px solid #e5e7eb', borderRadius: 6,
@@ -404,7 +543,7 @@ export default function KokoroBrowserPage() {
           </div>
         )}
 
-        {/* 選択中ゲーセンノートの説明 */}
+        {/* 選択中タブの情報パネル */}
         <div style={{
           marginBottom: 20, padding: '12px 16px',
           background: '#ffffff',
@@ -461,19 +600,31 @@ export default function KokoroBrowserPage() {
                 <div style={{ ...mono, fontSize: 9, color: currentGamesen.color, marginBottom: 4 }}>
                   // {currentGamesen.title}
                 </div>
-                {isCustom(currentGamesen.id) && (
-                  <button
-                    onClick={() => {
-                      setEditingId(currentGamesen.id);
-                      setEditTitle(currentGamesen.title);
-                      setEditKeywords(currentGamesen.keywords.join('、'));
-                    }}
-                    title="編集"
-                    style={{ ...mono, fontSize: 8, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer' }}
-                  >
-                    edit
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {currentGamesen.keywords.length > 0 && selectedId !== SONOTA_ID && (
+                    <button
+                      onClick={handleRefreshSearch}
+                      disabled={webLoading}
+                      title="Web検索をリフレッシュ"
+                      style={{ ...mono, fontSize: 8, color: webLoading ? '#d1d5db' : '#6b7280', background: 'transparent', border: 'none', cursor: webLoading ? 'not-allowed' : 'pointer' }}
+                    >
+                      {webLoading ? '⟳ ...' : '⟳ refresh'}
+                    </button>
+                  )}
+                  {isCustom(currentGamesen.id) && (
+                    <button
+                      onClick={() => {
+                        setEditingId(currentGamesen.id);
+                        setEditTitle(currentGamesen.title);
+                        setEditKeywords(currentGamesen.keywords.join('、'));
+                      }}
+                      title="編集"
+                      style={{ ...mono, fontSize: 8, color: '#9ca3af', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                    >
+                      edit
+                    </button>
+                  )}
+                </div>
               </div>
               <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
                 {currentGamesen.description}
@@ -496,16 +647,29 @@ export default function KokoroBrowserPage() {
           )}
         </div>
 
-        {/* Note件数 */}
+        {/* 統計バー */}
         <div style={{
           ...mono, fontSize: 9, color: '#9ca3af',
           marginBottom: 16, letterSpacing: '0.1em',
+          display: 'flex', gap: 12, alignItems: 'center',
         }}>
-          // {displayedNotes.length} 件の記録
+          <span>// {displayedNotes.length} Notes</span>
+          {webResults.length > 0 && <span>+ {webResults.length} Web</span>}
+          {webLoading && <span style={{ color: '#7c3aed' }}>⟳ Web検索中...</span>}
         </div>
 
-        {/* タイムライン */}
-        {displayedNotes.length === 0 ? (
+        {/* Web検索エラー */}
+        {webError && (
+          <div style={{
+            ...mono, fontSize: 10, color: '#ef4444', marginBottom: 16,
+            padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6,
+          }}>
+            // Web検索エラー: {webError}
+          </div>
+        )}
+
+        {/* 統合タイムライン */}
+        {timeline.length === 0 && !webLoading ? (
           <div style={{
             padding: '60px 0', textAlign: 'center',
             ...mono, fontSize: 10, color: '#9ca3af', letterSpacing: '0.1em',
@@ -514,15 +678,36 @@ export default function KokoroBrowserPage() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {displayedNotes.map((note, idx) => (
-              <NoteTimelineItem
-                key={note.id}
-                note={note}
-                accentColor={currentGamesen.color}
-                isLast={idx === displayedNotes.length - 1}
-                onClick={() => router.push(`/kokoro-browser/${note.id}`)}
-              />
+            {timeline.map((item, idx) => (
+              item.type === 'note' ? (
+                <NoteTimelineItem
+                  key={item.data.id}
+                  note={item.data}
+                  accentColor={currentGamesen.color}
+                  isLast={idx === timeline.length - 1}
+                  onClick={() => router.push(`/kokoro-browser/${item.data.id}`)}
+                />
+              ) : (
+                <WebTimelineItem
+                  key={item.data.id}
+                  result={item.data}
+                  accentColor={currentGamesen.color}
+                  isLast={idx === timeline.length - 1}
+                />
+              )
             ))}
+          </div>
+        )}
+
+        {/* Web検索ローディング */}
+        {webLoading && timeline.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <div style={{ ...mono, fontSize: 10, color: '#7c3aed', letterSpacing: '0.14em', marginBottom: 8 }}>
+              // インターネットを再編中...
+            </div>
+            <div style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
+              感性マップとキーワードからWeb全体を検索しています
+            </div>
           </div>
         )}
       </main>
@@ -530,7 +715,7 @@ export default function KokoroBrowserPage() {
   );
 }
 
-/* ─── タイムラインアイテム ─── */
+/* ─── Note タイムラインアイテム ─── */
 function NoteTimelineItem({
   note, accentColor, isLast, onClick,
 }: {
@@ -575,6 +760,12 @@ function NoteTimelineItem({
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
         }}>
+          <span style={{
+            ...mono, fontSize: 8, color: '#fff', background: accentColor,
+            padding: '1px 6px', borderRadius: 4, letterSpacing: '0.08em',
+          }}>
+            Note
+          </span>
           <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
             {new Date(note.createdAt).toLocaleDateString('ja-JP', {
               month: 'short', day: 'numeric',
@@ -630,6 +821,110 @@ function NoteTimelineItem({
           </div>
         )}
       </button>
+    </div>
+  );
+}
+
+/* ─── Web タイムラインアイテム ─── */
+function WebTimelineItem({
+  result, accentColor, isLast,
+}: {
+  result: WebResult;
+  accentColor: string;
+  isLast: boolean;
+}) {
+  const mono = { fontFamily: "'Space Mono', monospace" };
+
+  return (
+    <div style={{ display: 'flex', gap: 16 }}>
+      {/* タイムライン軸 */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        flexShrink: 0, paddingTop: 20,
+      }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: 2,
+          background: '#3b82f6', flexShrink: 0,
+          boxShadow: '0 0 0 2px #3b82f622',
+        }} />
+        {!isLast && (
+          <div style={{
+            width: 1, flex: 1, minHeight: 24,
+            background: '#e5e7eb', marginTop: 4,
+          }} />
+        )}
+      </div>
+
+      {/* カード */}
+      <a
+        href={result.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          flex: 1, textAlign: 'left', textDecoration: 'none',
+          padding: '16px 0 24px',
+        }}
+      >
+        {/* バッジ・カテゴリ */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+        }}>
+          <span style={{
+            ...mono, fontSize: 8, color: '#fff', background: '#3b82f6',
+            padding: '1px 6px', borderRadius: 4, letterSpacing: '0.08em',
+          }}>
+            Web
+          </span>
+          <span style={{
+            ...mono, fontSize: 9, color: '#3b82f6',
+            border: '1px solid #3b82f633',
+            padding: '1px 6px', borderRadius: 8,
+          }}>
+            {CATEGORY_LABELS[result.category] || result.category}
+          </span>
+          {/* ドメイン表示 */}
+          <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>
+            {(() => { try { return new URL(result.url).hostname.replace('www.', ''); } catch { return ''; } })()}
+          </span>
+        </div>
+
+        {/* タイトル */}
+        <div style={{
+          fontSize: 15, fontWeight: 600,
+          fontFamily: 'Noto Serif JP, serif',
+          color: '#1a1a1a', marginBottom: 6,
+          lineHeight: 1.5,
+        }}>
+          {result.title}
+        </div>
+
+        {/* スニペット */}
+        {result.snippet && (
+          <div style={{
+            fontSize: 13, color: '#6b7280',
+            fontFamily: 'Noto Serif JP, serif',
+            lineHeight: 1.8,
+            marginBottom: 8,
+          }}>
+            {result.snippet}
+          </div>
+        )}
+
+        {/* AIによる「なぜ今あなたにこれが必要か」 */}
+        {result.reason && (
+          <div style={{
+            fontSize: 12, color: '#7c3aed',
+            fontFamily: 'Noto Serif JP, serif',
+            lineHeight: 1.6,
+            padding: '6px 10px',
+            background: '#f5f3ff',
+            border: '1px solid #ede9fe',
+            borderRadius: 6,
+          }}>
+            💡 {result.reason}
+          </div>
+        )}
+      </a>
     </div>
   );
 }
