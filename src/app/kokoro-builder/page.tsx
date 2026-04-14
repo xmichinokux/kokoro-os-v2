@@ -820,6 +820,7 @@ export default function KokoroBuilderPage() {
                   {modularPhase === 'integrating' ? '統合中...'
                     : modularPhase === 'validating' ? '検証中...'
                     : modularPhase === 'fixing' ? '自動修正中...'
+                    : modularPhase === 'building' && doneCount === 0 && currentModuleIndex < 0 ? 'インターフェース定義を生成中...'
                     : `${doneCount}/${modules.length} 完了`}
                 </span>
               </div>
@@ -832,7 +833,7 @@ export default function KokoroBuilderPage() {
               </div>
             </div>
 
-            {(modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') && <PersonaLoading />}
+            {(modularPhase === 'building' || modularPhase === 'integrating' || modularPhase === 'validating' || modularPhase === 'fixing') && <PersonaLoading />}
 
             {/* バリデーションログ */}
             {validationLog.length > 0 && (
