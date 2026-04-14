@@ -101,6 +101,8 @@ function dbToNote(row: Record<string, unknown>): KokoroNote {
     productExternalUrl: (row.product_external_url as string) ?? undefined,
     productType: (row.product_type as KokoroNote['productType']) ?? undefined,
     authorName: (row.author_name as string) ?? undefined,
+    aiPricedAmount: (row.ai_priced_amount as number) ?? undefined,
+    showAiBadge: (row.show_ai_badge as boolean) ?? false,
   };
 }
 

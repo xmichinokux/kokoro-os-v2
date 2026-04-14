@@ -1059,6 +1059,64 @@ export default function KokoroNotePage() {
           )}
         </div>
 
+        {/* AI鑑定バッジ表示トグル */}
+        {selectedNote.isProduct && selectedNote.aiPricedAmount && (
+          <div style={{
+            display:'flex', alignItems:'center', gap:10, marginBottom:16,
+            padding:'10px 14px', background: selectedNote.showAiBadge ? '#fef3c7' : '#f9fafb',
+            border: `1px solid ${selectedNote.showAiBadge ? '#fde68a' : '#e5e7eb'}`,
+            borderRadius:8,
+          }}>
+            <span style={{
+              fontFamily:"'Space Mono', monospace", fontSize:10,
+              color: selectedNote.showAiBadge ? '#92400e' : '#6b7280',
+              background: selectedNote.showAiBadge ? '#f59e0b' : '#e5e7eb',
+              padding:'2px 8px', borderRadius:4, fontWeight:700,
+              letterSpacing:'0.05em',
+              ...(selectedNote.showAiBadge ? { color:'#fff' } : {}),
+            }}>
+              AI鑑定 ¥{selectedNote.aiPricedAmount.toLocaleString()}
+            </span>
+            <button
+              onClick={async () => {
+                const newVal = !selectedNote.showAiBadge;
+                // Supabase を直接更新
+                try {
+                  const res = await fetch('/api/kokoro-products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      noteId: selectedNote.id,
+                      productPrice: selectedNote.productPrice,
+                      productDescription: selectedNote.productDescription || '',
+                      productExternalUrl: selectedNote.productExternalUrl || '',
+                      productType: selectedNote.productType || 'text',
+                      authorName: selectedNote.authorName || '匿名',
+                      aiPricedAmount: selectedNote.aiPricedAmount,
+                      showAiBadge: newVal,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (data.error) throw new Error(data.error);
+                  const all = await getAllNotes();
+                  setNotes(all);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              style={{
+                fontFamily:"'Space Mono', monospace", fontSize:9, cursor:'pointer',
+                padding:'4px 10px', borderRadius:4,
+                background: selectedNote.showAiBadge ? '#fff' : '#f59e0b',
+                color: selectedNote.showAiBadge ? '#6b7280' : '#fff',
+                border: selectedNote.showAiBadge ? '1px solid #e5e7eb' : 'none',
+              }}
+            >
+              {selectedNote.showAiBadge ? 'バッジを非表示にする' : 'Browserにバッジを表示する'}
+            </button>
+          </div>
+        )}
+
         {/* 商品登録フォーム */}
         {showProductForm && !selectedNote.isProduct && (
           <div style={{
@@ -1182,6 +1240,8 @@ export default function KokoroNotePage() {
                         productExternalUrl,
                         productType,
                         authorName: productAuthorName || '匿名',
+                        aiPricedAmount: aiPricing?.suggestedPrice || undefined,
+                        showAiBadge: !!aiPricing,
                       }),
                     });
                     const data = await res.json();

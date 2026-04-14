@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     // 商品ノートを取得（is_product = true, is_public = true）
     let query = supabase
       .from('notes')
-      .select('id, user_id, title, text, tags, source, created_at, is_product, product_price, product_description, product_external_url, product_type, author_name')
+      .select('id, user_id, title, text, tags, source, created_at, is_product, product_price, product_description, product_external_url, product_type, author_name, ai_priced_amount, show_ai_badge')
       .eq('is_product', true)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
@@ -84,6 +84,8 @@ export async function GET(req: NextRequest) {
       productType: p.product_type || 'text',
       bookmarkCount: bookmarkCounts[p.id] || 0,
       isBookmarked: myBookmarks.has(p.id),
+      aiPricedAmount: p.ai_priced_amount || undefined,
+      showAiBadge: p.show_ai_badge || false,
     }));
 
     return NextResponse.json({ products: result });
@@ -104,6 +106,7 @@ export async function POST(req: NextRequest) {
 
     const {
       noteId, productPrice, productDescription, productExternalUrl, productType, authorName,
+      aiPricedAmount, showAiBadge,
     } = await req.json() as {
       noteId: string;
       productPrice: number;
@@ -111,6 +114,8 @@ export async function POST(req: NextRequest) {
       productExternalUrl: string;
       productType: string;
       authorName: string;
+      aiPricedAmount?: number;
+      showAiBadge?: boolean;
     };
 
     if (!noteId) {
@@ -140,6 +145,8 @@ export async function POST(req: NextRequest) {
         product_external_url: productExternalUrl || '',
         product_type: productType || 'text',
         author_name: authorName || '匿名',
+        ai_priced_amount: aiPricedAmount || null,
+        show_ai_badge: showAiBadge || false,
         updated_at: new Date().toISOString(),
       })
       .eq('id', noteId)

@@ -27,6 +27,8 @@ export type ProductNote = {
   productType: string;
   bookmarkCount: number;
   isBookmarked?: boolean;
+  aiPricedAmount?: number;        // AI鑑定額
+  showAiBadge?: boolean;          // AI鑑定バッジ表示
 };
 
 // ブックマーク
