@@ -1254,7 +1254,7 @@ export default function KokoroNotePage() {
                   placeholder="https://..."
                   style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', boxSizing:'border-box', fontFamily:"'Space Mono', monospace", marginBottom:6 }} />
                 <div style={{ fontSize:10, color:'#92400e', lineHeight:1.8, padding:'6px 8px', background:'#fff8e1', borderRadius:4 }}>
-                  決済リンクの作り方: <strong>Stripe Payment Links</strong> → dashboard.stripe.com でリンクを作成 / <strong>BOOTH</strong> → booth.pm で商品ページを作成。登録後に「PDF を生成する」で自動的に URL を設定することもできます。
+                  有料販売する場合: <strong>BOOTH</strong> → booth.pm で商品ページを作成しURLを貼る / <strong>Stripe Payment Links</strong> → dashboard.stripe.com で決済リンクを作成しURLを貼る。空欄の場合、登録後に「PDF を生成する」で無料ダウンロードリンクを設定できます。
                 </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
