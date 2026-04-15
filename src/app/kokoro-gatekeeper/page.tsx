@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import PersonaLoading from '@/components/PersonaLoading';
+import { getAllNotes } from '@/lib/kokoro/noteStorage';
+import type { KokoroNote } from '@/types/note';
 
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#6366f1';
@@ -20,8 +22,34 @@ export default function KokoroGatekeeperPage() {
 
   const [phase, setPhase] = useState<Phase>('input');
   const [input, setInput] = useState('');
-  const [strategyData, setStrategyData] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  // Note 添付
+  const [showNotePicker, setShowNotePicker] = useState(false);
+  const [allNotes, setAllNotes] = useState<KokoroNote[]>([]);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [notesLoaded, setNotesLoaded] = useState(false);
+
+  const loadNotes = useCallback(async () => {
+    if (notesLoaded) return;
+    const notes = await getAllNotes();
+    setAllNotes(notes.filter(n => n.body.trim()));
+    setNotesLoaded(true);
+  }, [notesLoaded]);
+
+  const toggleNote = (id: string) => {
+    setSelectedNoteIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedNotes = allNotes.filter(n => selectedNoteIds.has(n.id));
+  const noteData = selectedNotes.length > 0
+    ? selectedNotes.map(n => `[${n.title}]\n${n.body}`).join('\n\n---\n\n')
+    : null;
   const [holdList, setHoldList] = useState<string[]>([]);
 
   // 質問フェーズ
@@ -35,21 +63,6 @@ export default function KokoroGatekeeperPage() {
 
   // 仕様書
   const [spec, setSpec] = useState('');
-
-  // Strategyデータ読み込み
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('kokoro_strategy_inputs');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const text = Object.entries(parsed)
-          .filter(([, v]) => v)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join('\n');
-        if (text.trim()) setStrategyData(text);
-      }
-    } catch { /* ignore */ }
-  }, []);
 
   const callApi = useCallback(async (body: Record<string, unknown>) => {
     const controller = new AbortController();
@@ -78,14 +91,14 @@ export default function KokoroGatekeeperPage() {
 
   // ステップ1: 最初の質問を取得
   const handleStart = useCallback(async () => {
-    if (!input.trim() && !strategyData) return;
+    if (!input.trim() && !noteData) return;
     setLoading(true);
     setError('');
     try {
       const data = await callApi({
         phase: 'start',
         input: input.trim(),
-        strategyData: strategyData || undefined,
+        noteData: noteData || undefined,
       });
       setCurrentQuestion(data.question);
       setCurrentOptions(data.options);
@@ -98,7 +111,7 @@ export default function KokoroGatekeeperPage() {
     } finally {
       setLoading(false);
     }
-  }, [input, strategyData, callApi]);
+  }, [input, noteData, callApi]);
 
   // 次の質問 or 仕様書生成
   const handleNext = useCallback(async () => {
@@ -233,16 +246,18 @@ export default function KokoroGatekeeperPage() {
             />
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-              {strategyData && (
-                <button
-                  onClick={() => setInput(prev => prev ? prev + '\n\n' + strategyData : strategyData!)}
-                  style={{
-                    ...mono, fontSize: 9, letterSpacing: '0.12em',
-                    background: '#fff', border: '1px solid #f59e0b', color: '#f59e0b',
-                    padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
-                  }}
-                >Strategy から読み込む</button>
-              )}
+              <button
+                onClick={() => { setShowNotePicker(!showNotePicker); if (!notesLoaded) loadNotes(); }}
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '0.12em',
+                  background: '#fff',
+                  border: `1px solid ${selectedNoteIds.size > 0 ? accentColor : '#d1d5db'}`,
+                  color: selectedNoteIds.size > 0 ? accentColor : '#6b7280',
+                  padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                📎 Noteから読み込む{selectedNoteIds.size > 0 ? ` (${selectedNoteIds.size})` : ''}
+              </button>
               <label style={{
                 ...mono, fontSize: 9, letterSpacing: '0.12em',
                 background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
@@ -262,14 +277,89 @@ export default function KokoroGatekeeperPage() {
               </label>
             </div>
 
+            {/* 選択済みNoteのチップ */}
+            {selectedNotes.length > 0 && !showNotePicker && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                {selectedNotes.map(n => (
+                  <div key={n.id} style={{
+                    ...mono, fontSize: 8, letterSpacing: '.06em',
+                    padding: '3px 10px', borderRadius: 10,
+                    background: '#eef2ff', border: `1px solid ${accentColor}`,
+                    color: accentColor, display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                    {n.title.slice(0, 24)}{n.title.length > 24 ? '…' : ''}
+                    <span
+                      onClick={() => toggleNote(n.id)}
+                      style={{ cursor: 'pointer', opacity: 0.6 }}
+                    >×</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Note 選択パネル */}
+            {showNotePicker && (
+              <div style={{
+                marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8,
+                background: '#fafafa', maxHeight: 260, overflowY: 'auto',
+                padding: 8,
+              }}>
+                {!notesLoaded ? (
+                  <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>
+                    // loading...
+                  </div>
+                ) : allNotes.length === 0 ? (
+                  <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>
+                    // Noteがありません
+                  </div>
+                ) : (
+                  allNotes.map(note => {
+                    const selected = selectedNoteIds.has(note.id);
+                    return (
+                      <div
+                        key={note.id}
+                        onClick={() => toggleNote(note.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '8px 12px', borderRadius: 4, cursor: 'pointer',
+                          background: selected ? '#eef2ff' : 'transparent',
+                          border: `1px solid ${selected ? '#c7d2fe' : 'transparent'}`,
+                          marginBottom: 2,
+                          transition: 'all 0.1s',
+                        }}
+                      >
+                        <div style={{
+                          width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                          border: `1.5px solid ${selected ? accentColor : '#d1d5db'}`,
+                          background: selected ? accentColor : '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#fff', fontSize: 10,
+                        }}>
+                          {selected ? '✓' : ''}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {note.title}
+                          </div>
+                          <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginTop: 1 }}>
+                            {note.source} · {note.body.length}字
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
             <button
               onClick={handleStart}
-              disabled={loading || (!input.trim() && !strategyData)}
+              disabled={loading || (!input.trim() && !noteData)}
               style={{
                 ...mono, fontSize: 11, letterSpacing: '0.16em',
                 background: accentColor, border: 'none', color: '#fff',
                 padding: '14px 32px', borderRadius: 4, cursor: loading ? 'not-allowed' : 'pointer',
-                marginTop: 24, opacity: loading || (!input.trim() && !strategyData) ? 0.5 : 1,
+                marginTop: 24, opacity: loading || (!input.trim() && !noteData) ? 0.5 : 1,
                 display: 'block', width: '100%',
               }}
             >
