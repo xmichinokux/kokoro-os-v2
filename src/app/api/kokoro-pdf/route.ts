@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import type { PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { createServerSupabase } from '@/lib/supabase/server';
 
 export const maxDuration = 60;
 
-// テキストを指定幅で折り返す
-function wrapText(text: string, maxCharsPerLine: number): string[] {
+// フォントの実測幅で折り返す
+function wrapTextByWidth(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split('\n')) {
     if (paragraph.trim() === '') {
@@ -15,12 +16,23 @@ function wrapText(text: string, maxCharsPerLine: number): string[] {
     }
     let remaining = paragraph;
     while (remaining.length > 0) {
-      if (remaining.length <= maxCharsPerLine) {
+      // 全文字が収まるか
+      let w: number;
+      try { w = font.widthOfTextAtSize(remaining, fontSize); } catch { w = remaining.length * fontSize; }
+      if (w <= maxWidth) {
         lines.push(remaining);
         break;
       }
-      lines.push(remaining.slice(0, maxCharsPerLine));
-      remaining = remaining.slice(maxCharsPerLine);
+      // 収まる最大文字数を二分探索
+      let lo = 1, hi = remaining.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        let mw: number;
+        try { mw = font.widthOfTextAtSize(remaining.slice(0, mid), fontSize); } catch { mw = mid * fontSize; }
+        if (mw <= maxWidth) lo = mid; else hi = mid - 1;
+      }
+      lines.push(remaining.slice(0, lo));
+      remaining = remaining.slice(lo);
     }
   }
   return lines;
@@ -81,9 +93,8 @@ export async function POST(req: NextRequest) {
     const META_SIZE = 9;
     const LINE_HEIGHT = BODY_SIZE * 2;
 
-    // 本文のテキスト折り返し（1行あたりの文字数を推定）
-    const charsPerLine = Math.floor(CONTENT_WIDTH / (BODY_SIZE * 0.6));
-    const bodyLines = wrapText(body, charsPerLine);
+    // 本文のテキスト折り返し（フォント実測幅で計算）
+    const bodyLines = wrapTextByWidth(body, font, BODY_SIZE, CONTENT_WIDTH);
 
     // 必要なページ数を計算
     const headerHeight = 100; // タイトル + メタ + 余白
