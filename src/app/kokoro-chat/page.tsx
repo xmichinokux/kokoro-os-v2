@@ -15,6 +15,31 @@ import { createRecipeInputFromTalk, setRecipeInput } from '@/lib/kokoro/recipeIn
 import { saveToWishlist, type WishCategory, type WishIntensity } from '@/lib/wishlist';
 import PersonaLoading from '@/components/PersonaLoading';
 
+/* ── 履歴セッション管理 ── */
+const HISTORY_KEY = 'talkSessionHistory';
+const CURRENT_KEY = 'talkMessages';
+
+type TalkSession = {
+  id: string;
+  title: string;         // 最初のユーザー発言（20文字まで）
+  createdAt: string;     // ISO
+  messageCount: number;
+  messages: Message[];
+};
+
+function loadSessions(): TalkSession[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveSessions(sessions: TalkSession[]) {
+  // 最大30セッション保持
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(sessions.slice(0, 30)));
+}
+
 /* ── 型定義 ── */
 type StayWhisper = { persona: string; text: string };
 
@@ -110,6 +135,8 @@ export default function KokoroChat() {
   const [linkedNote, setLinkedNote] = useState<{ id?: string; title?: string; body?: string; topic?: string; insightType?: string; emotionTone?: string } | null>(null);
   const [savedWishIds, setSavedWishIds] = useState<Set<number>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [sessions, setSessions] = useState<TalkSession[]>([]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -135,12 +162,13 @@ export default function KokoroChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // localStorageからメッセージを復元
+  // localStorageからメッセージ・セッション履歴を復元
   useEffect(() => {
-    const saved = localStorage.getItem('talkMessages');
+    const saved = localStorage.getItem(CURRENT_KEY);
     if (saved) {
       try { setMessages(JSON.parse(saved)); } catch { /* ignore */ }
     }
+    setSessions(loadSessions());
   }, []);
 
   // Note→Talk連携: メモからの初期メッセージを復元
@@ -156,9 +184,61 @@ export default function KokoroChat() {
   // メッセージが更新されるたびにlocalStorageに保存
   useEffect(() => {
     if (messages.length > 0) {
-      localStorage.setItem('talkMessages', JSON.stringify(messages));
+      localStorage.setItem(CURRENT_KEY, JSON.stringify(messages));
     }
   }, [messages]);
+
+  // 現在の会話を保存して新規セッション開始
+  const saveAndNewSession = () => {
+    if (messages.length < 2) {
+      // メッセージが少なすぎる場合はそのままクリア
+      localStorage.removeItem(CURRENT_KEY);
+      setMessages([]);
+      return;
+    }
+    const firstUserMsg = messages.find(m => m.role === 'user')?.content || 'Talk';
+    const session: TalkSession = {
+      id: `session_${Date.now()}`,
+      title: firstUserMsg.slice(0, 30),
+      createdAt: new Date().toISOString(),
+      messageCount: messages.length,
+      messages: messages,
+    };
+    const updated = [session, ...sessions];
+    setSessions(updated);
+    saveSessions(updated);
+    localStorage.removeItem(CURRENT_KEY);
+    setMessages([]);
+    setTurnCount(0);
+  };
+
+  // 過去セッションを読み込み
+  const loadSession = (session: TalkSession) => {
+    // 現在の会話があれば先に保存
+    if (messages.length >= 2) {
+      const firstUserMsg = messages.find(m => m.role === 'user')?.content || 'Talk';
+      const current: TalkSession = {
+        id: `session_${Date.now()}`,
+        title: firstUserMsg.slice(0, 30),
+        createdAt: new Date().toISOString(),
+        messageCount: messages.length,
+        messages: messages,
+      };
+      const updated = [current, ...sessions.filter(s => s.id !== session.id)];
+      setSessions(updated);
+      saveSessions(updated);
+    }
+    setMessages(session.messages);
+    localStorage.setItem(CURRENT_KEY, JSON.stringify(session.messages));
+    setShowHistory(false);
+  };
+
+  // セッション削除
+  const deleteSession = (id: string) => {
+    const updated = sessions.filter(s => s.id !== id);
+    setSessions(updated);
+    saveSessions(updated);
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -541,11 +621,17 @@ export default function KokoroChat() {
       // 文脈からのアプリ推定
       const contextApps = detectContextApps(text);
 
-      // wishlist は meta から wishlist_item が必要
-      const meta = (data.meta ?? {}) as Record<string, boolean | number | string | null>;
+      // meta: AI判定のアプリルーティング
+      const meta = (data.meta ?? {}) as Record<string, boolean | number | string | null | object>;
       const wishItem = (meta as { wishlist_item?: { text: string; category: WishCategory; intensity: WishIntensity } | null }).wishlist_item ?? null;
 
-      const has = (app: string) => explicitApps.has(app) || contextApps.has(app);
+      // AI判定 (meta.need_*) + クライアント検出 (explicit/context) を統合
+      const has = (app: string) => {
+        if (explicitApps.has(app) || contextApps.has(app)) return true;
+        // meta の need_* フラグ（AI判定）
+        const metaKey = `need_${app === 'animal' ? 'animal_talk' : app}`;
+        return meta[metaKey] === true;
+      };
 
       const metaFields: Partial<Message> = {
         showZen:        has('zen') || undefined,
@@ -568,9 +654,9 @@ export default function KokoroChat() {
         showStrategy:   has('strategy') || undefined,
         showWorld:      has('world') || undefined,
         showWishlist:   (has('wishlist') && !!wishItem?.text) || undefined,
-        wishlistText:     explicitApps.has('wishlist') && wishItem ? wishItem.text : undefined,
-        wishlistCategory: explicitApps.has('wishlist') && wishItem ? wishItem.category : undefined,
-        wishlistIntensity: explicitApps.has('wishlist') && wishItem ? wishItem.intensity : undefined,
+        wishlistText:     wishItem ? wishItem.text : undefined,
+        wishlistCategory: wishItem ? wishItem.category : undefined,
+        wishlistIntensity: wishItem ? wishItem.intensity : undefined,
         routingUserText,
         routingHistoryShort,
         routingHistoryLong,
@@ -623,20 +709,20 @@ export default function KokoroChat() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Talk</span>
         </div>
         <div style={{ display:'flex', gap:6 }}>
-          <button onClick={() => { localStorage.removeItem('talkMessages'); setMessages([]); }}
-            title="履歴をクリア"
-            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            History ×
+          <button onClick={saveAndNewSession}
+            title="会話を保存して新規開始"
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
+            + New
           </button>
-          <button onClick={() => { localStorage.removeItem('kokoroProfile'); }}
-            title="プロフィールをクリア"
-            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            Profile ×
+          <button onClick={() => setShowHistory(!showHistory)}
+            title="履歴一覧"
+            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color: showHistory ? '#7c3aed' : '#9ca3af', background: showHistory ? '#ede9fe' : 'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
+            History
           </button>
-          <button onClick={() => { clearHonneLogs(); }}
-            title="本音ログをクリア"
+          <button onClick={() => router.push('/')}
+            title="Home"
             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
-            Honne ×
+            ← Home
           </button>
         </div>
       </header>
@@ -680,6 +766,53 @@ export default function KokoroChat() {
       {stayState.active && (
         <div style={{ textAlign:'center', padding:'6px 20px', background: CORE_PERSONA_COLORS[stayState.persona] + '10', borderBottom: `1px solid ${CORE_PERSONA_COLORS[stayState.persona]}30` }}>
           <span style={{ fontSize: 16 }}>{CORE_PERSONA_EMOJIS[stayState.persona]}</span>
+        </div>
+      )}
+
+      {/* 履歴パネル */}
+      {showHistory && (
+        <div style={{
+          borderBottom:'1px solid #e5e7eb', background:'#fafafa',
+          maxHeight: 300, overflowY: 'auto',
+        }}>
+          <div style={{ maxWidth:680, margin:'0 auto', padding:'12px 20px' }}>
+            <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginBottom:8, letterSpacing:'0.1em' }}>
+              // 過去の会話 ({sessions.length})
+            </div>
+            {sessions.length === 0 ? (
+              <div style={{ fontSize:12, color:'#9ca3af', padding:'12px 0' }}>まだ保存された会話はありません</div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                {sessions.map(s => (
+                  <div key={s.id} style={{
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    padding:'8px 12px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:6,
+                    cursor:'pointer', transition:'background .15s',
+                  }}
+                  onClick={() => loadSession(s)}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+                  >
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, color:'#1a1a1a', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {s.title}
+                      </div>
+                      <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginTop:2 }}>
+                        {new Date(s.createdAt).toLocaleDateString('ja-JP')} · {s.messageCount} messages
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                      title="削除"
+                      style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#d1d5db', background:'transparent', border:'none', cursor:'pointer', padding:'4px 8px', flexShrink:0 }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
