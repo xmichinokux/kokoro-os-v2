@@ -9,6 +9,7 @@ export type PublicNote = {
   createdAt: string;
   isPublic: true;
   authorLabel?: string;
+  authorId?: string;
 };
 
 // 商品Note（EC機能）
