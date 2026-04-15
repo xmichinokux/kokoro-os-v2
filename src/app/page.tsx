@@ -189,6 +189,13 @@ const APPS: App[] = [
     href: "/kokoro-play",
     ready: true,
   },
+  {
+    icon: "💬",
+    name: "Kokoro Messages",
+    desc: "AIが仲介する安全なメッセージ。にゃんパスシティー。",
+    href: "/kokoro-messages",
+    ready: true,
+  },
 ];
 
 export default function Home() {

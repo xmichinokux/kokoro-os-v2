@@ -196,6 +196,94 @@ function Section({
   );
 }
 
+function MessageSettings() {
+  const mono = { fontFamily: "'Space Mono', monospace" };
+  const [reception, setReception] = useState('bookmarked');
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('message_reception')
+        .eq('user_id', user.id)
+        .single();
+      if (data?.message_reception) setReception(data.message_reception);
+      setLoaded(true);
+    })();
+  }, []);
+
+  const handleChange = async (value: string) => {
+    setReception(value);
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase
+        .from('user_profiles')
+        .update({ message_reception: value })
+        .eq('user_id', user.id);
+    } catch { /* ignore */ }
+    finally { setSaving(false); }
+  };
+
+  if (!loaded) return null;
+
+  const options = [
+    { value: 'bookmarked', label: 'ブックマークしてくれた相手から', desc: 'あなたの作品を☆した人からのみ受け付けます' },
+    { value: 'mutual', label: '相互ブックマークの相手から', desc: 'お互いに☆し合っている人からのみ受け付けます' },
+    { value: 'anyone', label: '誰からでも', desc: 'すべてのユーザーから受け付けます（商用向け）' },
+  ];
+
+  return (
+    <div style={{
+      marginBottom: 32, padding: '20px', background: '#fff',
+      border: '1px solid #e5e7eb', borderRadius: 4,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <span style={{ fontSize: 16 }}>💬</span>
+        <span style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', color: '#1a1a1a', fontWeight: 700 }}>
+          メッセージ受信設定
+        </span>
+        <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.1em' }}>
+          // にゃんパスシティー
+        </span>
+        {saving && <span style={{ ...mono, fontSize: 8, color: '#f59e0b' }}>保存中...</span>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {options.map(opt => (
+          <label key={opt.value} style={{
+            display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px',
+            borderRadius: 6, cursor: 'pointer',
+            background: reception === opt.value ? '#ede9fe' : '#f9fafb',
+            border: `1px solid ${reception === opt.value ? '#c4b5fd' : '#e5e7eb'}`,
+          }}>
+            <input
+              type="radio"
+              name="message_reception"
+              value={opt.value}
+              checked={reception === opt.value}
+              onChange={() => handleChange(opt.value)}
+              style={{ marginTop: 2 }}
+            />
+            <div>
+              <div style={{ ...mono, fontSize: 10, fontWeight: 600, color: '#1a1a1a' }}>
+                {opt.label}
+              </div>
+              <div style={{ ...mono, fontSize: 8, color: '#6b7280', marginTop: 2 }}>
+                {opt.desc}
+              </div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ActionBar({
   onSave, onReset, lastSaved,
 }: { onSave: () => void; onReset: () => void; lastSaved: string }) {
@@ -819,6 +907,9 @@ export default function KokoroProfilePage() {
           <TextField k="p_hobbies" value={profile.p_hobbies} onChange={v => setField('p_hobbies', v)} highlighted={aiFilled.has('p_hobbies')} placeholder="例:音楽、ゲーム、読書、映画、カフェ巡り" full />
           <TextArea k="p_memo" value={profile.p_memo} onChange={v => setField('p_memo', v)} highlighted={aiFilled.has('p_memo')} placeholder="例:夜型、HSP気質、新しいもの好き、完璧主義" />
         </Section>
+
+        {/* メッセージ受信設定 */}
+        <MessageSettings />
 
         <ActionBar onSave={handleSave} onReset={handleReset} lastSaved={lastSaved} />
 
