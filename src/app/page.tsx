@@ -106,8 +106,8 @@ const APPS: App[] = [
     ready: true,
   },
   {
-    icon: "🎨",
-    name: "Kokoro Ponchi",
+    icon: "📊",
+    name: "Kokoro Slide",
     desc: "コンセプトを6枚のスライドに翻訳する。",
     href: "/kokoro-ponchi",
     ready: true,
@@ -115,7 +115,7 @@ const APPS: App[] = [
   {
     icon: "⚡",
     name: "Kokoro Strategy",
-    desc: "Writer・Kami・Ponchiの出力を統合して企画書を生成。",
+    desc: "Writer・Kami・Slideの出力を統合して企画書を生成。",
     href: "/kokoro-strategy",
     ready: true,
   },

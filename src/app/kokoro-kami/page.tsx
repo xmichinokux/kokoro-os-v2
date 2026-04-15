@@ -325,10 +325,6 @@ export default function KokoroKamiPage() {
               background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer',
             }}>← シート一覧</button>
           )}
-          <button onClick={() => router.push('/')} style={{
-            ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af',
-            background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer',
-          }}>← Home</button>
         </div>
       </header>
 

@@ -21,7 +21,7 @@ const DOCK_APPS = [
   { emoji: '🧠', href: '/kokoro-philo', label: 'Philo' },
   { emoji: '👥', href: '/kokoro-board', label: 'Board' },
   { emoji: '📄', href: '/kokoro-kami', label: 'Kami' },
-  { emoji: '🎨', href: '/kokoro-ponchi', label: 'Ponchi' },
+  { emoji: '📊', href: '/kokoro-ponchi', label: 'Slide' },
   { emoji: '📚', href: '/kokoro-browser', label: 'Browser' },
   { emoji: '🐾', href: '/kokoro-animal', label: 'Animal' },
   { emoji: '👔', href: '/kokoro-fashion', label: 'Fashion' },

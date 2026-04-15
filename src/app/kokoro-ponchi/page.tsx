@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { saveToNote } from '@/lib/saveToNote';
 import { saveStrategyInput } from '@/lib/strategyInputs';
 import PersonaLoading from '@/components/PersonaLoading';
@@ -16,7 +15,6 @@ type Slide = {
 type PonchiResult = { slides: Slide[] };
 
 export default function KokoroPonchiPage() {
-  const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
   const accentColor = '#8b5cf6';
 
@@ -42,9 +40,8 @@ export default function KokoroPonchiPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: inputText.trim() }),
       });
-      if (!res.ok) throw new Error('スライド生成に失敗しました');
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (!res.ok || data.error) throw new Error(data.error || 'スライド生成に失敗しました');
       const result = data.data as PonchiResult;
       setSlides(result.slides ?? []);
     } catch (e) {
@@ -57,7 +54,7 @@ export default function KokoroPonchiPage() {
   const handleSaveToNote = async () => {
     if (slides.length === 0) return;
     const body = slides.map(s => `// ${s.num} ${s.title}\n${s.body}`).join('\n\n');
-    await saveToNote(body, 'Ponchi');
+    await saveToNote(body, 'Slide');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -102,24 +99,18 @@ export default function KokoroPonchiPage() {
             borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'radial-gradient(circle at 40% 40%,rgba(139,92,246,0.1) 0%,transparent 70%)',
             fontSize: 16,
-          }}>🎨</div>
+          }}>📊</div>
           <div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#111827', letterSpacing: '.06em' }}>
-              Kokoro <span style={{ color: accentColor }}>Ponchi</span>
+              Kokoro <span style={{ color: accentColor }}>Slide</span>
             </div>
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>コンセプト翻訳エンジン</span>
           </div>
         </div>
-        <button
-          onClick={() => router.push('/kokoro-chat')}
-          title="Talkに戻る"
-          style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
-        >
-          ← Talk
-        </button>
+        <div />
       </header>
 
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 100px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 120px' }}>
 
         <p style={{
           fontSize: 13, color: '#9ca3af', lineHeight: 1.9,
