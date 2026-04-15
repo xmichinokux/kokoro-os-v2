@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabase } from '@/lib/supabase/server';
+import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
 
-// フォロートグル
+// フォロートグル（RLSバイパスでサービスロール使用）
 export async function POST(req: NextRequest) {
   try {
+    // 認証チェックはanon clientで行う
     const supabase = await createServerSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'ログインが必要です' }, { status: 401 });
@@ -12,20 +13,23 @@ export async function POST(req: NextRequest) {
     if (!targetUserId) return NextResponse.json({ error: 'targetUserId が必要です' }, { status: 400 });
     if (targetUserId === user.id) return NextResponse.json({ error: '自分はフォローできません' }, { status: 400 });
 
+    // account_follows の操作はサービスロールで（RLS問題回避）
+    const admin = createServiceSupabase();
+
     // 既存チェック
-    const { data: existing } = await supabase
+    const { data: existing } = await admin
       .from('account_follows')
       .select('id')
       .eq('follower_id', user.id)
       .eq('following_id', targetUserId)
-      .single();
+      .maybeSingle();
 
     if (existing) {
-      const { error: delErr } = await supabase.from('account_follows').delete().eq('id', existing.id);
+      const { error: delErr } = await admin.from('account_follows').delete().eq('id', existing.id);
       if (delErr) return NextResponse.json({ error: `削除エラー: ${delErr.message}` }, { status: 500 });
       return NextResponse.json({ following: false });
     } else {
-      const { error: insErr } = await supabase.from('account_follows').insert({
+      const { error: insErr } = await admin.from('account_follows').insert({
         follower_id: user.id,
         following_id: targetUserId,
       });
@@ -48,7 +52,9 @@ export async function GET(req: NextRequest) {
     const userIds = req.nextUrl.searchParams.get('userIds')?.split(',') || [];
     if (userIds.length === 0) return NextResponse.json({ follows: {} });
 
-    const { data } = await supabase
+    // サービスロールで確実に取得
+    const admin = createServiceSupabase();
+    const { data } = await admin
       .from('account_follows')
       .select('following_id')
       .eq('follower_id', user.id)
