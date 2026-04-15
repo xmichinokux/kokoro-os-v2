@@ -931,9 +931,7 @@ export default function KokoroInsightPage() {
           </div>
         )}
 
-        <footer style={{ marginTop: 60, borderTop: '1px solid #e5e7eb', paddingTop: 16, ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '.08em' }}>
-          Kokoro Insight // Kokoro OS // 千田正憲 // 岩手
-        </footer>
+        <div style={{ marginTop: 60 }} />
       </div>
     </div>
   );
