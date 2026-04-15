@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { saveToNote } from '@/lib/saveToNote';
@@ -75,6 +75,78 @@ function parseWriterXml(raw: string): {
     memos: memosMatch ? memosMatch[1].trim() : '',
     suggestion: suggestionMatch ? suggestionMatch[1].trim() : '',
   };
+}
+
+/* A4ページ分割コンポーネント */
+const A4_CONTENT_HEIGHT = 960; // A4比率の内容領域高さ（px） padding除く
+
+function A4Pages({ html, plainText }: { html: string; plainText: string }) {
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [pages, setPages] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!html && !plainText) { setPages([]); return; }
+
+    // hrタグを除去してフラットなHTMLにする
+    const cleanHtml = html
+      ? html.replace(/<hr\s+class="whr"\s*\/?>/gi, '')
+      : `<p class="wp">${plainText.replace(/\n/g, '<br>')}</p>`;
+
+    // 非表示の計測コンテナにHTMLを流し込み、子要素ごとの高さを取得してページ分割
+    const container = measureRef.current;
+    if (!container) { setPages([cleanHtml]); return; }
+
+    container.innerHTML = cleanHtml;
+
+    // requestAnimationFrameで描画完了を待つ
+    requestAnimationFrame(() => {
+      const children = Array.from(container.children) as HTMLElement[];
+      if (children.length === 0) { setPages([cleanHtml]); return; }
+
+      const pageList: string[] = [];
+      let currentPageHtml = '';
+      let currentHeight = 0;
+
+      for (const child of children) {
+        const h = child.offsetHeight + parseInt(getComputedStyle(child).marginTop || '0') + parseInt(getComputedStyle(child).marginBottom || '0');
+
+        if (currentHeight + h > A4_CONTENT_HEIGHT && currentPageHtml) {
+          pageList.push(currentPageHtml);
+          currentPageHtml = '';
+          currentHeight = 0;
+        }
+
+        currentPageHtml += child.outerHTML;
+        currentHeight += h;
+      }
+      if (currentPageHtml) pageList.push(currentPageHtml);
+
+      setPages(pageList.length > 0 ? pageList : [cleanHtml]);
+      container.innerHTML = '';
+    });
+  }, [html, plainText]);
+
+  return (
+    <>
+      {/* 非表示の計測用コンテナ */}
+      <div
+        ref={measureRef}
+        className="edited-text"
+        style={{
+          position: 'absolute', visibility: 'hidden', width: 520, // A4ページ内のコンテンツ幅 (600 - padding 80)
+          left: -9999, top: 0,
+        }}
+      />
+      <div className="writer-pages-container">
+        {pages.map((pageHtml, idx) => (
+          <div key={idx} className="writer-page">
+            <div className="edited-text" dangerouslySetInnerHTML={{ __html: pageHtml }} />
+            <div className="writer-page-number">{idx + 1} / {pages.length}</div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
 }
 
 export default function KokoroWriterPage() {
@@ -309,35 +381,8 @@ export default function KokoroWriterPage() {
                 </div>
               </div>
             )}
-            {/* HTML描画（ページ区切りレイアウト） */}
-            <div className="writer-pages-container">
-              {(() => {
-                if (!outputHtml) {
-                  return (
-                    <div className="writer-page">
-                      <div style={{ padding: 24, fontSize: 14, lineHeight: 1.8, color: '#374151', whiteSpace: 'pre-wrap' }}>
-                        {outputText}
-                      </div>
-                    </div>
-                  );
-                }
-                // <hr class="whr"> でページ分割
-                const pages = outputHtml.split(/<hr\s+class="whr"\s*\/?>/i).filter(p => p.trim());
-                if (pages.length <= 1) {
-                  return (
-                    <div className="writer-page">
-                      <div className="edited-text" dangerouslySetInnerHTML={{ __html: outputHtml }} />
-                    </div>
-                  );
-                }
-                return pages.map((pageHtml, idx) => (
-                  <div key={idx} className="writer-page">
-                    <div className="edited-text" dangerouslySetInnerHTML={{ __html: pageHtml.trim() }} />
-                    <div className="writer-page-number">{idx + 1} / {pages.length}</div>
-                  </div>
-                ));
-              })()}
-            </div>
+            {/* HTML描画（A4ページ区切りレイアウト） */}
+            <A4Pages html={outputHtml} plainText={outputText} />
           </div>
         )}
 
