@@ -11,7 +11,9 @@ import {
   type KokoroUserProfile,
 } from '@/lib/getProfile';
 
-type FashionResult = {
+type Mode = 'coord' | 'check' | 'brand' | 'next';
+
+type CheckResult = {
   styleName: string;
   keywords: string[];
   summary: string;
@@ -29,19 +31,67 @@ type FashionResult = {
   };
 };
 
+type CoordResult = { main: string; point: string; leap: string };
+type BrandResult = { brands: { name: string; desc: string; price?: string }[]; avoid: string };
+type NextResult = { item: string; reason: string; leap: string; how: string };
+
 export default function KokoroFashion() {
+  const [mode, setMode] = useState<Mode>('coord');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [kokoroProfile, setKokoroProfile] = useState<KokoroUserProfile | null>(null);
+
+  // Coord
+  const [coordWeather, setCoordWeather] = useState('晴れ');
+  const [coordPlan, setCoordPlan] = useState('普段通り・特になし');
+  const [coordMood, setCoordMood] = useState('普通');
+  const [coordWardrobe, setCoordWardrobe] = useState('');
+  const [coordResult, setCoordResult] = useState<CoordResult | null>(null);
+  const [coordNoteSaved, setCoordNoteSaved] = useState(false);
+
+  // Check
+  const [checkOutfit, setCheckOutfit] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [imageMediaType, setImageMediaType] = useState<string | null>(null);
-  const [inputText, setInputText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<FashionResult | null>(null);
+  const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [started, setStarted] = useState(false);
-  const [noteSaved, setNoteSaved] = useState(false);
-  const [kokoroProfile, setKokoroProfile] = useState<KokoroUserProfile | null>(null);
+  const [checkNoteSaved, setCheckNoteSaved] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Brand
+  const [brandBudget, setBrandBudget] = useState('ミドル（5千〜2万円）');
+  const [brandAccess, setBrandAccess] = useState('通販・オンライン中心');
+  const [brandResult, setBrandResult] = useState<BrandResult | null>(null);
+  const [brandNoteSaved, setBrandNoteSaved] = useState(false);
+
+  // Next
+  const [nextWardrobe, setNextWardrobe] = useState('');
+  const [nextResult, setNextResult] = useState<NextResult | null>(null);
+  const [nextNoteSaved, setNextNoteSaved] = useState(false);
+
+  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    if (started) return;
+    setStarted(true);
+    getKokoroProfile().then(p => { if (p) setKokoroProfile(p); });
+
+    // Talk 連携：画像引き継ぎ
+    const raw = sessionStorage.getItem('fashionIntent');
+    if (raw) {
+      sessionStorage.removeItem('fashionIntent');
+      try {
+        const intent = JSON.parse(raw);
+        if (intent.imageBase64 && intent.imageMediaType) {
+          setImageBase64(intent.imageBase64);
+          setImageMediaType(intent.imageMediaType);
+          setPreview(`data:${intent.imageMediaType};base64,${intent.imageBase64}`);
+          setMode('check');
+        }
+      } catch { /* ignore */ }
+    }
+  }, [started]);
 
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve) => {
@@ -86,111 +136,240 @@ export default function KokoroFashion() {
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
   };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
   const removeImage = () => {
     setPreview(null);
     setImageBase64(null);
     setImageMediaType(null);
   };
 
-  const runAnalysis = useCallback(async (opts: {
-    profile?: KokoroProfile;
-    imageBase64?: string | null;
-    imageMediaType?: string | null;
-    text?: string;
-  }) => {
-    setIsLoading(true);
+  const callFashionAPI = useCallback(async <T,>(payload: Record<string, unknown>): Promise<T> => {
+    const profile: KokoroProfile = await getProfile();
+    const kp = await getKokoroProfile();
+    const res = await fetch('/api/fashion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, profile, kokoroProfile: kp }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data as T;
+  }, []);
+
+  const runCoord = async () => {
     setError('');
-    setResult(null);
-    setDetailsOpen(false);
-
+    setCoordResult(null);
+    setCoordNoteSaved(false);
+    setIsLoading(true);
     try {
-      const res = await fetch('/api/fashion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageBase64: opts.imageBase64 || undefined,
-          imageMediaType: opts.imageMediaType || undefined,
-          textInput: opts.text || undefined,
-          profile: opts.profile || await getProfile(),
-          kokoroProfile: await getKokoroProfile(),
-        }),
+      const r = await callFashionAPI<CoordResult>({
+        mode: 'coord',
+        weather: coordWeather,
+        plan: coordPlan,
+        mood: coordMood,
+        wardrobe: coordWardrobe,
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      setCoordResult(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '不明なエラー');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      setResult(data);
-
-      if (data.inferredUpdate) {
-        if (data.inferredUpdate.fashion_axes) {
-          updateInferred('fashion_axes', data.inferredUpdate.fashion_axes);
-        }
-        if (data.inferredUpdate.taste_clusters) {
-          updateInferred('taste_clusters', data.inferredUpdate.taste_clusters);
-        }
-        if (data.inferredUpdate.emotional_pattern) {
-          updateInferred('emotional_pattern', data.inferredUpdate.emotional_pattern);
-        }
+  const runCheck = async () => {
+    if (!checkOutfit.trim() && !imageBase64) {
+      setError('画像かテキストを入力してください');
+      return;
+    }
+    setError('');
+    setCheckResult(null);
+    setDetailsOpen(false);
+    setCheckNoteSaved(false);
+    setIsLoading(true);
+    try {
+      const r = await callFashionAPI<CheckResult>({
+        mode: 'check',
+        imageBase64: imageBase64 || undefined,
+        imageMediaType: imageMediaType || undefined,
+        textInput: checkOutfit || undefined,
+      });
+      setCheckResult(r);
+      if (r.inferredUpdate) {
+        if (r.inferredUpdate.fashion_axes) updateInferred('fashion_axes', r.inferredUpdate.fashion_axes);
+        if (r.inferredUpdate.taste_clusters) updateInferred('taste_clusters', r.inferredUpdate.taste_clusters);
+        if (r.inferredUpdate.emotional_pattern) updateInferred('emotional_pattern', r.inferredUpdate.emotional_pattern);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : '不明なエラー');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    if (started) return;
-    setStarted(true);
-
-    // Kokoro Profile を読み込んでバナー表示用にstateへ
-    getKokoroProfile().then(p => { if (p) setKokoroProfile(p); });
-
-    // sessionStorage からの引き継ぎ（Talk連携）
-    const raw = sessionStorage.getItem('fashionIntent');
-    if (raw) {
-      sessionStorage.removeItem('fashionIntent');
-      try {
-        const intent = JSON.parse(raw);
-        if (intent.imageBase64 && intent.imageMediaType) {
-          setImageBase64(intent.imageBase64);
-          setImageMediaType(intent.imageMediaType);
-          setPreview(`data:${intent.imageMediaType};base64,${intent.imageBase64}`);
-        }
-      } catch { /* ignore */ }
+  const runBrand = async () => {
+    setError('');
+    setBrandResult(null);
+    setBrandNoteSaved(false);
+    setIsLoading(true);
+    try {
+      const r = await callFashionAPI<BrandResult>({
+        mode: 'brand',
+        budget: brandBudget,
+        access: brandAccess,
+      });
+      setBrandResult(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '不明なエラー');
+    } finally {
+      setIsLoading(false);
     }
-  }, [started]);
+  };
 
-  const handleSaveToNote = async () => {
-    if (!result || noteSaved) return;
+  const runNext = async () => {
+    setError('');
+    setNextResult(null);
+    setNextNoteSaved(false);
+    setIsLoading(true);
+    try {
+      const r = await callFashionAPI<NextResult>({
+        mode: 'next',
+        wardrobe: nextWardrobe,
+      });
+      setNextResult(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '不明なエラー');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const saveCoord = async () => {
+    if (!coordResult || coordNoteSaved) return;
     const text = [
-      `[スタイル名] ${result.styleName}`,
-      result.keywords.length ? `[キーワード] ${result.keywords.join(', ')}` : '',
+      `[今日のコーデ] ${coordWeather} / ${coordPlan} / ${coordMood}`,
       '',
-      result.summary,
+      coordResult.main,
       '',
-      `[スコア] Style Match: ${result.scores.styleMatch} / Reality Fit: ${result.scores.realityFit}`,
+      `[ポイント]\n${coordResult.point}`,
       '',
-      `[良い点]\n${result.details.goodPoints}`,
+      `[スタイルとの接続]\n${coordResult.leap}`,
+    ].join('\n');
+    await saveToNote(text, 'Fashion');
+    setCoordNoteSaved(true);
+  };
+
+  const saveCheck = async () => {
+    if (!checkResult || checkNoteSaved) return;
+    const text = [
+      `[スタイル名] ${checkResult.styleName}`,
+      checkResult.keywords.length ? `[キーワード] ${checkResult.keywords.join(', ')}` : '',
+      '', checkResult.summary, '',
+      `[スコア] Style Match: ${checkResult.scores.styleMatch} / Reality Fit: ${checkResult.scores.realityFit}`,
       '',
-      `[ズレ / 提案]\n${result.details.mismatches}`,
+      `[良い点]\n${checkResult.details.goodPoints}`,
       '',
-      `[印象]\n${result.details.impression}`,
+      `[ズレ / 提案]\n${checkResult.details.mismatches}`,
       '',
-      `[年齢・文脈]\n${result.details.ageVision}`,
+      `[印象]\n${checkResult.details.impression}`,
+      '',
+      `[年齢・文脈]\n${checkResult.details.ageVision}`,
     ].filter(Boolean).join('\n');
     await saveToNote(text, 'Fashion');
-    setNoteSaved(true);
+    setCheckNoteSaved(true);
   };
+
+  const saveBrand = async () => {
+    if (!brandResult || brandNoteSaved) return;
+    const text = [
+      `[ブランド提案] 予算: ${brandBudget} / 入手: ${brandAccess}`,
+      '',
+      ...brandResult.brands.map(b => `・${b.name}${b.price ? ` (${b.price})` : ''}\n  ${b.desc}`),
+      '',
+      `[避けるべき方向性]\n${brandResult.avoid}`,
+    ].join('\n');
+    await saveToNote(text, 'Fashion');
+    setBrandNoteSaved(true);
+  };
+
+  const saveNext = async () => {
+    if (!nextResult || nextNoteSaved) return;
+    const text = [
+      `[次に買うべき一点] ${nextResult.item}`,
+      '',
+      nextResult.reason,
+      '',
+      `[飛躍]\n${nextResult.leap}`,
+      '',
+      `[選び方]\n${nextResult.how}`,
+    ].join('\n');
+    await saveToNote(text, 'Fashion');
+    setNextNoteSaved(true);
+  };
+
+  // ---------- styles ----------
+  const labelStyle = {
+    fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em',
+    color: '#9ca3af', textTransform: 'uppercase' as const, display: 'block', marginBottom: 10,
+  };
+  const textareaStyle = {
+    width: '100%', background: '#f8f9fa',
+    border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
+    borderRadius: '0 4px 4px 0',
+    padding: 14, fontSize: 14, color: '#111827',
+    resize: 'vertical' as const, outline: 'none', minHeight: 70,
+    fontFamily: "'Noto Sans JP', sans-serif",
+    boxSizing: 'border-box' as const,
+  };
+  const selectStyle = {
+    width: '100%', background: '#f8f9fa', border: '1px solid #d1d5db',
+    borderRadius: 4, padding: '10px 12px', fontSize: 13, color: '#111827',
+    outline: 'none', cursor: 'pointer',
+    fontFamily: "'Noto Sans JP', sans-serif",
+  };
+  const runBtn = (enabled: boolean) => ({
+    width: '100%', background: 'transparent',
+    border: `1px solid ${enabled ? '#7c3aed' : '#d1d5db'}`,
+    color: enabled ? '#7c3aed' : '#9ca3af',
+    fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.2em',
+    padding: 13, cursor: enabled ? 'pointer' : 'not-allowed',
+    borderRadius: 2, marginTop: 8,
+  });
+  const tabStyle = (active: boolean) => ({
+    fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.1em',
+    padding: '10px 14px', cursor: 'pointer',
+    color: active ? '#7c3aed' : '#6b7280',
+    border: 'none', background: 'transparent',
+    borderBottom: `2px solid ${active ? '#7c3aed' : 'transparent'}`,
+    textTransform: 'uppercase' as const,
+    flex: 1,
+  });
+  const resultCardStyle = {
+    background: '#f9fafb', border: '1px solid #e5e7eb',
+    padding: 24, borderRadius: 4, marginTop: 20,
+  };
+  const resultSectionStyle = {
+    marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid #e5e7eb',
+  };
+  const resultLabelStyle = {
+    fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em',
+    color: '#7c3aed', textTransform: 'uppercase' as const, display: 'block', marginBottom: 10,
+  };
+  const resultBodyStyle = { fontSize: 14, color: '#374151', lineHeight: 2 };
+  const noteBtnStyle = (saved: boolean) => ({
+    fontFamily: "'Space Mono', monospace", fontSize: 10,
+    color: saved ? '#34d399' : '#7c3aed',
+    background: 'transparent',
+    border: `1px solid ${saved ? 'rgba(52,211,153,0.4)' : 'rgba(124,58,237,0.3)'}`,
+    borderRadius: 6, padding: '8px 18px',
+    cursor: saved ? 'default' : 'pointer',
+    letterSpacing: '0.1em', marginTop: 12,
+  });
 
   const ScoreBar = ({ label, value }: { label: string; value: number }) => (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.12em', color: '#6b7280', textTransform: 'uppercase' as const }}>{label}</span>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.12em', color: '#6b7280', textTransform: 'uppercase' }}>{label}</span>
         <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: '#7c3aed', fontWeight: 700 }}>{value}</span>
       </div>
       <div style={{ height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
@@ -202,7 +381,6 @@ export default function KokoroFashion() {
   return (
     <div style={{ minHeight: '100vh', background: '#fff', color: '#1a1a1a', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
 
-      {/* header */}
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 10 }}>
         <div>
           <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700 }}>Kokoro</span>
@@ -214,263 +392,270 @@ export default function KokoroFashion() {
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 20px 120px' }}>
 
-        {/* プロフィール使用中バナー */}
         {hasProfileData(kokoroProfile) && (
           <div style={{
-            marginBottom: 24,
-            padding: '10px 16px',
+            marginBottom: 24, padding: '10px 16px',
             background: 'rgba(99,102,241,0.06)',
             border: '1px solid rgba(99,102,241,0.2)',
             borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12, flexWrap: 'wrap',
           }}>
-            <span style={{
-              fontFamily: "'Space Mono', monospace",
-              fontSize: 10,
-              color: '#6366f1',
-              letterSpacing: '0.12em',
-            }}>
+            <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: '#6366f1', letterSpacing: '0.12em' }}>
               // プロフィールを使用中
             </span>
-            <a
-              href="/kokoro-profile"
-              style={{
-                fontFamily: "'Space Mono', monospace",
-                fontSize: 9,
-                color: '#9ca3af',
-                textDecoration: 'none',
-                letterSpacing: '0.1em',
-              }}
-            >
+            <a href="/kokoro-profile" style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', textDecoration: 'none', letterSpacing: '0.1em' }}>
               編集 →
             </a>
           </div>
         )}
 
-        {/* title */}
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>👔</div>
           <div style={{ fontSize: 18, fontWeight: 400, marginBottom: 6 }}>Fashion</div>
-          <div style={{ fontSize: 12, color: '#9ca3af' }}>内面が装いにどう出ているかを読む</div>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>スタイルの処方</div>
         </div>
 
-        {/* 入力エリア */}
-        {!result && !isLoading && (
-          <div>
-            {/* テキスト入力 */}
-            <label style={{ fontFamily: "'Space Mono', monospace", fontSize: 8, letterSpacing: '0.18em', color: '#9ca3af', display: 'block', marginBottom: 10 }}>
-              // 服装・スタイルについて
-            </label>
-            <textarea
-              value={inputText}
-              onChange={e => setInputText(e.target.value)}
-              placeholder="例：最近カジュアルなモノトーンが多い。もう少し色を取り入れたいけど、何が合うかわからない。"
-              style={{
-                width: '100%', background: '#f8f9fa',
-                border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
-                borderRadius: '0 4px 4px 0',
-                padding: 14, fontSize: 14, color: '#111827',
-                resize: 'vertical', outline: 'none', minHeight: 80,
-                fontFamily: "'Noto Sans JP', sans-serif",
-                boxSizing: 'border-box',
-              }}
-              onFocus={e => e.currentTarget.style.borderLeftColor = '#7c3aed'}
-              onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
-            />
+        {/* タブ */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 28, borderBottom: '1px solid #e5e7eb' }}>
+          <button style={tabStyle(mode === 'coord')} onClick={() => setMode('coord')}>今日のコーデ</button>
+          <button style={tabStyle(mode === 'check')} onClick={() => setMode('check')}>チェック</button>
+          <button style={tabStyle(mode === 'brand')} onClick={() => setMode('brand')}>ブランド</button>
+          <button style={tabStyle(mode === 'next')} onClick={() => setMode('next')}>次の一点</button>
+        </div>
 
-            {/* 画像アップロード */}
-            <div style={{ marginTop: 16 }}>
-              <label style={{ fontFamily: "'Space Mono', monospace", fontSize: 8, letterSpacing: '0.18em', color: '#9ca3af', display: 'block', marginBottom: 10 }}>
-                // 画像（任意）
-              </label>
+        {/* ① 今日のコーデ */}
+        {mode === 'coord' && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>// 今日の天気</label>
+              <select style={selectStyle} value={coordWeather} onChange={e => setCoordWeather(e.target.value)}>
+                <option>晴れ</option><option>曇り</option><option>雨</option><option>雪</option>
+                <option>暑い</option><option>寒い</option>
+              </select>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={labelStyle}>// 今日の予定</label>
+                <select style={selectStyle} value={coordPlan} onChange={e => setCoordPlan(e.target.value)}>
+                  <option>普段通り・特になし</option><option>仕事・オフィス</option>
+                  <option>カジュアルな外出</option><option>友人と会う</option>
+                  <option>デート</option><option>家にいる</option><option>特別な場所</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>// 今の気分</label>
+                <select style={selectStyle} value={coordMood} onChange={e => setCoordMood(e.target.value)}>
+                  <option>普通</option><option>テンションが上がっている</option>
+                  <option>落ち着いていたい</option><option>目立ちたくない</option>
+                  <option>攻めたい</option><option>疲れている</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>// 手持ちの服・ワードローブ（任意）</label>
+              <textarea style={textareaStyle} rows={3}
+                value={coordWardrobe} onChange={e => setCoordWardrobe(e.target.value)}
+                placeholder="例：黒のオーバーサイズT、グレーのスラックス、白スニーカー" />
+            </div>
+            <button style={runBtn(!isLoading)} onClick={runCoord} disabled={isLoading}>
+              Yoroshiku
+            </button>
+
+            {isLoading && <PersonaLoading />}
+            {coordResult && (
+              <div style={resultCardStyle}>
+                <div style={resultSectionStyle}>
+                  <span style={resultLabelStyle}>// 今日のコーデ</span>
+                  <div style={resultBodyStyle}>{coordResult.main}</div>
+                </div>
+                <div style={resultSectionStyle}>
+                  <span style={resultLabelStyle}>// ポイント</span>
+                  <div style={resultBodyStyle}>{coordResult.point}</div>
+                </div>
+                <div style={{ ...resultSectionStyle, marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>
+                  <span style={resultLabelStyle}>// スタイルとのズレ / 意図</span>
+                  <div style={resultBodyStyle}>{coordResult.leap}</div>
+                </div>
+                <button onClick={saveCoord} disabled={coordNoteSaved} style={noteBtnStyle(coordNoteSaved)}>
+                  {coordNoteSaved ? 'Note ✓' : 'Note +'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ② チェック */}
+        {mode === 'check' && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>// 今日の服装（テキスト or 画像）</label>
+              <textarea style={textareaStyle} rows={3}
+                value={checkOutfit} onChange={e => setCheckOutfit(e.target.value)}
+                placeholder="例：黒のオーバーサイズパーカー、ダメージデニム、白のコンバース" />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>// 画像（任意）</label>
               {!preview ? (
                 <div
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
+                  onDrop={handleDrop} onDragOver={handleDragOver}
                   onClick={() => fileRef.current?.click()}
-                  style={{
-                    border: '2px dashed #e5e7eb', borderRadius: 12,
-                    padding: '32px 20px', textAlign: 'center', cursor: 'pointer',
-                    transition: 'border-color .2s', background: '#f9fafb',
-                  }}
+                  style={{ border: '2px dashed #e5e7eb', borderRadius: 12, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: '#f9fafb' }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
                 >
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>👔</div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>服装の画像をドロップ</div>
-                  <div style={{ fontSize: 11, color: '#9ca3af' }}>またはクリックして選択</div>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>👔</div>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>画像をドロップ / クリックして選択</div>
                   <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
                     onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
                 </div>
               ) : (
                 <div style={{ position: 'relative' }}>
-                  <img src={preview} alt="preview"
-                    style={{ width: '100%', borderRadius: 12, display: 'block', maxHeight: 300, objectFit: 'cover' }} />
-                  <button onClick={removeImage}
-                    style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.5)', color: '#fff', border: 'none', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>
-                    ✕ 変更
-                  </button>
+                  <img src={preview} alt="preview" style={{ width: '100%', borderRadius: 12, display: 'block', maxHeight: 280, objectFit: 'cover' }} />
+                  <button onClick={removeImage} style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.5)', color: '#fff', border: 'none', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>✕ 変更</button>
                 </div>
               )}
             </div>
-
-            {/* Yoroshiku ボタン */}
-            <button
-              onClick={() => runAnalysis({ imageBase64, imageMediaType, text: inputText })}
-              disabled={!inputText.trim() && !imageBase64}
-              title="診断する"
-              style={{
-                width: '100%', background: 'transparent',
-                border: `1px solid ${(inputText.trim() || imageBase64) ? '#7c3aed' : '#d1d5db'}`,
-                color: (inputText.trim() || imageBase64) ? '#7c3aed' : '#9ca3af',
-                fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.2em',
-                padding: 13, cursor: (inputText.trim() || imageBase64) ? 'pointer' : 'not-allowed',
-                borderRadius: 2, marginTop: 16,
-              }}
-            >
+            <button style={runBtn(!isLoading && (!!checkOutfit.trim() || !!imageBase64))}
+              onClick={runCheck} disabled={isLoading || (!checkOutfit.trim() && !imageBase64)}>
               Yoroshiku
             </button>
+
+            {isLoading && <PersonaLoading />}
+            {checkResult && (
+              <div style={resultCardStyle}>
+                <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                  <span style={resultLabelStyle}>// Style Name</span>
+                  <div style={{ fontSize: 18, fontWeight: 400, color: '#1a1a1a', lineHeight: 1.6, marginTop: 8 }}>
+                    {checkResult.styleName}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 20 }}>
+                  {checkResult.keywords.map((kw, i) => (
+                    <span key={i} style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #e5e7eb', borderRadius: 20, color: '#6b7280', background: '#fff' }}>{kw}</span>
+                  ))}
+                </div>
+                <div style={{ borderLeft: '2px solid #7c3aed', paddingLeft: 16, marginBottom: 20 }}>
+                  <div style={{ fontSize: 14, lineHeight: 2, color: '#374151' }}>{checkResult.summary}</div>
+                </div>
+                <div style={{ marginBottom: 20, padding: 16, background: '#fff', borderRadius: 8 }}>
+                  <ScoreBar label="Style Match" value={checkResult.scores.styleMatch} />
+                  <ScoreBar label="Reality Fit" value={checkResult.scores.realityFit} />
+                </div>
+                <button onClick={() => setDetailsOpen(v => !v)} style={{ width: '100%', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, color: '#6b7280', fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.14em', padding: '11px 18px', cursor: 'pointer', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{detailsOpen ? '▲' : 'Details ▼'}</span>
+                  <span style={{ fontSize: 8, color: '#9ca3af' }}>// Details</span>
+                </button>
+                {detailsOpen && (
+                  <div style={{ marginTop: 14 }}>
+                    {[
+                      { label: '良い点', text: checkResult.details.goodPoints, color: '#059669' },
+                      { label: 'ズレ / 提案', text: checkResult.details.mismatches, color: '#d97706' },
+                      { label: '印象', text: checkResult.details.impression, color: '#2563eb' },
+                      { label: '年齢・文脈', text: checkResult.details.ageVision, color: '#7c3aed' },
+                    ].map((s, i) => (
+                      <div key={i} style={{ borderLeft: `2px solid ${s.color}`, paddingLeft: 16, marginBottom: 16 }}>
+                        <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em', color: s.color, textTransform: 'uppercase', marginBottom: 8 }}>// {s.label}</div>
+                        <div style={{ fontSize: 13, lineHeight: 1.9, color: '#374151' }}>{s.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={saveCheck} disabled={checkNoteSaved} style={noteBtnStyle(checkNoteSaved)}>
+                  {checkNoteSaved ? 'Note ✓' : 'Note +'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* loading */}
-        {isLoading && <PersonaLoading />}
-
-        {/* result */}
-        {result && (
+        {/* ③ ブランド */}
+        {mode === 'brand' && (
           <div>
-            {/* image preview in result */}
-            {preview && (
-              <div style={{ marginBottom: 24 }}>
-                <img src={preview} alt="diagnosed"
-                  style={{ width: '100%', borderRadius: 12, display: 'block', maxHeight: 300, objectFit: 'cover' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={labelStyle}>// 予算感</label>
+                <select style={selectStyle} value={brandBudget} onChange={e => setBrandBudget(e.target.value)}>
+                  <option>プチプラ（〜5千円）</option>
+                  <option>ミドル（5千〜2万円）</option>
+                  <option>ハイ（2万〜5万円）</option>
+                  <option>ラグジュアリー（5万円〜）</option>
+                  <option>問わない</option>
+                </select>
               </div>
-            )}
-
-            {/* style name */}
-            <div style={{ textAlign: 'center', marginBottom: 28 }}>
-              <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 12 }}>// Style Name</div>
-              <div style={{ fontSize: 20, fontWeight: 400, color: '#1a1a1a', lineHeight: 1.6 }}>
-                {result.styleName}
-              </div>
-            </div>
-
-            {/* keywords */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 24 }}>
-              {result.keywords.map((kw, i) => (
-                <span key={i} style={{ fontSize: 11, padding: '4px 12px', border: '1px solid #e5e7eb', borderRadius: 20, color: '#6b7280', background: '#f9fafb' }}>
-                  {kw}
-                </span>
-              ))}
-            </div>
-
-            {/* summary */}
-            <div style={{ borderLeft: '2px solid #7c3aed', paddingLeft: 20, marginBottom: 28 }}>
-              <div style={{ fontSize: 15, lineHeight: 2, color: '#374151' }}>
-                {result.summary}
+              <div>
+                <label style={labelStyle}>// 入手しやすさ</label>
+                <select style={selectStyle} value={brandAccess} onChange={e => setBrandAccess(e.target.value)}>
+                  <option>通販・オンライン中心</option>
+                  <option>全国展開の店舗</option>
+                  <option>都市部の路面店もOK</option>
+                  <option>問わない</option>
+                </select>
               </div>
             </div>
-
-            {/* scores */}
-            <div style={{ marginBottom: 28, padding: '20px', background: '#f9fafb', borderRadius: 12 }}>
-              <ScoreBar label="Style Match" value={result.scores.styleMatch} />
-              <ScoreBar label="Reality Fit" value={result.scores.realityFit} />
-            </div>
-
-            {/* details toggle */}
-            <button onClick={() => setDetailsOpen(v => !v)}
-              title={detailsOpen ? '閉じる' : '詳しく見る'}
-              style={{ width: '100%', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, color: '#6b7280', fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', padding: '13px 20px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span>{detailsOpen ? '▲' : 'Details ▼'}</span>
-              <span style={{ fontSize: 8, color: '#9ca3af' }}>// Details</span>
+            <button style={runBtn(!isLoading)} onClick={runBrand} disabled={isLoading}>
+              Yoroshiku
             </button>
 
-            {/* details content */}
-            {detailsOpen && (
-              <div style={{ marginTop: 16 }}>
-                {[
-                  { label: '良い点', text: result.details.goodPoints, color: '#059669' },
-                  { label: 'ズレ / 提案', text: result.details.mismatches, color: '#d97706' },
-                  { label: '印象', text: result.details.impression, color: '#2563eb' },
-                  { label: '年齢・文脈', text: result.details.ageVision, color: '#7c3aed' },
-                ].map((section, i) => (
-                  <div key={i} style={{ borderLeft: `2px solid ${section.color}`, paddingLeft: 20, marginBottom: 20 }}>
-                    <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.18em', color: section.color, textTransform: 'uppercase', marginBottom: 10 }}>// {section.label}</div>
-                    <div style={{ fontSize: 14, lineHeight: 2, color: '#374151' }}>
-                      {section.text}
-                    </div>
+            {isLoading && <PersonaLoading />}
+            {brandResult && (
+              <div style={resultCardStyle}>
+                <div style={resultSectionStyle}>
+                  <span style={resultLabelStyle}>// このスタイルに合うブランド</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
+                    {brandResult.brands.map((b, i) => (
+                      <div key={i} style={{ background: '#fff', border: '1px solid #e5e7eb', borderLeft: '2px solid #7c3aed', padding: 14, borderRadius: '0 4px 4px 0' }}>
+                        <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: '#1a1a1a', fontWeight: 700, letterSpacing: '0.05em', marginBottom: 4 }}>{b.name}</div>
+                        <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.8 }}>{b.desc}</div>
+                        {b.price && <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#7c3aed', letterSpacing: '0.08em', marginTop: 6 }}>// {b.price}</div>}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+                <div style={{ ...resultSectionStyle, marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>
+                  <span style={resultLabelStyle}>// 避けるべき方向性</span>
+                  <div style={resultBodyStyle}>{brandResult.avoid}</div>
+                </div>
+                <button onClick={saveBrand} disabled={brandNoteSaved} style={noteBtnStyle(brandNoteSaved)}>
+                  {brandNoteSaved ? 'Note ✓' : 'Note +'}
+                </button>
               </div>
             )}
+          </div>
+        )}
 
-            {/* footer */}
-            <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {noteSaved ? (
-                <a
-                  href="/kokoro-browser"
-                  title="noteに保存しました"
-                  style={{
-                    fontFamily: "'Space Mono', monospace",
-                    fontSize: 11,
-                    color: '#34d399',
-                    border: '1px solid rgba(52,211,153,0.4)',
-                    borderRadius: 6,
-                    padding: '8px 18px',
-                    cursor: 'pointer',
-                    letterSpacing: '0.1em',
-                    textDecoration: 'none',
-                    display: 'block',
-                    textAlign: 'center',
-                  }}
-                >
-                  Note ✓
-                </a>
-              ) : (
-                <button
-                  onClick={handleSaveToNote}
-                  title="noteに残す"
-                  style={{
-                    width: '100%',
-                    background: 'transparent',
-                    color: '#6b7280',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 8,
-                    padding: '12px',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    fontFamily: "'Space Mono', monospace",
-                    letterSpacing: '0.1em',
-                    transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={e => {
-                    (e.target as HTMLButtonElement).style.borderColor = '#7c3aed';
-                    (e.target as HTMLButtonElement).style.color = '#7c3aed';
-                  }}
-                  onMouseLeave={e => {
-                    (e.target as HTMLButtonElement).style.borderColor = '#e5e7eb';
-                    (e.target as HTMLButtonElement).style.color = '#6b7280';
-                  }}
-                >
-                  Note +
-                </button>
-              )}
-              <button
-                onClick={() => { setResult(null); setNoteSaved(false); }}
-                style={{
-                  width: '100%', background: 'transparent', color: '#6b7280',
-                  border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px',
-                  fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace",
-                  letterSpacing: '0.1em',
-                }}
-              >
-                もう一度診断する
-              </button>
+        {/* ④ 次の一点 */}
+        {mode === 'next' && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>// 今のワードローブ（任意）</label>
+              <textarea style={{ ...textareaStyle, minHeight: 100 }} rows={4}
+                value={nextWardrobe} onChange={e => setNextWardrobe(e.target.value)}
+                placeholder="例：黒T複数、ダメージデニム、スニーカー（白・黒）、コンバース" />
             </div>
+            <button style={runBtn(!isLoading)} onClick={runNext} disabled={isLoading}>
+              Yoroshiku
+            </button>
+
+            {isLoading && <PersonaLoading />}
+            {nextResult && (
+              <div style={resultCardStyle}>
+                <div style={{ background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.2)', borderLeft: '3px solid #7c3aed', padding: 18, borderRadius: '0 4px 4px 0', marginBottom: 18 }}>
+                  <div style={{ fontSize: 18, color: '#1a1a1a', fontWeight: 400, lineHeight: 1.5, marginBottom: 10 }}>{nextResult.item}</div>
+                  <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.9, marginBottom: 10 }}>{nextResult.reason}</div>
+                  {nextResult.leap && (
+                    <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: '#f472b6', letterSpacing: '0.08em' }}>// {nextResult.leap}</div>
+                  )}
+                </div>
+                <div style={{ ...resultSectionStyle, marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>
+                  <span style={resultLabelStyle}>// 選び方・注意点</span>
+                  <div style={resultBodyStyle}>{nextResult.how}</div>
+                </div>
+                <button onClick={saveNext} disabled={nextNoteSaved} style={noteBtnStyle(nextNoteSaved)}>
+                  {nextNoteSaved ? 'Note ✓' : 'Note +'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -478,10 +663,6 @@ export default function KokoroFashion() {
           <div style={{ marginTop: 16, color: '#ef4444', fontSize: 12, textAlign: 'center' }}>{error}</div>
         )}
       </div>
-
-      <style>{`
-        @keyframes sweep { 0%{left:-40%} 100%{left:140%} }
-      `}</style>
     </div>
   );
 }
