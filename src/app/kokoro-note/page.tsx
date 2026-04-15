@@ -107,6 +107,7 @@ export default function KokoroNotePage() {
   const [productRegistering, setProductRegistering] = useState(false);
   const [aiPricing, setAiPricing] = useState<{ suggestedPrice: number; evaluation: string; reason: string; shouldRaise: boolean; raiseMessage: string } | null>(null);
   const [aiPricingLoading, setAiPricingLoading] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
 
   const tagCloud = useMemo(
     () => buildTagCloud(notes, { maxItems: 20 }),
@@ -1059,6 +1060,56 @@ export default function KokoroNotePage() {
           )}
         </div>
 
+        {/* PDF生成 */}
+        {selectedNote.isProduct && (
+          <div style={{
+            display:'flex', alignItems:'center', gap:10, marginBottom:16,
+            padding:'10px 14px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8,
+          }}>
+            <button
+              onClick={async () => {
+                setPdfGenerating(true);
+                try {
+                  const res = await fetch('/api/kokoro-pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ noteId: selectedNote.id }),
+                  });
+                  const data = await res.json();
+                  if (data.error) throw new Error(data.error);
+                  // Note を再取得して URL 更新を反映
+                  const all = await getAllNotes();
+                  setNotes(all);
+                  alert('PDF を生成しました');
+                } catch (e) {
+                  alert(e instanceof Error ? e.message : 'PDF 生成に失敗しました');
+                } finally { setPdfGenerating(false); }
+              }}
+              disabled={pdfGenerating}
+              style={{
+                fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+                padding:'8px 16px', borderRadius:4, cursor: pdfGenerating ? 'not-allowed' : 'pointer',
+                background: pdfGenerating ? '#9ca3af' : '#7c3aed', color:'#fff', border:'none',
+              }}
+            >
+              {pdfGenerating ? 'PDF生成中...' : 'PDF を生成する'}
+            </button>
+            {selectedNote.productExternalUrl && (
+              <a
+                href={selectedNote.productExternalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed',
+                  textDecoration:'underline',
+                }}
+              >
+                生成済み PDF を確認 →
+              </a>
+            )}
+          </div>
+        )}
+
         {/* AI鑑定バッジ表示トグル */}
         {selectedNote.isProduct && selectedNote.aiPricedAmount && (
           <div style={{
@@ -1198,10 +1249,13 @@ export default function KokoroNotePage() {
                   style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', minHeight:60, resize:'vertical', boxSizing:'border-box', fontFamily:"'Noto Sans JP', sans-serif" }} />
               </div>
               <div>
-                <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>外部決済URL（Stripe Payment Links, BOOTH等）</label>
+                <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>外部決済URL</label>
                 <input type="url" value={productExternalUrl} onChange={e => setProductExternalUrl(e.target.value)}
                   placeholder="https://..."
-                  style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', boxSizing:'border-box', fontFamily:"'Space Mono', monospace" }} />
+                  style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', boxSizing:'border-box', fontFamily:"'Space Mono', monospace", marginBottom:6 }} />
+                <div style={{ fontSize:10, color:'#92400e', lineHeight:1.8, padding:'6px 8px', background:'#fff8e1', borderRadius:4 }}>
+                  決済リンクの作り方: <strong>Stripe Payment Links</strong> → dashboard.stripe.com でリンクを作成 / <strong>BOOTH</strong> → booth.pm で商品ページを作成。登録後に「PDF を生成する」で自動的に URL を設定することもできます。
+                </div>
               </div>
               <div style={{ display:'flex', gap:10 }}>
                 <div style={{ flex:1 }}>
