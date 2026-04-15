@@ -92,6 +92,9 @@ export default function KokoroBrowserPage() {
   const [productLoading, setProductLoading] = useState(false);
   const productCacheRef = useRef<Record<string, ProductNote[]>>({});
 
+  // アカウントフォロー状態
+  const [followState, setFollowState] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     setCustomGamesen(loadCustomGamesen());
   }, []);
@@ -233,6 +236,14 @@ export default function KokoroBrowserPage() {
           const prods = (data.products || []) as ProductNote[];
           setProducts(prods);
           productCacheRef.current[productKey] = prods;
+          // フォロー状態を取得
+          const authorIds = [...new Set(prods.map(p => p.authorId).filter(Boolean))];
+          if (authorIds.length > 0) {
+            fetch(`/api/kokoro-follows?userIds=${encodeURIComponent(authorIds.join(','))}`)
+              .then(r => r.json())
+              .then(fd => setFollowState(prev => ({ ...prev, ...(fd.follows || {}) })))
+              .catch(() => {});
+          }
         })
         .catch(() => setProducts([]))
         .finally(() => setProductLoading(false));
@@ -269,6 +280,20 @@ export default function KokoroBrowserPage() {
       }
     } catch { /* ignore */ }
   }, [selectedId]);
+
+  // アカウントフォロートグル
+  const handleFollow = useCallback(async (targetUserId: string) => {
+    try {
+      const res = await fetch('/api/kokoro-follows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId }),
+      });
+      const data = await res.json();
+      if (data.error) { alert(data.error); return; }
+      setFollowState(prev => ({ ...prev, [targetUserId]: data.following }));
+    } catch { /* ignore */ }
+  }, []);
 
   // ========================
   // 統合タイムライン
@@ -760,6 +785,8 @@ export default function KokoroBrowserPage() {
                   accentColor={currentGamesen.color}
                   isLast={idx === timeline.length - 1}
                   onBookmark={handleBookmark}
+                  isFollowing={followState[item.data.authorId] || false}
+                  onFollow={handleFollow}
                 />
               ) : (
                 <WebTimelineItem
@@ -1005,12 +1032,14 @@ function WebTimelineItem({
 
 /* ─── Product タイムラインアイテム ─── */
 function ProductTimelineItem({
-  product, accentColor, isLast, onBookmark,
+  product, accentColor, isLast, onBookmark, isFollowing, onFollow,
 }: {
   product: ProductNote;
   accentColor: string;
   isLast: boolean;
   onBookmark: (noteId: string) => void;
+  isFollowing: boolean;
+  onFollow: (userId: string) => void;
 }) {
   const mono = { fontFamily: "'Space Mono', monospace" };
 
@@ -1071,6 +1100,19 @@ function ProductTimelineItem({
           <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
             by {product.authorName}
           </span>
+          {product.authorId && (
+            <button
+              onClick={() => onFollow(product.authorId)}
+              style={{
+                ...mono, fontSize: 7, letterSpacing: '0.06em', cursor: 'pointer',
+                padding: '1px 6px', borderRadius: 8, border: 'none',
+                background: isFollowing ? '#ede9fe' : '#f3f4f6',
+                color: isFollowing ? '#7c3aed' : '#9ca3af',
+              }}
+            >
+              {isFollowing ? '★ フォロー中' : '☆ フォロー'}
+            </button>
+          )}
         </div>
 
         {/* タイトル */}
