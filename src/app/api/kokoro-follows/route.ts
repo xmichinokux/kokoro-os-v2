@@ -21,13 +21,15 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (existing) {
-      await supabase.from('account_follows').delete().eq('id', existing.id);
+      const { error: delErr } = await supabase.from('account_follows').delete().eq('id', existing.id);
+      if (delErr) return NextResponse.json({ error: `削除エラー: ${delErr.message}` }, { status: 500 });
       return NextResponse.json({ following: false });
     } else {
-      await supabase.from('account_follows').insert({
+      const { error: insErr } = await supabase.from('account_follows').insert({
         follower_id: user.id,
         following_id: targetUserId,
       });
+      if (insErr) return NextResponse.json({ error: `フォロー保存エラー: ${insErr.message}` }, { status: 500 });
       return NextResponse.json({ following: true });
     }
   } catch (e) {
