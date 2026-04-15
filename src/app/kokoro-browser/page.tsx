@@ -1143,6 +1143,41 @@ function ProductTimelineItem({
             </a>
           )}
 
+          {/* 挨拶を送る */}
+          {product.authorId && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/kokoro-messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'greet', recipientId: product.authorId }),
+                  });
+                  const data = await res.json();
+                  if (data.error) {
+                    if (res.status === 409) {
+                      window.location.href = '/kokoro-messages';
+                    } else {
+                      alert(data.error);
+                    }
+                    return;
+                  }
+                  window.location.href = '/kokoro-messages';
+                } catch {
+                  alert('送信に失敗しました');
+                }
+              }}
+              style={{
+                ...mono, fontSize: 8, letterSpacing: '0.06em',
+                color: '#7c3aed', background: 'transparent',
+                padding: '3px 8px', border: '1px solid #ede9fe',
+                borderRadius: 4, cursor: 'pointer',
+              }}
+            >
+              挨拶を送る
+            </button>
+          )}
+
           {/* タグ */}
           {product.tags?.slice(0, 3).map(tag => (
             <span key={tag} style={{
