@@ -330,7 +330,7 @@ export default function KokoroBoardPage() {
             borderRadius: 2,
           }}
         >
-          {isLoading ? '// 会議中...' : '会議を始める'}
+          {isLoading ? '// 会議中...' : 'Yoroshiku'}
         </button>
 
         {isLoading && <PersonaLoading />}

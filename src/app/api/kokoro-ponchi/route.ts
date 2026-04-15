@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
-const PONCHI_SYSTEM = `あなたはKokoro OSのPonchiアシスタントです。入力されたコンセプトをプレゼンのスライド構成に翻訳してください。
+export const maxDuration = 30;
+
+const SLIDE_SYSTEM = `あなたはKokoro OSのSlideアシスタントです。入力されたコンセプトをプレゼンのスライド構成に翻訳してください。
 
 以下のJSONのみを返してください：
 {
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     const valueInject = KokoroValueEngine.forPonchi();
-    const system = PONCHI_SYSTEM + (valueInject ? '\n' + valueInject : '');
+    const system = SLIDE_SYSTEM + (valueInject ? '\n' + valueInject : '');
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -43,8 +45,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || 'Anthropic API error');
+      const err = await res.json().catch(() => ({}));
+      const msg = (err as Record<string, unknown>)?.error;
+      throw new Error(typeof msg === 'string' ? msg : `Anthropic API error (${res.status})`);
     }
 
     const data = await res.json();
@@ -58,6 +61,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: parsed });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
+    console.error('Slide API error:', msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
