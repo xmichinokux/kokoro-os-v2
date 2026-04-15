@@ -68,8 +68,8 @@ export default function TalkPopup() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 56, left: 0, right: 0,
-      maxHeight: 'calc(100vh - 120px)',
+      position: 'fixed', bottom: 90, left: 0, right: 0,
+      maxHeight: 'calc(100vh - 150px)',
       background: '#fff',
       borderTop: '1px solid #e5e7eb',
       boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',

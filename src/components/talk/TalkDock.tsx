@@ -69,6 +69,8 @@ export default function TalkDock() {
           padding: '8px 12px',
           background: '#fafafa',
           borderBottom: '1px solid #f3f4f6',
+          maxWidth: 600, margin: '0 auto', width: '100%',
+          boxSizing: 'border-box',
         }}>
           {/* ポップアップトグル（Talk ページ以外） */}
           {!isOnTalkPage && messages.length > 0 && (
