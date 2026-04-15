@@ -18,12 +18,20 @@ export function getHonneLogs(): HonneLog[] {
 export function appendHonneLog(log: HonneLog): void {
   if (!shouldStoreHonneLog(log)) return;
 
+  // sourceが未指定の場合はtalkとして保存
+  const taggedLog = { ...log, source: log.source || 'talk' as const };
+
   const logs = getHonneLogs();
-  logs.push(log);
+  logs.push(taggedLog);
 
   // 最大100件を保持
   const trimmed = logs.slice(-100);
   localStorage.setItem(HONNE_LOG_KEY, JSON.stringify(trimmed));
+}
+
+/** Zenソースのログのみ取得（Diagnosis用） */
+export function getZenHonneLogs(): HonneLog[] {
+  return getHonneLogs().filter(l => l.source === 'zen');
 }
 
 export function clearHonneLogs(): void {

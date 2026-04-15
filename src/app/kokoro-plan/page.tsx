@@ -120,12 +120,7 @@ export default function KokoroPlanPage() {
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>タスク分解エンジン</span>
           </div>
         </div>
-        <button
-          onClick={() => router.push('/kokoro-chat')}
-          style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
-        >
-          ← Talk
-        </button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '56px 28px 100px' }}>

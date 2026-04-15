@@ -1,11 +1,13 @@
 import type { Persona } from "./kokoroOutput";
 
 export type HonneSourceMode = "normal" | "stay";
+export type HonneSource = "talk" | "zen";
 
 export type HonneLog = {
   id: string;
   createdAt: string;
   sourceMode: HonneSourceMode;
+  source?: HonneSource;
   activePersona?: Persona;
   topic: string;
   surfaceText: string;
