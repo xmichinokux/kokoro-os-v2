@@ -135,58 +135,52 @@ async function canSendTo(
 
   if (reception === 'anyone') return { allowed: true };
 
-  // 相手が自分をブックマークしているか
-  // bookmarks は note_id ベースなので、送り手のノートをブックマークしているか確認
-  const { data: senderNotes } = await supabase
-    .from('notes')
-    .select('id')
-    .eq('user_id', senderId)
-    .eq('is_public', true)
-    .limit(50);
-  const senderNoteIds = (senderNotes || []).map(n => n.id);
+  // ブックマーク or フォローで判定
+  async function hasBookmarkOrFollow(fromUserId: string, toUserId: string): Promise<boolean> {
+    // アカウントフォローチェック
+    const { data: follow } = await supabase
+      .from('account_follows')
+      .select('id')
+      .eq('follower_id', fromUserId)
+      .eq('following_id', toUserId)
+      .limit(1);
+    if ((follow || []).length > 0) return true;
 
-  let recipientBookedSender = false;
-  if (senderNoteIds.length > 0) {
+    // ノートブックマークチェック
+    const { data: notes } = await supabase
+      .from('notes')
+      .select('id')
+      .eq('user_id', toUserId)
+      .eq('is_public', true)
+      .limit(50);
+    const noteIds = (notes || []).map(n => n.id);
+    if (noteIds.length === 0) return false;
+
     const { data: bms } = await supabase
       .from('bookmarks')
       .select('id')
-      .eq('user_id', recipientId)
-      .in('note_id', senderNoteIds)
+      .eq('user_id', fromUserId)
+      .in('note_id', noteIds)
       .limit(1);
-    recipientBookedSender = (bms || []).length > 0;
+    return (bms || []).length > 0;
   }
 
   if (reception === 'bookmarked') {
-    if (!recipientBookedSender) {
-      return { allowed: false, reason: 'この方はブックマークしている相手からのみメッセージを受け付けています' };
+    const recipientFollowsSender = await hasBookmarkOrFollow(recipientId, senderId);
+    if (!recipientFollowsSender) {
+      return { allowed: false, reason: 'この方はブックマーク/フォローしている相手からのみメッセージを受け付けています' };
     }
     return { allowed: true };
   }
 
   if (reception === 'mutual') {
-    if (!recipientBookedSender) {
-      return { allowed: false, reason: 'この方は相互ブックマークの相手からのみメッセージを受け付けています' };
+    const recipientFollowsSender = await hasBookmarkOrFollow(recipientId, senderId);
+    if (!recipientFollowsSender) {
+      return { allowed: false, reason: 'この方は相互フォローの相手からのみメッセージを受け付けています' };
     }
-    // 送り手も相手のノートをブックマークしているか
-    const { data: recipientNotes } = await supabase
-      .from('notes')
-      .select('id')
-      .eq('user_id', recipientId)
-      .eq('is_public', true)
-      .limit(50);
-    const recipientNoteIds = (recipientNotes || []).map(n => n.id);
-    let senderBookedRecipient = false;
-    if (recipientNoteIds.length > 0) {
-      const { data: bms2 } = await supabase
-        .from('bookmarks')
-        .select('id')
-        .eq('user_id', senderId)
-        .in('note_id', recipientNoteIds)
-        .limit(1);
-      senderBookedRecipient = (bms2 || []).length > 0;
-    }
-    if (!senderBookedRecipient) {
-      return { allowed: false, reason: 'この方は相互ブックマークの相手からのみメッセージを受け付けています' };
+    const senderFollowsRecipient = await hasBookmarkOrFollow(senderId, recipientId);
+    if (!senderFollowsRecipient) {
+      return { allowed: false, reason: 'この方は相互フォローの相手からのみメッセージを受け付けています' };
     }
     return { allowed: true };
   }
