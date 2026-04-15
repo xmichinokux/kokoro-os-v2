@@ -59,15 +59,37 @@ function buildPrompt(
 }
 
 function extractJSON(text: string): Record<string, unknown> | null {
-  // コードブロックの除去
+  // コードブロック除去
   const cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (!match) return null;
+
+  // まず素直に試す
   try {
-    return JSON.parse(match[0]);
-  } catch {
-    return null;
+    return JSON.parse(cleaned);
+  } catch { /* continue */ }
+
+  // 最初の { から対応する } を括弧カウントで探す（文字列内は除外）
+  const start = cleaned.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < cleaned.length; i++) {
+    const c = cleaned[i];
+    if (escape) { escape = false; continue; }
+    if (c === '\\') { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(cleaned.slice(start, i + 1));
+        } catch { return null; }
+      }
+    }
   }
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -92,7 +114,7 @@ export async function POST(req: NextRequest) {
           tools: [{ google_search: {} }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 2500,
+            maxOutputTokens: 8000,
           },
         }),
       }
@@ -113,7 +135,8 @@ export async function POST(req: NextRequest) {
 
     const parsed = extractJSON(text);
     if (!parsed) {
-      throw new Error('レスポンスの解析に失敗しました');
+      const preview = text.slice(0, 300).replace(/\n/g, ' ');
+      throw new Error(`レスポンスの解析に失敗しました: ${preview}`);
     }
 
     // グラウンディング情報（検索ソース）
