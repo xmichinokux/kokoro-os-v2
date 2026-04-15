@@ -69,6 +69,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ユーザーのdisplay_nameを取得
+    const userIds = [...new Set(filtered.map(p => p.user_id))];
+    const displayNameMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('user_id, display_name')
+        .in('user_id', userIds);
+      (profiles || []).forEach(p => {
+        if (p.display_name) displayNameMap[p.user_id] = p.display_name;
+      });
+    }
+
     const result = filtered.map(p => ({
       id: p.id,
       title: p.title,
@@ -76,7 +89,7 @@ export async function GET(req: NextRequest) {
       tags: p.tags || [],
       source: p.source,
       createdAt: p.created_at,
-      authorName: p.author_name || '匿名',
+      authorName: displayNameMap[p.user_id] || '匿名',
       authorId: p.user_id,
       productPrice: p.product_price || 0,
       productDescription: p.product_description || '',
@@ -105,7 +118,7 @@ export async function POST(req: NextRequest) {
     }
 
     const {
-      noteId, productPrice, productDescription, productExternalUrl, productType, authorName,
+      noteId, productPrice, productDescription, productExternalUrl, productType,
       aiPricedAmount, showAiBadge,
     } = await req.json() as {
       noteId: string;
@@ -113,7 +126,6 @@ export async function POST(req: NextRequest) {
       productDescription: string;
       productExternalUrl: string;
       productType: string;
-      authorName: string;
       aiPricedAmount?: number;
       showAiBadge?: boolean;
     };
@@ -144,7 +156,7 @@ export async function POST(req: NextRequest) {
         product_description: productDescription || '',
         product_external_url: productExternalUrl || '',
         product_type: productType || 'text',
-        author_name: authorName || '匿名',
+        // author_name はアカウントの display_name から自動取得
         ai_priced_amount: aiPricedAmount || null,
         show_ai_badge: showAiBadge || false,
         updated_at: new Date().toISOString(),

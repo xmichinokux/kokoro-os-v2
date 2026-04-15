@@ -1099,7 +1099,6 @@ export default function KokoroNotePage() {
                       productDescription: selectedNote.productDescription || '',
                       productExternalUrl: selectedNote.productExternalUrl || '',
                       productType: selectedNote.productType || 'text',
-                      authorName: selectedNote.authorName || '匿名',
                       aiPricedAmount: selectedNote.aiPricedAmount,
                       showAiBadge: newVal,
                     }),
@@ -1214,25 +1213,17 @@ export default function KokoroNotePage() {
                   有料販売する場合: <strong>BOOTH</strong> → booth.pm で商品ページを作成しURLを貼る / <strong>Stripe Payment Links</strong> → dashboard.stripe.com で決済リンクを作成しURLを貼る。空欄の場合、登録後に「PDF を生成する」で無料ダウンロードリンクを設定できます。
                 </div>
               </div>
-              <div style={{ display:'flex', gap:10 }}>
-                <div style={{ flex:1 }}>
-                  <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>商品タイプ</label>
-                  <select value={productType} onChange={e => setProductType(e.target.value)}
-                    style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', background:'#fff' }}>
-                    <option value="pdf">PDF（文章）</option>
-                    <option value="data">データ（表・CSV）</option>
-                    <option value="svg">SVG（ベクター）</option>
-                    <option value="html">HTML（Web作品）</option>
-                    <option value="text">テキスト</option>
-                    <option value="other">その他</option>
-                  </select>
-                </div>
-                <div style={{ flex:1 }}>
-                  <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>出品者名</label>
-                  <input type="text" value={productAuthorName} onChange={e => setProductAuthorName(e.target.value)}
-                    placeholder="表示名"
-                    style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', boxSizing:'border-box' }} />
-                </div>
+              <div>
+                <label style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#92400e', display:'block', marginBottom:4 }}>商品タイプ</label>
+                <select value={productType} onChange={e => setProductType(e.target.value)}
+                  style={{ width:'100%', padding:'8px 12px', border:'1px solid #fde68a', borderRadius:4, fontSize:13, outline:'none', background:'#fff' }}>
+                  <option value="pdf">PDF（文章）</option>
+                  <option value="data">データ（表・CSV）</option>
+                  <option value="svg">SVG（ベクター）</option>
+                  <option value="html">HTML（Web作品）</option>
+                  <option value="text">テキスト</option>
+                  <option value="other">その他</option>
+                </select>
               </div>
             </div>
 
@@ -1257,7 +1248,6 @@ export default function KokoroNotePage() {
                             productDescription,
                             productExternalUrl,
                             productType,
-                            authorName: productAuthorName || '匿名',
                             aiPricedAmount: aiPricing?.suggestedPrice || undefined,
                             showAiBadge: !!aiPricing,
                           }),
@@ -1357,7 +1347,6 @@ export default function KokoroNotePage() {
                         productDescription,
                         productExternalUrl,
                         productType,
-                        authorName: productAuthorName || '匿名',
                         aiPricedAmount: aiPricing?.suggestedPrice || selectedNote.aiPricedAmount || undefined,
                         showAiBadge: aiPricing ? true : (selectedNote.showAiBadge ?? false),
                       }),
