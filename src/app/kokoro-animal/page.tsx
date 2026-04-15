@@ -303,13 +303,10 @@ export default function KokoroAnimal() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Animal Talk</span>
         </div>
-        <a href="/kokoro-chat"
-          style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#6b7280', textDecoration:'none', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px' }}>
-          ← Talk に戻る
-        </a>
+        <div />
       </header>
 
-      <div style={{ maxWidth:640, margin:'0 auto', padding:'40px 20px 80px' }}>
+      <div style={{ maxWidth:640, margin:'0 auto', padding:'40px 20px 120px' }}>
 
         {/* タイトル */}
         <div style={{ textAlign:'center', marginBottom:40 }}>
