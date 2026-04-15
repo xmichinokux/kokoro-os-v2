@@ -210,20 +210,26 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 28px;
   padding: 24px 0;
+  background: #e8e8e8;
+  border-radius: 4px;
+  padding: 28px 16px;
 }
 
+/* A4比率: 210mm × 297mm → 600px × 849px（スケール） */
 .writer-page {
-  width: 100%;
-  max-width: 660px;
+  width: 600px;
+  height: 1060px; /* 849 + padding 上下 */
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #d1d5db;
   border-radius: 2px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.1);
-  padding: 60px 40px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1), 0 0 1px rgba(0,0,0,0.15);
+  padding: 50px 40px;
   position: relative;
-  min-height: 400px;
+  overflow: hidden;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .writer-page .edited-text {
@@ -232,17 +238,24 @@ body {
 
 .writer-page-number {
   position: absolute;
-  bottom: 16px;
-  right: 24px;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  text-align: center;
   font-family: 'Space Mono', monospace;
   font-size: 9px;
-  color: #d1d5db;
+  color: #c0c0c0;
   letter-spacing: 0.1em;
 }
 
 @media (max-width: 640px) {
+  .writer-pages-container {
+    padding: 16px 8px;
+  }
   .writer-page {
+    width: 100%;
+    height: auto;
+    min-height: 500px;
     padding: 40px 20px;
-    min-height: 300px;
   }
 }
