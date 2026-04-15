@@ -12,11 +12,11 @@ type WriterMode = 'lite' | 'deep' | 'spark' | 'michi' | 'trip';
 const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = {
   lite: {
     label: 'Lite',
-    placeholder: '整えたい文章を入力してください...',
+    placeholder: 'レイアウトしたい文章を入力してください...\n内容はそのまま、Medium風の美しいレイアウトに整形します。',
   },
   deep: {
     label: 'Deep',
-    placeholder: '構造化・リライトしたい文章を入力してください...',
+    placeholder: 'リライト＋レイアウトしたい文章を入力してください...\nあなたの感性マップを使って、あなたらしい文章に仕上げます。',
   },
   spark: {
     label: 'Spark',
@@ -24,7 +24,7 @@ const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = 
   },
   michi: {
     label: 'Michi',
-    placeholder: 'あなたの文体で整形したい文章を入力してください...\nzineフォルダの内容を参考にして、あなたらしい文章に仕上げます。',
+    placeholder: '',
   },
   trip: {
     label: 'Trip',
@@ -113,7 +113,6 @@ export default function KokoroWriterPage() {
   }, []);
 
   const canSubmit = inputText.trim().length > 0 && !isLoading
-    && (mode !== 'michi' || hasGoogleToken)
     && (mode !== 'trip' || hasTripCache);
 
   const handleRun = useCallback(async (text?: string, overrideMode?: WriterMode) => {
@@ -153,15 +152,10 @@ export default function KokoroWriterPage() {
       if (data.usedCache) setUsedCache(true);
 
       const raw = (data.result ?? '') as string;
-      if (m === 'lite') {
-        setOutputText(raw);
-        setOutputHtml('');
-      } else {
-        // Deep / Spark / Michi: XMLパース → HTML描画
-        const parsed = parseWriterXml(raw);
-        setOutputHtml(parsed.html);
-        setOutputText(parsed.plain);
-      }
+      // 全モード: XMLパース → HTML描画
+      const parsed = parseWriterXml(raw);
+      setOutputHtml(parsed.html);
+      setOutputText(parsed.plain);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました');
     } finally {
@@ -223,21 +217,17 @@ export default function KokoroWriterPage() {
           <span style={{ ...mono, fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ ...mono, fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Writer</span>
         </div>
-        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
-          style={{ ...mono, fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-          ← Talk
-        </button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 28px 100px' }}>
 
         {/* モード切替タブ */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
-          {(Object.keys(MODE_CONFIG) as WriterMode[]).map(m => {
-            const isMichi = m === 'michi';
+          {(Object.keys(MODE_CONFIG) as WriterMode[]).filter(m => m !== 'michi').map(m => {
             const isTrip = m === 'trip';
-            const isDisabled = (isMichi && !hasGoogleToken) || (isTrip && !hasTripCache);
-            const activeColor = isMichi ? '#0f9d58' : isTrip ? '#e11d48' : accentColor;
+            const isDisabled = (isTrip && !hasTripCache);
+            const activeColor = isTrip ? '#e11d48' : accentColor;
             const isActive = mode === m;
             return (
               <button
@@ -249,7 +239,7 @@ export default function KokoroWriterPage() {
                   setDriveFiles([]); setDriveContextLen(null);
                 }}
                 title={isDisabled
-                  ? (isTrip ? 'ProfileページでTripスキャンを実行してください' : 'Googleログインが必要です')
+                  ? 'ProfileページでTripスキャンを実行してください'
                   : MODE_CONFIG[m].label}
                 style={{
                   ...mono, fontSize: 10, letterSpacing: '.1em',
@@ -268,14 +258,6 @@ export default function KokoroWriterPage() {
             );
           })}
         </div>
-
-        {/* Michiモード: Googleログイン未検出の注意 */}
-        {mode === 'michi' && !hasGoogleToken && (
-          <div style={{ marginBottom: 16, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
-            // Googleログインが必要です →{' '}
-            <a href="/auth" style={{ color: '#0f9d58' }}>ログイン</a>
-          </div>
-        )}
 
         {/* Tripモード: キャッシュ未検出の注意 */}
         {mode === 'trip' && !hasTripCache && (
@@ -327,43 +309,35 @@ export default function KokoroWriterPage() {
                 </div>
               </div>
             )}
-            {mode === 'lite' ? (
-              /* Lite: readOnly テキストエリア */
-              <textarea
-                readOnly
-                value={outputText}
-                style={{
-                  width: '100%', minHeight: 200, background: '#f9fafb',
-                  border: '1px solid #e5e7eb', borderLeft: '2px solid #d1d5db',
-                  padding: 16, fontSize: 14, color: '#374151',
-                  resize: 'vertical', outline: 'none', lineHeight: 1.8,
-                  fontFamily: "'Noto Serif JP', serif",
-                  boxSizing: 'border-box', borderRadius: '0 4px 4px 0',
-                }}
-              />
-            ) : (
-              /* Deep / Spark: HTML描画 */
-              <div
-                className="edited-text-zone"
-                style={{
-                  minHeight: 200,
-                  border: '1px solid #e5e7eb',
-                  borderLeft: '2px solid #d1d5db',
-                  borderRadius: 2,
-                }}
-              >
-                {outputHtml ? (
-                  <div
-                    className="edited-text"
-                    dangerouslySetInnerHTML={{ __html: outputHtml }}
-                  />
-                ) : (
-                  <div style={{ padding: 24, fontSize: 14, lineHeight: 1.8, color: '#374151', whiteSpace: 'pre-wrap' }}>
-                    {outputText}
+            {/* HTML描画（ページ区切りレイアウト） */}
+            <div className="writer-pages-container">
+              {(() => {
+                if (!outputHtml) {
+                  return (
+                    <div className="writer-page">
+                      <div style={{ padding: 24, fontSize: 14, lineHeight: 1.8, color: '#374151', whiteSpace: 'pre-wrap' }}>
+                        {outputText}
+                      </div>
+                    </div>
+                  );
+                }
+                // <hr class="whr"> でページ分割
+                const pages = outputHtml.split(/<hr\s+class="whr"\s*\/?>/i).filter(p => p.trim());
+                if (pages.length <= 1) {
+                  return (
+                    <div className="writer-page">
+                      <div className="edited-text" dangerouslySetInnerHTML={{ __html: outputHtml }} />
+                    </div>
+                  );
+                }
+                return pages.map((pageHtml, idx) => (
+                  <div key={idx} className="writer-page">
+                    <div className="edited-text" dangerouslySetInnerHTML={{ __html: pageHtml.trim() }} />
+                    <div className="writer-page-number">{idx + 1} / {pages.length}</div>
                   </div>
-                )}
-              </div>
-            )}
+                ));
+              })()}
+            </div>
           </div>
         )}
 
@@ -463,22 +437,6 @@ export default function KokoroWriterPage() {
               ↓
             </button>
 
-            {/* Strategy保存 */}
-            <button
-              onClick={handleSaveToStrategy}
-              disabled={strategySaved}
-              title="Strategyに送る"
-              style={{
-                background: 'transparent',
-                border: `1px solid ${strategySaved ? '#f59e0b' : '#d1d5db'}`,
-                color: strategySaved ? '#f59e0b' : '#9ca3af',
-                ...mono, fontSize: 9, letterSpacing: '.12em',
-                padding: '8px 16px', cursor: strategySaved ? 'default' : 'pointer',
-                borderRadius: 2,
-              }}
-            >
-              {strategySaved ? 'Strategy ✓' : 'Strategy →'}
-            </button>
           </div>
         )}
       </div>

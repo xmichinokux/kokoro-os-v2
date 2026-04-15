@@ -5,21 +5,46 @@ import { createServerSupabase } from '@/lib/supabase/server';
 import { KokoroValueEngine } from '@/lib/kokoro/valueEngine';
 
 const LITE_SYSTEM = `あなたはKokoro OSのWriterエンジン（Liteモード）です。
-入力された文章を最小限の変更で整えてください。
+入力された文章を**一切リライトせず**、Medium風の美しいレイアウトに整形してください。
 
 【ルール】
-・語尾の統一（です・ます調 or だ・である調を統一）
-・読点の調整（読みやすい位置に）
-・明らかな誤字・脱字の修正
-・段落の整理（必要な場合のみ）
+・文章の内容・表現・語尾は一切変更しない
+・見出し・段落・リード文などの構造をつけてレイアウトする
+・余白が美しさをつくる。詰め込まない
+・装飾よりタイポグラフィで階層を表現
+・Medium や note.com のような洗練された読み物スタイル
 
 【禁止】
-・内容の追加・削除
-・文章構造の大幅変更
-・リライト・言い換え
-・見出しの追加
+・リライト・言い換え・内容の追加/削除
+・語尾の変更
+・文章構造の意味的な変更
 
-整形後のテキストのみ返してください。HTMLタグは使わない。`;
+以下のHTMLクラスを使ってレイアウトしてください：
+タイトル：      <h1 class="wt">タイトルテキスト</h1>
+リード文：      <p class="wlead">冒頭のリード文</p>
+大見出し：      <h2 class="wh2">見出しテキスト</h2>
+小見出し：      <h3 class="wh3">小見出しテキスト</h3>
+通常段落：      <p class="wp">本文テキスト</p>
+センタリング：  <p class="wcenter">中央揃えのテキスト</p>
+右寄せ：        <p class="wright">右寄せのテキスト</p>
+強調テキスト：  <strong class="wstrong">重要な言葉</strong>
+箇条書き：      <ul class="wul"><li>項目</li></ul>
+番号リスト：    <ol class="wol"><li>手順</li></ol>
+区切り線：      <hr class="whr">
+引用・抜粋：    <blockquote class="wbq">引用テキスト</blockquote>
+キャプション：  <p class="wcaption">注釈・補足</p>
+
+以下のXMLフォーマットのみで返答してください：
+
+<edited>
+<!-- HTMLをここに -->
+</edited>
+<memos>
+レイアウトの意図を簡潔に
+</memos>
+<suggestion>
+改善提案（任意）
+</suggestion>`;
 
 const CORE_SYSTEM = `あなたはKokoro OSの「Writerエンジン」です。
 4つの人格（ノーム・シン・カノン・ディグ）が協力して、
@@ -244,6 +269,7 @@ function buildSystem(mode: string): string {
   if (mode === 'deep') return CORE_SYSTEM;
   if (mode === 'spark') return SPARK_SYSTEM;
   if (mode === 'core') return CORE_SYSTEM;
+  if (mode === 'lite') return LITE_SYSTEM;
   return LITE_SYSTEM;
 }
 
@@ -350,9 +376,57 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 既存モード (lite / deep / spark)
+  // Deepモード: Gemini + 感性マップによるリライト＋レイアウト
+  if (mode === 'deep') {
+    try {
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (!geminiKey) {
+        return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
+      }
+
+      let context = '';
+      try {
+        const supabase = await createServerSupabase();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('sensibility_cache, sensibility_thought_cache')
+            .eq('user_id', user.id)
+            .single();
+          const writing = data?.sensibility_cache || '';
+          const thought = data?.sensibility_thought_cache || '';
+          if (writing) context += writing;
+          if (thought) {
+            const thoughtSlice = thought.slice(0, Math.floor(thought.length * 0.43));
+            context += '\n\n---\n\n【思想面の補足】\n' + thoughtSlice;
+          }
+        }
+      } catch {
+        // キャッシュ取得失敗はフォールバック
+      }
+
+      const prompt = MICHI_SYSTEM.replace('{driveContext}', context || '（感性データがありません）') + '\n\n' + text;
+
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const geminiResult = await model.generateContent(prompt);
+      const result = geminiResult.response.text();
+
+      return NextResponse.json({
+        result,
+        contextLength: context.length,
+        usedCache: !!context,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
+  }
+
+  // 既存モード (lite / spark)
   const baseSystem = buildSystem(mode);
-  const useValueEngine = mode === 'core' || mode === 'deep' || mode === 'spark';
+  const useValueEngine = mode === 'spark';
   const valueInject = useValueEngine ? KokoroValueEngine.forWriterCore() : '';
   const system = (valueInject ? valueInject + '\n\n' : '') + baseSystem;
 
@@ -371,7 +445,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: mode === 'lite' ? 1500 : 2500,
+        max_tokens: 2500,
         system,
         messages: [{ role: 'user', content: text }],
       }),
