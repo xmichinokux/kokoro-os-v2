@@ -90,10 +90,7 @@ export default function KokoroRecipePage() {
           <span style={{ ...mono, fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ ...mono, fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Recipe</span>
         </div>
-        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
-          style={{ ...mono, fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-          ← Talk
-        </button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 24px' }}>
