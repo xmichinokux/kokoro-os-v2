@@ -7,6 +7,7 @@ export type InsightReviewInput = {
 export type InsightInput = {
   workTitle: string;
   imageUrl?: string;
+  imageBase64?: string;
   contextFilterEnabled: boolean;
   reviews: InsightReviewInput[];
 };
