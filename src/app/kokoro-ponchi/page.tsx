@@ -169,7 +169,7 @@ export default function KokoroPonchiPage() {
           <>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
+              gridTemplateColumns: '1fr',
               gap: 12, marginTop: 24,
             }}>
               {slides.map((s, i) => {

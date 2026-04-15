@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { getProfile, updateInferred } from '@/lib/profile';
 import type { KokoroProfile } from '@/lib/profile';
 import { saveToNote } from '@/lib/saveToNote';
@@ -31,18 +31,77 @@ type FashionResult = {
 
 export default function KokoroFashion() {
   const [preview, setPreview] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageMediaType, setImageMediaType] = useState<string | null>(null);
+  const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<FashionResult | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [started, setStarted] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
   const [kokoroProfile, setKokoroProfile] = useState<KokoroUserProfile | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX = 1024;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = (h / w) * MAX; w = MAX; }
+            else { w = (w / h) * MAX; h = MAX; }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('画像ファイルを選択してください');
+      return;
+    }
+    setError('');
+    const compressed = await compressImage(file);
+    setPreview(compressed);
+    setImageBase64(compressed.split(',')[1]);
+    setImageMediaType('image/jpeg');
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const removeImage = () => {
+    setPreview(null);
+    setImageBase64(null);
+    setImageMediaType(null);
+  };
 
   const runAnalysis = useCallback(async (opts: {
     profile?: KokoroProfile;
     imageBase64?: string | null;
     imageMediaType?: string | null;
+    text?: string;
   }) => {
     setIsLoading(true);
     setError('');
@@ -56,6 +115,7 @@ export default function KokoroFashion() {
         body: JSON.stringify({
           imageBase64: opts.imageBase64 || undefined,
           imageMediaType: opts.imageMediaType || undefined,
+          textInput: opts.text || undefined,
           profile: opts.profile || await getProfile(),
           kokoroProfile: await getKokoroProfile(),
         }),
@@ -90,35 +150,20 @@ export default function KokoroFashion() {
     // Kokoro Profile を読み込んでバナー表示用にstateへ
     getKokoroProfile().then(p => { if (p) setKokoroProfile(p); });
 
-    const init = async () => {
-    const currentProfile = await getProfile();
-    let intentProfile = currentProfile;
-    let imgBase64: string | null = null;
-    let imgType: string | null = null;
-
+    // sessionStorage からの引き継ぎ（Talk連携）
     const raw = sessionStorage.getItem('fashionIntent');
     if (raw) {
       sessionStorage.removeItem('fashionIntent');
       try {
         const intent = JSON.parse(raw);
-        if (intent.profile) intentProfile = intent.profile;
         if (intent.imageBase64 && intent.imageMediaType) {
-          imgBase64 = intent.imageBase64;
-          imgType = intent.imageMediaType;
+          setImageBase64(intent.imageBase64);
+          setImageMediaType(intent.imageMediaType);
           setPreview(`data:${intent.imageMediaType};base64,${intent.imageBase64}`);
         }
       } catch { /* ignore */ }
     }
-
-    // 自動診断開始
-    runAnalysis({
-      profile: intentProfile,
-      imageBase64: imgBase64,
-      imageMediaType: imgType,
-    });
-    };
-    init();
-  }, [started, runAnalysis]);
+  }, [started]);
 
   const handleSaveToNote = async () => {
     if (!result || noteSaved) return;
@@ -164,13 +209,10 @@ export default function KokoroFashion() {
           <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
           <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Fashion</span>
         </div>
-        <a href="/kokoro-chat" title="Talkに戻る"
-          style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px' }}>
-          ← Talk
-        </a>
+        <div />
       </header>
 
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 20px 80px' }}>
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 20px 120px' }}>
 
         {/* プロフィール使用中バナー */}
         {hasProfileData(kokoroProfile) && (
@@ -215,6 +257,85 @@ export default function KokoroFashion() {
           <div style={{ fontSize: 18, fontWeight: 400, marginBottom: 6 }}>Fashion</div>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>内面が装いにどう出ているかを読む</div>
         </div>
+
+        {/* 入力エリア */}
+        {!result && !isLoading && (
+          <div>
+            {/* テキスト入力 */}
+            <label style={{ fontFamily: "'Space Mono', monospace", fontSize: 8, letterSpacing: '0.18em', color: '#9ca3af', display: 'block', marginBottom: 10 }}>
+              // 服装・スタイルについて
+            </label>
+            <textarea
+              value={inputText}
+              onChange={e => setInputText(e.target.value)}
+              placeholder="例：最近カジュアルなモノトーンが多い。もう少し色を取り入れたいけど、何が合うかわからない。"
+              style={{
+                width: '100%', background: '#f8f9fa',
+                border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
+                borderRadius: '0 4px 4px 0',
+                padding: 14, fontSize: 14, color: '#111827',
+                resize: 'vertical', outline: 'none', minHeight: 80,
+                fontFamily: "'Noto Sans JP', sans-serif",
+                boxSizing: 'border-box',
+              }}
+              onFocus={e => e.currentTarget.style.borderLeftColor = '#7c3aed'}
+              onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
+            />
+
+            {/* 画像アップロード */}
+            <div style={{ marginTop: 16 }}>
+              <label style={{ fontFamily: "'Space Mono', monospace", fontSize: 8, letterSpacing: '0.18em', color: '#9ca3af', display: 'block', marginBottom: 10 }}>
+                // 画像（任意）
+              </label>
+              {!preview ? (
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    border: '2px dashed #e5e7eb', borderRadius: 12,
+                    padding: '32px 20px', textAlign: 'center', cursor: 'pointer',
+                    transition: 'border-color .2s', background: '#f9fafb',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                >
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>👔</div>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>服装の画像をドロップ</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>またはクリックして選択</div>
+                  <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                    onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <img src={preview} alt="preview"
+                    style={{ width: '100%', borderRadius: 12, display: 'block', maxHeight: 300, objectFit: 'cover' }} />
+                  <button onClick={removeImage}
+                    style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,.5)', color: '#fff', border: 'none', borderRadius: 20, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>
+                    ✕ 変更
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Yoroshiku ボタン */}
+            <button
+              onClick={() => runAnalysis({ imageBase64, imageMediaType, text: inputText })}
+              disabled={!inputText.trim() && !imageBase64}
+              title="診断する"
+              style={{
+                width: '100%', background: 'transparent',
+                border: `1px solid ${(inputText.trim() || imageBase64) ? '#7c3aed' : '#d1d5db'}`,
+                color: (inputText.trim() || imageBase64) ? '#7c3aed' : '#9ca3af',
+                fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: '0.2em',
+                padding: 13, cursor: (inputText.trim() || imageBase64) ? 'pointer' : 'not-allowed',
+                borderRadius: 2, marginTop: 16,
+              }}
+            >
+              Yoroshiku
+            </button>
+          </div>
+        )}
 
         {/* loading */}
         {isLoading && <PersonaLoading />}
@@ -338,10 +459,17 @@ export default function KokoroFashion() {
                   Note +
                 </button>
               )}
-              <a href="/kokoro-chat" title="Talkに戻る"
-                style={{ display: 'block', width: '100%', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace", letterSpacing: '0.1em', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' }}>
-                ← Talk
-              </a>
+              <button
+                onClick={() => { setResult(null); setNoteSaved(false); }}
+                style={{
+                  width: '100%', background: 'transparent', color: '#6b7280',
+                  border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px',
+                  fontSize: 12, cursor: 'pointer', fontFamily: "'Space Mono', monospace",
+                  letterSpacing: '0.1em',
+                }}
+              >
+                もう一度診断する
+              </button>
             </div>
           </div>
         )}
