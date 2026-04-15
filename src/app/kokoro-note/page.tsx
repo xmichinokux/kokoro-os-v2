@@ -88,7 +88,7 @@ export default function KokoroNotePage() {
   const [imageNotes, setImageNotes] = useState<NoteImageEntry[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [personaLoading, setPersonaLoading] = useState<PersonaKey | null>(null);
-  const [noteTab, setNoteTab] = useState<'all' | 'text' | 'image'>('all');
+  const [noteTab, setNoteTab] = useState<'all' | 'text' | 'image' | 'product'>('all');
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
 
@@ -410,6 +410,7 @@ export default function KokoroNotePage() {
           { key: 'all' as const, label: `全てのNote (${notes.length + imageNotes.length})` },
           { key: 'text' as const, label: `テキスト (${notes.length})` },
           { key: 'image' as const, label: `画像 (${imageNotes.length})` },
+          { key: 'product' as const, label: `商品 (${notes.filter(n => n.isProduct).length})` },
         ]).map(tab => (
           <button
             key={tab.key}
@@ -504,7 +505,7 @@ export default function KokoroNotePage() {
         )
       )}
 
-      {(noteTab === 'text' || noteTab === 'all') && (
+      {(noteTab === 'text' || noteTab === 'all' || noteTab === 'product') && (
       <>
       {/* 検索バー */}
       <div className="mb-6">
@@ -592,7 +593,8 @@ export default function KokoroNotePage() {
       {(() => {
         // allタブ時は画像noteも混ぜて時間順ソート
         type UnifiedItem = { type: 'text'; note: KokoroNote } | { type: 'image'; note: NoteImageEntry };
-        let unifiedList: UnifiedItem[] = displayNotes.map(n => ({ type: 'text' as const, note: n }));
+        const filteredDisplayNotes = noteTab === 'product' ? displayNotes.filter(n => n.isProduct) : displayNotes;
+        let unifiedList: UnifiedItem[] = filteredDisplayNotes.map(n => ({ type: 'text' as const, note: n }));
         if (noteTab === 'all') {
           const imgItems: UnifiedItem[] = imageNotes.map(n => ({ type: 'image' as const, note: n }));
           unifiedList = [...unifiedList, ...imgItems];
@@ -1081,7 +1083,7 @@ export default function KokoroNotePage() {
               letterSpacing:'0.05em',
               ...(selectedNote.showAiBadge ? { color:'#fff' } : {}),
             }}>
-              AI鑑定 ¥{selectedNote.aiPricedAmount.toLocaleString()}
+              AI鑑定
             </span>
             <button
               onClick={async () => {
@@ -1408,13 +1410,7 @@ export default function KokoroNotePage() {
                 </button>
               );
             }
-            // デフォルト: Talkで続ける
-            return (
-              <button onClick={() => { setNoteForTalk(selectedNote); router.push('/kokoro-chat'); }}
-                style={{ fontFamily:"'Space Mono', monospace", fontSize:10, padding:'8px 16px', borderRadius:6, cursor:'pointer', background:'#ede9fe', color:'#7c3aed', border:'none' }}>
-                Talk で続ける →
-              </button>
-            );
+            return null;
           })()}
         </div>
       </>
@@ -1582,13 +1578,7 @@ export default function KokoroNotePage() {
               + 新規 Note
             </button>
           )}
-          <button
-            onClick={() => router.push('/kokoro-chat')}
-            title="Talk に戻る"
-            style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}
-          >
-            ← Talk
-          </button>
+          <div />
         </div>
       </header>
 
