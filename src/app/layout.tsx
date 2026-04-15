@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Mono, Noto_Serif_JP } from "next/font/google";
 import "./globals.css";
+import TalkShell from "@/components/talk/TalkShell";
 
 const spaceMono = Space_Mono({
   variable: "--font-space-mono",
@@ -29,7 +30,9 @@ export default function RootLayout({
       lang="ja"
       className={`${spaceMono.variable} ${notoSerifJP.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <TalkShell>{children}</TalkShell>
+      </body>
     </html>
   );
 }
