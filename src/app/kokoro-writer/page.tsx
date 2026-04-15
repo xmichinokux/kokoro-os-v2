@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { saveToNote } from '@/lib/saveToNote';
@@ -80,9 +80,17 @@ function parseWriterXml(raw: string): {
 /* A4ページ分割コンポーネント */
 const A4_CONTENT_HEIGHT = 960; // A4比率の内容領域高さ（px） padding除く
 
-function A4Pages({ html, plainText }: { html: string; plainText: string }) {
+type A4PagesHandle = { getContainer: () => HTMLDivElement | null };
+
+const A4Pages = forwardRef<A4PagesHandle, { html: string; plainText: string }>(
+  function A4Pages({ html, plainText }, ref) {
   const measureRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<string[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    getContainer: () => containerRef.current,
+  }));
 
   useEffect(() => {
     if (!html && !plainText) { setPages([]); return; }
@@ -137,7 +145,7 @@ function A4Pages({ html, plainText }: { html: string; plainText: string }) {
           left: -9999, top: 0,
         }}
       />
-      <div className="writer-pages-container">
+      <div ref={containerRef} className="writer-pages-container">
         {pages.map((pageHtml, idx) => (
           <div key={idx} className="writer-page">
             <div className="edited-text" dangerouslySetInnerHTML={{ __html: pageHtml }} />
@@ -147,7 +155,7 @@ function A4Pages({ html, plainText }: { html: string; plainText: string }) {
       </div>
     </>
   );
-}
+});
 
 export default function KokoroWriterPage() {
   const router = useRouter();
@@ -168,6 +176,8 @@ export default function KokoroWriterPage() {
   const [usedCache, setUsedCache] = useState(false);
 
   const [hasTripCache, setHasTripCache] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const a4Ref = useRef<A4PagesHandle>(null);
 
   // Googleアクセストークン・キャッシュ有無を確認
   useEffect(() => {
@@ -247,6 +257,46 @@ export default function KokoroWriterPage() {
     await saveToNote(outputText, 'Writer');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handlePdfDownload = async () => {
+    const container = a4Ref.current?.getContainer();
+    if (!container) return;
+    setPdfExporting(true);
+    try {
+      const html2canvas = (await import('html2canvas-pro')).default;
+      const { jsPDF } = await import('jspdf');
+      const pageEls = container.querySelectorAll('.writer-page') as NodeListOf<HTMLElement>;
+      if (pageEls.length === 0) return;
+
+      // A4: 210mm × 297mm
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfW = 210;
+      const pdfH = 297;
+
+      for (let i = 0; i < pageEls.length; i++) {
+        if (i > 0) pdf.addPage();
+        const canvas = await html2canvas(pageEls[i], {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const imgW = canvas.width;
+        const imgH = canvas.height;
+        const ratio = Math.min(pdfW / imgW, pdfH / imgH);
+        const w = imgW * ratio;
+        const h = imgH * ratio;
+        const x = (pdfW - w) / 2;
+        const y = (pdfH - h) / 2;
+        pdf.addImage(imgData, 'PNG', x, y, w, h);
+      }
+      pdf.save(`kokoro-writer-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      setPdfExporting(false);
+    }
   };
 
   const handleSaveToStrategy = () => {
@@ -382,7 +432,7 @@ export default function KokoroWriterPage() {
               </div>
             )}
             {/* HTML描画（A4ページ区切りレイアウト） */}
-            <A4Pages html={outputHtml} plainText={outputText} />
+            <A4Pages ref={a4Ref} html={outputHtml} plainText={outputText} />
           </div>
         )}
 
@@ -458,28 +508,21 @@ export default function KokoroWriterPage() {
               {copied ? 'Copy ✓' : 'Copy ↗'}
             </button>
 
-            {/* ダウンロード */}
+            {/* PDF ダウンロード */}
             <button
-              onClick={() => {
-                const blob = new Blob([outputText], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `kokoro-writer-${new Date().toISOString().slice(0,10)}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              title="テキストファイルとしてダウンロード"
+              onClick={handlePdfDownload}
+              disabled={pdfExporting}
+              title="PDFとしてダウンロード"
               style={{
                 background: 'transparent',
-                border: '1px solid #d1d5db',
-                color: '#9ca3af',
+                border: `1px solid ${pdfExporting ? '#a855f7' : '#d1d5db'}`,
+                color: pdfExporting ? '#a855f7' : '#9ca3af',
                 ...mono, fontSize: 9, letterSpacing: '.12em',
-                padding: '8px 16px', cursor: 'pointer',
+                padding: '8px 16px', cursor: pdfExporting ? 'wait' : 'pointer',
                 borderRadius: 2,
               }}
             >
-              ↓
+              {pdfExporting ? 'PDF...' : 'PDF ↓'}
             </button>
 
           </div>
