@@ -27,6 +27,8 @@ const SONOTA_GAMESEN: GamesenNote = {
 };
 
 const STORAGE_KEY = 'kokoroBrowserCustomGamesen';
+const WEB_CACHE_KEY = 'kokoroBrowserWebCache';
+const RESCAN_COOLDOWN_MS = 5 * 60 * 1000; // 5分間のクールダウン
 
 type WebResult = {
   id: string;
@@ -36,6 +38,42 @@ type WebResult = {
   reason: string;
   category: string;
 };
+
+type WebCacheEntry = {
+  results: WebResult[];
+  timestamp: number; // Date.now()
+  keywords: string[];
+};
+
+type WebCache = Record<string, WebCacheEntry>;
+
+function loadWebCache(): WebCache {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(WEB_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveWebCache(cache: WebCache) {
+  localStorage.setItem(WEB_CACHE_KEY, JSON.stringify(cache));
+}
+
+function formatCacheTime(timestamp: number): string {
+  const d = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - timestamp;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
+  if (diffMin < 1) return 'たった今';
+  if (diffMin < 60) return `${diffMin}分前`;
+  if (diffHour < 24) return `${diffHour}時間前`;
+  if (diffDay < 7) return `${diffDay}日前`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
   pdf: 'PDF', data: 'Data', svg: 'SVG', html: 'HTML', text: 'Text', other: 'Other',
@@ -83,8 +121,9 @@ export default function KokoroBrowserPage() {
   const [webLoading, setWebLoading] = useState(false);
   const [webError, setWebError] = useState('');
   const [hasAestheticMap, setHasAestheticMap] = useState(false);
-  const searchCacheRef = useRef<Record<string, WebResult[]>>({});
+  const webCacheRef = useRef<WebCache>({});
   const lastSearchIdRef = useRef<string>('');
+  const [currentCacheTime, setCurrentCacheTime] = useState<number | null>(null);
 
   // 商品
   const [products, setProducts] = useState<ProductNote[]>([]);
@@ -96,6 +135,7 @@ export default function KokoroBrowserPage() {
 
   useEffect(() => {
     setCustomGamesen(loadCustomGamesen());
+    webCacheRef.current = loadWebCache();
   }, []);
 
   const allGamesen = useMemo(
@@ -163,20 +203,23 @@ export default function KokoroBrowserPage() {
   const currentGamesen = selectedId === SONOTA_ID ? SONOTA_GAMESEN : selectedGamesen;
 
   // ========================
-  // Web検索（Gemini Grounding）
+  // Web検索（Gemini Grounding）— localStorage キャッシュ付き
   // ========================
-  const searchWeb = useCallback(async (keywords: string[], tabId: string) => {
-    if (keywords.length === 0) {
-      setWebResults([]);
-      return;
-    }
 
-    // キャッシュチェック
-    if (searchCacheRef.current[tabId]) {
-      setWebResults(searchCacheRef.current[tabId]);
-      return;
+  // キャッシュからロード（API呼び出しなし）
+  const loadFromCache = useCallback((tabId: string): boolean => {
+    const entry = webCacheRef.current[tabId];
+    if (entry) {
+      setWebResults(entry.results);
+      setCurrentCacheTime(entry.timestamp);
+      return true;
     }
+    setCurrentCacheTime(null);
+    return false;
+  }, []);
 
+  // API呼び出しで再スキャン
+  const fetchWebResults = useCallback(async (keywords: string[], tabId: string) => {
     setWebLoading(true);
     setWebError('');
     lastSearchIdRef.current = tabId;
@@ -205,10 +248,13 @@ export default function KokoroBrowserPage() {
 
       if (data.hasAestheticMap) setHasAestheticMap(true);
 
-      // 現在のタブがまだ選択されていれば結果を表示
+      // 現在のタブがまだ選択されていれば結果を表示＆キャッシュ保存
       if (lastSearchIdRef.current === tabId) {
         setWebResults(results);
-        searchCacheRef.current[tabId] = results;
+        const now = Date.now();
+        setCurrentCacheTime(now);
+        webCacheRef.current[tabId] = { results, timestamp: now, keywords };
+        saveWebCache(webCacheRef.current);
       }
     } catch (e) {
       if (lastSearchIdRef.current === tabId) {
@@ -221,15 +267,20 @@ export default function KokoroBrowserPage() {
     }
   }, []);
 
-  // タブ選択時に自動Web検索 + 商品検索
+  // タブ選択時: キャッシュからWeb結果をロード（自動スキャンしない）+ 商品検索
   useEffect(() => {
     const gamesen = allGamesen.find(g => g.id === selectedId);
     const hasKeywords = gamesen && gamesen.keywords.length > 0 && selectedId !== SONOTA_ID;
 
     if (hasKeywords) {
-      searchWeb(gamesen.keywords, selectedId);
+      // キャッシュがあればそこから表示、なければ初回のみ自動スキャン
+      const cached = loadFromCache(selectedId);
+      if (!cached) {
+        fetchWebResults(gamesen.keywords, selectedId);
+      }
     } else {
       setWebResults([]);
+      setCurrentCacheTime(null);
     }
 
     // 商品検索（キーワードありならフィルタ、なしなら全商品）
@@ -259,7 +310,7 @@ export default function KokoroBrowserPage() {
         .catch(() => setProducts([]))
         .finally(() => setProductLoading(false));
     }
-  }, [selectedId, allGamesen, searchWeb]);
+  }, [selectedId, allGamesen, loadFromCache, fetchWebResults]);
 
   // ブックマークトグル
   const handleBookmark = useCallback(async (noteId: string) => {
@@ -365,7 +416,8 @@ export default function KokoroBrowserPage() {
     if (selectedId === id) setSelectedId(GAMESEN_NOTES[0].id);
     setEditingId(null);
     // キャッシュもクリア
-    delete searchCacheRef.current[id];
+    delete webCacheRef.current[id];
+    saveWebCache(webCacheRef.current);
   };
 
   const handleSaveEdit = (id: string) => {
@@ -382,17 +434,30 @@ export default function KokoroBrowserPage() {
     saveCustomGamesen(updated);
     setEditingId(null);
     // キーワード変更したのでキャッシュクリア
-    delete searchCacheRef.current[id];
+    delete webCacheRef.current[id];
+    saveWebCache(webCacheRef.current);
   };
 
-  // 手動リフレッシュ
+  // 手動リフレッシュ（クールダウン付き）
   const handleRefreshSearch = useCallback(() => {
     const gamesen = allGamesen.find(g => g.id === selectedId);
-    if (gamesen && gamesen.keywords.length > 0) {
-      delete searchCacheRef.current[selectedId];
-      searchWeb(gamesen.keywords, selectedId);
+    if (!gamesen || gamesen.keywords.length === 0) return;
+
+    // クールダウンチェック
+    const cached = webCacheRef.current[selectedId];
+    if (cached) {
+      const elapsed = Date.now() - cached.timestamp;
+      if (elapsed < RESCAN_COOLDOWN_MS) {
+        const remainSec = Math.ceil((RESCAN_COOLDOWN_MS - elapsed) / 1000);
+        alert(`再スキャンは${remainSec}秒後に可能です`);
+        return;
+      }
     }
-  }, [selectedId, allGamesen, searchWeb]);
+
+    delete webCacheRef.current[selectedId];
+    saveWebCache(webCacheRef.current);
+    fetchWebResults(gamesen.keywords, selectedId);
+  }, [selectedId, allGamesen, fetchWebResults]);
 
   const isCustom = (id: string) => customGamesen.some(g => g.id === id);
 
@@ -439,7 +504,7 @@ export default function KokoroBrowserPage() {
           <style>{`.browser-tabs::-webkit-scrollbar { display: none }`}</style>
           {allGamesen.map(g => {
             const noteCount = matchNotesToGamesen(allPublicNotes, g).length;
-            const webCount = searchCacheRef.current[g.id]?.length || 0;
+            const webCount = webCacheRef.current[g.id]?.results?.length || 0;
             const totalCount = noteCount + webCount;
             return (
               <button
@@ -703,14 +768,21 @@ export default function KokoroBrowserPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {currentGamesen.keywords.length > 0 && selectedId !== SONOTA_ID && (
-                    <button
-                      onClick={handleRefreshSearch}
-                      disabled={webLoading}
-                      title="Web検索をリフレッシュ"
-                      style={{ ...mono, fontSize: 8, color: webLoading ? '#d1d5db' : '#6b7280', background: 'transparent', border: 'none', cursor: webLoading ? 'not-allowed' : 'pointer' }}
-                    >
-                      {webLoading ? '⟳ ...' : '⟳ refresh'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {currentCacheTime && (
+                        <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>
+                          {formatCacheTime(currentCacheTime)}
+                        </span>
+                      )}
+                      <button
+                        onClick={handleRefreshSearch}
+                        disabled={webLoading}
+                        title="Web検索を再スキャン（5分間隔）"
+                        style={{ ...mono, fontSize: 8, color: webLoading ? '#d1d5db' : '#6b7280', background: 'transparent', border: 'none', cursor: webLoading ? 'not-allowed' : 'pointer' }}
+                      >
+                        {webLoading ? '⟳ ...' : '⟳ rescan'}
+                      </button>
+                    </div>
                   )}
                   {isCustom(currentGamesen.id) && (
                     <button
