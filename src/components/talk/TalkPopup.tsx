@@ -68,10 +68,14 @@ export default function TalkPopup() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 90, left: 0, right: 0,
+      position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)',
+      width: '100%', maxWidth: 600,
       maxHeight: 'calc(100vh - 150px)',
       background: '#fff',
       borderTop: '1px solid #e5e7eb',
+      borderLeft: '1px solid #e5e7eb',
+      borderRight: '1px solid #e5e7eb',
+      borderRadius: '12px 12px 0 0',
       boxShadow: '0 -4px 24px rgba(0,0,0,0.08)',
       zIndex: 90,
       display: 'flex', flexDirection: 'column',
