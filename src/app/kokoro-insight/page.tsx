@@ -481,10 +481,7 @@ export default function KokoroInsightPage() {
           <span style={{ ...mono, fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ ...mono, fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Insight</span>
         </div>
-        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
-          style={{ ...mono, fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-          ← Talk
-        </button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '40px 24px 80px' }}>
@@ -929,9 +926,6 @@ export default function KokoroInsightPage() {
               </button>
               <button onClick={resetAll} title="すべてクリア" style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid #e5e7eb', color: '#6b7280', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
                 Clear ×
-              </button>
-              <button onClick={() => router.push('/kokoro-chat')} title="Talkに戻る" style={{ ...mono, fontSize: 9, letterSpacing: '.12em', background: 'transparent', border: '1px solid rgba(124,58,237,.3)', color: '#7c3aed', padding: '9px 20px', cursor: 'pointer', borderRadius: 2 }}>
-                ← Talk
               </button>
             </div>
           </div>
