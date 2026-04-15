@@ -3,6 +3,40 @@ import { createServerSupabase } from '@/lib/supabase/server';
 
 export const maxDuration = 30;
 
+/* ─── AI要約生成 ─── */
+async function generateAiSummary(text: string, title: string): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || !text) return '';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: `以下のテキストの内容を1〜2文で要約してください。具体的な内容には踏み込まず、「何について書かれているか」だけを伝えてください。要約のみを返してください。
+
+タイトル：${title}
+本文：${text.slice(0, 1000)}`,
+        }],
+      }),
+    });
+
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.content?.[0]?.text || '';
+  } catch {
+    return '';
+  }
+}
+
 // 商品一覧取得（Browser用）
 export async function GET(req: NextRequest) {
   try {
@@ -14,7 +48,7 @@ export async function GET(req: NextRequest) {
     // 商品ノートを取得（is_product = true, is_public = true）
     let query = supabase
       .from('notes')
-      .select('id, user_id, title, text, tags, source, created_at, is_product, product_price, product_description, product_external_url, product_type, author_name, ai_priced_amount, show_ai_badge')
+      .select('id, user_id, title, tags, source, created_at, is_product, product_price, product_description, product_external_url, product_type, author_name, ai_priced_amount, show_ai_badge')
       .eq('is_product', true)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
@@ -36,7 +70,7 @@ export async function GET(req: NextRequest) {
       const kwLower = keywords.map(k => k.toLowerCase());
       filtered = products.filter(p => {
         const searchText = [
-          p.title, p.text?.slice(0, 300), p.product_description,
+          p.title, p.product_description,
           ...(p.tags || []),
         ].join(' ').toLowerCase();
         return kwLower.some(kw => searchText.includes(kw));
@@ -85,7 +119,7 @@ export async function GET(req: NextRequest) {
     const result = filtered.map(p => ({
       id: p.id,
       title: p.title,
-      body: p.text?.slice(0, 200),
+      body: p.product_description || undefined, // 生テキストは返さない。AI要約 or 商品説明のみ
       tags: p.tags || [],
       source: p.source,
       createdAt: p.created_at,
@@ -146,6 +180,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ノートが見つかりません' }, { status: 404 });
     }
 
+    // AI要約を生成（ユーザーが商品説明を書いていない場合）
+    let finalDescription = productDescription || '';
+    if (!finalDescription) {
+      // ノートの本文を取得して要約
+      const { data: fullNote } = await supabase
+        .from('notes')
+        .select('text, title')
+        .eq('id', noteId)
+        .single();
+      if (fullNote?.text) {
+        const summary = await generateAiSummary(fullNote.text, fullNote.title || '');
+        if (summary) {
+          finalDescription = summary;
+        }
+      }
+    }
+
     // 商品フィールドを更新
     const { error } = await supabase
       .from('notes')
@@ -153,7 +204,7 @@ export async function POST(req: NextRequest) {
         is_product: true,
         is_public: true,
         product_price: productPrice || 0,
-        product_description: productDescription || '',
+        product_description: finalDescription,
         product_external_url: productExternalUrl || '',
         product_type: productType || 'text',
         // author_name はアカウントの display_name から自動取得

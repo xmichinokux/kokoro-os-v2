@@ -1268,31 +1268,22 @@ function ProductTimelineItem({
           {product.title}
         </div>
 
-        {/* 商品説明 */}
+        {/* AI要約 or 商品説明 */}
         {product.productDescription && (
           <div style={{
             fontSize: 13, color: '#6b7280',
             fontFamily: 'Noto Serif JP, serif',
             lineHeight: 1.8,
             marginBottom: 8,
+            background: '#f8f9fa',
+            padding: '8px 12px',
+            borderRadius: 6,
+            borderLeft: '3px solid #e5e7eb',
           }}>
+            <span style={{ fontSize: 9, fontFamily: "'Space Mono', monospace", color: '#9ca3af', letterSpacing: '.08em', display: 'block', marginBottom: 4 }}>
+              AI SUMMARY
+            </span>
             {product.productDescription}
-          </div>
-        )}
-
-        {/* 本文プレビュー */}
-        {product.body && !product.productDescription && (
-          <div style={{
-            fontSize: 13, color: '#9ca3af',
-            fontFamily: 'Noto Serif JP, serif',
-            lineHeight: 1.8,
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            marginBottom: 8,
-          }}>
-            {product.body}
           </div>
         )}
 
