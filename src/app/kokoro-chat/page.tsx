@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile } from '@/lib/profile';
 import TalkResponse from '@/components/kokoro/TalkResponse';
+import { useTalk } from '@/components/talk/TalkContext';
 import type { Persona, PersonaStayState } from '@/types/kokoroOutput';
 import { PERSONA_LABELS, PERSONA_COLORS as CORE_PERSONA_COLORS, PERSONA_EMOJIS as CORE_PERSONA_EMOJIS } from '@/lib/kokoro/personaLabels';
 import { createHonneLog } from '@/lib/kokoro/diagnosis/createHonneLog';
@@ -118,8 +119,10 @@ const PERSONA_EMOJIS: Record<string, string> = {
 /* ── メインコンポーネント ── */
 export default function KokoroChat() {
   const router = useRouter();
+  const talk = useTalk();
+  // Talk ページ固有の Message 型（context の TalkMessage より多くのフィールドを持つ）
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const { input, setInput } = talk;
   const [isLoading, setIsLoading] = useState(false);
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [attachedMediaType, setAttachedMediaType] = useState('');
@@ -136,7 +139,6 @@ export default function KokoroChat() {
   const [savedWishIds, setSavedWishIds] = useState<Set<number>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [sessions, setSessions] = useState<TalkSession[]>([]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -162,14 +164,50 @@ export default function KokoroChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // localStorageからメッセージ・セッション履歴を復元
+  // コンテキストからメッセージを復元（Talk ページ固有の Message 型に変換）
+  const initializedLocal = useRef(false);
   useEffect(() => {
-    const saved = localStorage.getItem(CURRENT_KEY);
-    if (saved) {
-      try { setMessages(JSON.parse(saved)); } catch { /* ignore */ }
+    if (initializedLocal.current) return;
+    initializedLocal.current = true;
+    // context messages を local Message 型にマップ
+    if (talk.messages.length > 0) {
+      setMessages(talk.messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        personaId: m.personaId,
+        talkPersona: m.personaId as Persona | undefined,
+        talkResponse: m.role === 'ai' ? m.content : undefined,
+        syncRate: m.syncRate,
+        topic: m.topic,
+        showZen: m.showZen,
+        showPlan: m.showPlan,
+        showWriter: m.showWriter,
+        showBrowser: m.showBrowser,
+        showNote: m.showNote,
+        showRecipe: m.showRecipe,
+        showInsight: m.showInsight,
+        showCouple: m.showCouple,
+        showBuddy: m.showBuddy,
+        showPhilosophy: m.showPhilosophy,
+        showBoard: m.showBoard,
+        showKami: m.showKami,
+        showPonchi: m.showPonchi,
+        showGatekeeper: m.showGatekeeper,
+        showBuilder: m.showBuilder,
+        showStrategy: m.showStrategy,
+        showWorld: m.showWorld,
+        showAnimal: m.showAnimal,
+        showFashion: m.showFashion,
+        showWishlist: m.showWishlist,
+        wishlistText: m.wishlistText,
+        wishlistCategory: m.wishlistCategory,
+        wishlistIntensity: m.wishlistIntensity,
+        routingUserText: m.routingUserText,
+        routingHistoryShort: m.routingHistoryShort,
+        routingHistoryLong: m.routingHistoryLong,
+      })));
     }
-    setSessions(loadSessions());
-  }, []);
+  }, [talk.messages]);
 
   // Note→Talk連携: メモからの初期メッセージを復元
   useEffect(() => {
@@ -181,63 +219,50 @@ export default function KokoroChat() {
     }
   }, []);
 
-  // メッセージが更新されるたびにlocalStorageに保存
+  // メッセージが更新されるたびにコンテキストに同期
   useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem(CURRENT_KEY, JSON.stringify(messages));
+    if (messages.length > 0 && initializedLocal.current) {
+      talk.setMessages(messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        personaId: m.personaId || (m.talkPersona as string) || undefined,
+        syncRate: m.syncRate,
+        topic: m.topic,
+        showZen: m.showZen, showPlan: m.showPlan, showWriter: m.showWriter,
+        showBrowser: m.showBrowser, showNote: m.showNote, showRecipe: m.showRecipe,
+        showInsight: m.showInsight, showCouple: m.showCouple, showBuddy: m.showBuddy,
+        showPhilosophy: m.showPhilosophy, showBoard: m.showBoard, showKami: m.showKami,
+        showPonchi: m.showPonchi, showGatekeeper: m.showGatekeeper, showBuilder: m.showBuilder,
+        showStrategy: m.showStrategy, showWorld: m.showWorld, showAnimal: m.showAnimal,
+        showFashion: m.showFashion, showWishlist: m.showWishlist,
+        wishlistText: m.wishlistText, wishlistCategory: m.wishlistCategory,
+        wishlistIntensity: m.wishlistIntensity,
+        routingUserText: m.routingUserText,
+        routingHistoryShort: m.routingHistoryShort,
+        routingHistoryLong: m.routingHistoryLong,
+      })));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // 現在の会話を保存して新規セッション開始
-  const saveAndNewSession = () => {
-    if (messages.length < 2) {
-      // メッセージが少なすぎる場合はそのままクリア
-      localStorage.removeItem(CURRENT_KEY);
-      setMessages([]);
-      return;
-    }
-    const firstUserMsg = messages.find(m => m.role === 'user')?.content || 'Talk';
-    const session: TalkSession = {
-      id: `session_${Date.now()}`,
-      title: firstUserMsg.slice(0, 30),
-      createdAt: new Date().toISOString(),
-      messageCount: messages.length,
-      messages: messages,
-    };
-    const updated = [session, ...sessions];
-    setSessions(updated);
-    saveSessions(updated);
-    localStorage.removeItem(CURRENT_KEY);
+  // isLoading もコンテキストに同期
+  useEffect(() => {
+    talk.setIsLoading(isLoading);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
+  // セッション管理はコンテキストに委譲
+  const handleNewSession = () => {
+    talk.saveAndNewSession();
     setMessages([]);
     setTurnCount(0);
   };
 
-  // 過去セッションを読み込み
-  const loadSession = (session: TalkSession) => {
-    // 現在の会話があれば先に保存
-    if (messages.length >= 2) {
-      const firstUserMsg = messages.find(m => m.role === 'user')?.content || 'Talk';
-      const current: TalkSession = {
-        id: `session_${Date.now()}`,
-        title: firstUserMsg.slice(0, 30),
-        createdAt: new Date().toISOString(),
-        messageCount: messages.length,
-        messages: messages,
-      };
-      const updated = [current, ...sessions.filter(s => s.id !== session.id)];
-      setSessions(updated);
-      saveSessions(updated);
-    }
-    setMessages(session.messages);
-    localStorage.setItem(CURRENT_KEY, JSON.stringify(session.messages));
+  const handleLoadSession = (session: TalkSession) => {
+    talk.loadSession(session);
     setShowHistory(false);
-  };
-
-  // セッション削除
-  const deleteSession = (id: string) => {
-    const updated = sessions.filter(s => s.id !== id);
-    setSessions(updated);
-    saveSessions(updated);
+    // context の messages が更新されるので、次の render で初期化 effect が走る
+    initializedLocal.current = false;
   };
 
   useEffect(() => {
@@ -696,10 +721,19 @@ export default function KokoroChat() {
     }
   };
 
+  // ドックの送信ボタンが Talk ページの sendMessage を使うようにオーバーライド登録
+  const sendMessageRef = useRef<(() => Promise<void>) | null>(null);
+  sendMessageRef.current = sendMessage;
+  useEffect(() => {
+    talk.sendOverrideRef.current = () => sendMessageRef.current!();
+    return () => { talk.sendOverrideRef.current = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isWelcome = messages.length === 0;
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100vh', background:'#fff', color:'#1a1a1a', fontFamily:"'Noto Sans JP', sans-serif", fontWeight:300 }}>
+    <div style={{ display:'flex', flexDirection:'column', minHeight:'calc(100vh - 90px)', background:'#fff', color:'#1a1a1a', fontFamily:"'Noto Sans JP', sans-serif", fontWeight:300 }}>
 
       {/* ヘッダー */}
       <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 20px', borderBottom:'1px solid #e5e7eb', background:'#fff', position:'sticky', top:0, zIndex:10 }}>
@@ -709,7 +743,7 @@ export default function KokoroChat() {
           <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Talk</span>
         </div>
         <div style={{ display:'flex', gap:6 }}>
-          <button onClick={saveAndNewSession}
+          <button onClick={handleNewSession}
             title="会話を保存して新規開始"
             style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed', background:'transparent', border:'1px solid #c4b5fd', borderRadius:2, padding:'4px 10px', cursor:'pointer' }}>
             + New
@@ -777,19 +811,19 @@ export default function KokoroChat() {
         }}>
           <div style={{ maxWidth:680, margin:'0 auto', padding:'12px 20px' }}>
             <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#9ca3af', marginBottom:8, letterSpacing:'0.1em' }}>
-              // 過去の会話 ({sessions.length})
+              // 過去の会話 ({talk.sessions.length})
             </div>
-            {sessions.length === 0 ? (
+            {talk.sessions.length === 0 ? (
               <div style={{ fontSize:12, color:'#9ca3af', padding:'12px 0' }}>まだ保存された会話はありません</div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                {sessions.map(s => (
+                {talk.sessions.map(s => (
                   <div key={s.id} style={{
                     display:'flex', alignItems:'center', justifyContent:'space-between',
                     padding:'8px 12px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:6,
                     cursor:'pointer', transition:'background .15s',
                   }}
-                  onClick={() => loadSession(s)}
+                  onClick={() => handleLoadSession(s)}
                   onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
                   onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
                   >
@@ -802,7 +836,7 @@ export default function KokoroChat() {
                       </div>
                     </div>
                     <button
-                      onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                      onClick={(e) => { e.stopPropagation(); talk.deleteSession(s.id); }}
                       title="削除"
                       style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#d1d5db', background:'transparent', border:'none', cursor:'pointer', padding:'4px 8px', flexShrink:0 }}
                     >
@@ -1070,104 +1104,7 @@ export default function KokoroChat() {
         </div>
       </div>
 
-      {/* 入力エリア */}
-      <div style={{ padding:'12px 20px 16px', borderTop:'1px solid #e5e7eb', background:'#fff' }}>
-        {/* 画像プレビュー */}
-        {attachedPreview && (
-          <div style={{ maxWidth:680, margin:'0 auto 8px', padding:'0 20px' }}>
-            <div style={{ position:'relative', display:'inline-block' }}>
-              <img src={attachedPreview} alt="attachment"
-                style={{ height:80, borderRadius:8, display:'block', objectFit:'cover' }} />
-              <button onClick={clearAttachment}
-                style={{ position:'absolute', top:-6, right:-6, width:20, height:20, borderRadius:'50%', background:'#1a1a1a', color:'#fff', border:'none', cursor:'pointer', fontSize:10, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
-        {/* クイックアクセスアイコン */}
-        <div style={{
-          maxWidth: 680, margin: '0 auto 6px',
-          display: 'flex', gap: 2, overflowX: 'auto',
-          scrollbarWidth: 'none', msOverflowStyle: 'none',
-          WebkitOverflowScrolling: 'touch',
-        }}>
-          <style>{`.quick-access::-webkit-scrollbar{display:none}`}</style>
-          {([
-            { emoji: '🧘', name: 'Zen', href: '/kokoro-zen' },
-            { emoji: '📝', name: 'Note', href: '/kokoro-note' },
-            { emoji: '👗', name: 'Fashion', href: '/kokoro-fashion' },
-            { emoji: '🍳', name: 'Recipe', href: '/kokoro-recipe' },
-            { emoji: '🔍', name: 'Insight', href: '/kokoro-insight' },
-            { emoji: '✍️', name: 'Writer', href: '/kokoro-writer' },
-            { emoji: '📋', name: 'Plan', href: '/kokoro-plan' },
-            { emoji: '🌐', name: 'Browser', href: '/kokoro-browser' },
-            { emoji: '❤️', name: 'Couple', href: '/kokoro-couple' },
-            { emoji: '🎧', name: 'Buddy', href: '/kokoro-buddy' },
-            { emoji: '💭', name: 'Philo', href: '/kokoro-philo' },
-            { emoji: '📊', name: 'Board', href: '/kokoro-board' },
-            { emoji: '📄', name: 'Kami', href: '/kokoro-kami' },
-            { emoji: '🎨', name: 'Ponchi', href: '/kokoro-ponchi' },
-            { emoji: '⚡', name: 'Strategy', href: '/kokoro-strategy' },
-            { emoji: '🌍', name: 'World', href: '/kokoro-world' },
-            { emoji: '🐾', name: 'Animal', href: '/kokoro-animal' },
-            { emoji: '🌟', name: 'Wishlist', href: '/kokoro-wishlist' },
-          ] as const).map(app => (
-            <button
-              key={app.href}
-              onClick={() => router.push(app.href)}
-              title={app.name}
-              className="quick-access"
-              style={{
-                flexShrink: 0, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', gap: 1,
-                width: 42, padding: '4px 0',
-                background: 'transparent', border: 'none',
-                borderRadius: 8, cursor: 'pointer',
-                transition: 'background 0.12s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{ fontSize: 18, lineHeight: 1 }}>{app.emoji}</span>
-              <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 7, color: '#9ca3af', lineHeight: 1, whiteSpace: 'nowrap' }}>{app.name}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ maxWidth:680, margin:'0 auto', display:'flex', gap:10, alignItems:'flex-end' }}>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => {
-              setInput(e.target.value);
-              e.target.style.height = 'auto';
-              e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px';
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-            }}
-            placeholder="なんでもいいよ。断片でも。"
-            rows={1}
-            style={{ flex:1, resize:'none', border:'1px solid #e5e7eb', borderRadius:12, padding:'12px 16px', fontSize:14, lineHeight:1.6, outline:'none', fontFamily:'inherit', background:'#f9fafb', color:'#1a1a1a', minHeight:48, maxHeight:160, overflowY:'auto' }}
-          />
-          <button onClick={() => fileInputRef.current?.click()}
-            style={{ width:46, height:46, flexShrink:0, background:'#f3f4f6', border:'1px solid #e5e7eb', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>
-            📎
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display:'none' }}
-            onChange={e => { if (e.target.files?.[0]) handleImageAttach(e.target.files[0]); e.target.value = ''; }} />
-          <button onClick={sendMessage} disabled={isLoading}
-            style={{ width:46, height:46, flexShrink:0, background:'#7c3aed', border:'none', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'#fff', opacity: isLoading ? 0.5 : 1 }}>
-            ↑
-          </button>
-        </div>
-        <div style={{ maxWidth:680, margin:'4px auto 0', display:'flex', justifyContent:'center', alignItems:'center', gap:12 }}>
-          <span style={{ fontFamily:"'Space Mono', monospace", fontSize:9, color:'#d1d5db', letterSpacing:'0.1em' }}>
-            Enter で送信 // Shift+Enter で改行
-          </span>
-        </div>
-      </div>
+      {/* 入力はドック（TalkDock）が提供 */}
 
       {toast && (
         <div style={{
