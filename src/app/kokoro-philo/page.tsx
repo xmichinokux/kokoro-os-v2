@@ -270,29 +270,28 @@ export default function KokoroPhiloPage() {
           <span style={{ ...mono, fontSize:13, fontWeight:700, color:'#7c3aed', marginLeft:4 }}>OS</span>
           <span style={{ ...mono, fontSize:9, color:'#9ca3af', marginLeft:8, letterSpacing:'0.15em' }}>// Philo</span>
         </div>
-        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
-          style={{ ...mono, fontSize:9, color:'#6b7280', background:'transparent', border:'1px solid #e5e7eb', borderRadius:2, padding:'6px 12px', cursor:'pointer' }}>
-          ← Talk
-        </button>
+        <div />
       </header>
 
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 100px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 120px' }}>
 
         {/* 問い入力 */}
-        <input
-          type="text"
+        <textarea
           value={question}
           onChange={e => setQuestion(e.target.value)}
           placeholder="哲学的な問いを入れてください..."
+          rows={3}
           style={{
-            width: '100%', background: 'transparent',
-            border: 'none', borderBottom: '1px solid #d1d5db',
+            width: '100%', background: '#f8f9fa',
+            border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
+            borderRadius: '0 4px 4px 0',
             color: '#111827', fontFamily: "'Noto Serif JP', serif",
-            fontSize: 18, fontWeight: 300, padding: '10px 4px',
+            fontSize: 15, fontWeight: 300, padding: '14px 16px',
+            lineHeight: 1.8, resize: 'vertical', minHeight: 80,
             outline: 'none', marginBottom: 24, boxSizing: 'border-box',
           }}
-          onFocus={e => e.currentTarget.style.borderBottomColor = accentColor}
-          onBlur={e => e.currentTarget.style.borderBottomColor = '#d1d5db'}
+          onFocus={e => e.currentTarget.style.borderLeftColor = accentColor}
+          onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
         />
 
         {/* モードタブ */}
