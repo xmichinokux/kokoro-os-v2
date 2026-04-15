@@ -135,26 +135,39 @@ async function canSendTo(
 
   if (reception === 'anyone') return { allowed: true };
 
-  // ブックマーク or フォローで判定
-  async function hasBookmarkOrFollow(fromUserId: string, toUserId: string): Promise<boolean> {
+  // ブックマーク or フォローで判定（デバッグ情報付き）
+  async function hasBookmarkOrFollow(fromUserId: string, toUserId: string): Promise<{ result: boolean; debug: Record<string, unknown> }> {
+    const debug: Record<string, unknown> = { fromUserId, toUserId };
+
     // アカウントフォローチェック
-    const { data: follow } = await supabase
+    const { data: follow, error: followErr } = await supabase
       .from('account_follows')
-      .select('id')
+      .select('id, follower_id, following_id')
       .eq('follower_id', fromUserId)
       .eq('following_id', toUserId)
       .limit(1);
-    if ((follow || []).length > 0) return true;
+    debug.followData = follow;
+    debug.followError = followErr?.message;
+    if ((follow || []).length > 0) return { result: true, debug };
+
+    // 全フォローも確認（デバッグ用）
+    const { data: allFollows } = await supabase
+      .from('account_follows')
+      .select('id, follower_id, following_id')
+      .limit(10);
+    debug.allFollows = allFollows;
 
     // ノートブックマークチェック
-    const { data: notes } = await supabase
+    const { data: notes, error: notesErr } = await supabase
       .from('notes')
       .select('id')
       .eq('user_id', toUserId)
       .eq('is_public', true)
       .limit(50);
+    debug.publicNotes = notes?.length;
+    debug.notesError = notesErr?.message;
     const noteIds = (notes || []).map(n => n.id);
-    if (noteIds.length === 0) return false;
+    if (noteIds.length === 0) return { result: false, debug };
 
     const { data: bms } = await supabase
       .from('bookmarks')
@@ -162,25 +175,30 @@ async function canSendTo(
       .eq('user_id', fromUserId)
       .in('note_id', noteIds)
       .limit(1);
-    return (bms || []).length > 0;
+    debug.bookmarks = bms?.length;
+    return { result: (bms || []).length > 0, debug };
   }
 
   if (reception === 'bookmarked') {
-    const recipientFollowsSender = await hasBookmarkOrFollow(recipientId, senderId);
-    if (!recipientFollowsSender) {
-      return { allowed: false, reason: 'この方はブックマーク/フォローしている相手からのみメッセージを受け付けています' };
+    const check = await hasBookmarkOrFollow(recipientId, senderId);
+    if (!check.result) {
+      return {
+        allowed: false,
+        reason: `ブックマーク/フォローが見つかりません`,
+        debug: { reception, senderId, recipientId, ...check.debug },
+      } as { allowed: boolean; reason: string; debug?: unknown };
     }
     return { allowed: true };
   }
 
   if (reception === 'mutual') {
-    const recipientFollowsSender = await hasBookmarkOrFollow(recipientId, senderId);
-    if (!recipientFollowsSender) {
-      return { allowed: false, reason: 'この方は相互フォローの相手からのみメッセージを受け付けています' };
+    const check1 = await hasBookmarkOrFollow(recipientId, senderId);
+    if (!check1.result) {
+      return { allowed: false, reason: '相互フォローが必要です (recipient→sender missing)', debug: check1.debug } as { allowed: boolean; reason: string; debug?: unknown };
     }
-    const senderFollowsRecipient = await hasBookmarkOrFollow(senderId, recipientId);
-    if (!senderFollowsRecipient) {
-      return { allowed: false, reason: 'この方は相互フォローの相手からのみメッセージを受け付けています' };
+    const check2 = await hasBookmarkOrFollow(senderId, recipientId);
+    if (!check2.result) {
+      return { allowed: false, reason: '相互フォローが必要です (sender→recipient missing)', debug: check2.debug } as { allowed: boolean; reason: string; debug?: unknown };
     }
     return { allowed: true };
   }
@@ -305,7 +323,10 @@ export async function POST(req: NextRequest) {
       // 受信設定チェック
       const check = await canSendTo(supabase, user.id, recipientId);
       if (!check.allowed) {
-        return NextResponse.json({ error: check.reason }, { status: 403 });
+        return NextResponse.json({
+          error: check.reason,
+          debug: (check as unknown as Record<string, unknown>).debug,
+        }, { status: 403 });
       }
 
       // 既存会話チェック

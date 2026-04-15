@@ -78,6 +78,11 @@ export default function KokoroMessagesPage() {
   const [rejecting, setRejecting] = useState(false);
   const msgEndRef = useRef<HTMLDivElement>(null);
 
+  // テスト用
+  const [greetTargetId, setGreetTargetId] = useState('');
+  const [greetStatus, setGreetStatus] = useState('');
+  const [greetLoading, setGreetLoading] = useState(false);
+
   // ユーザーID取得
   useEffect(() => {
     getCurrentUserId().then(setUserId);
@@ -199,6 +204,69 @@ export default function KokoroMessagesPage() {
           <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.1em' }}>
             // にゃんパスシティー
           </span>
+        </div>
+
+        {/* テスト用: 挨拶送信 */}
+        <div style={{
+          padding: 16, background: '#f9fafb', border: '1px solid #e5e7eb',
+          borderRadius: 8, marginBottom: 24,
+        }}>
+          <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginBottom: 8, letterSpacing: '0.1em' }}>
+            // テスト: 挨拶を送る（相手の User ID を入力）
+          </div>
+          <div style={{ ...mono, fontSize: 8, color: '#6b7280', marginBottom: 6 }}>
+            あなたの User ID: <span style={{ color: '#7c3aed', userSelect: 'all' }}>{userId}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              value={greetTargetId}
+              onChange={e => setGreetTargetId(e.target.value)}
+              placeholder="相手の User ID"
+              style={{
+                flex: 1, ...mono, fontSize: 10, padding: '6px 10px',
+                border: '1px solid #e5e7eb', borderRadius: 4, outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+            <button
+              onClick={async () => {
+                if (!greetTargetId.trim()) return;
+                setGreetLoading(true);
+                setGreetStatus('送信中...');
+                try {
+                  const res = await fetch('/api/kokoro-messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'greet', recipientId: greetTargetId.trim() }),
+                  });
+                  const data = await res.json();
+                  setGreetStatus(JSON.stringify(data, null, 2));
+                  if (!data.error) {
+                    fetchConversations();
+                  }
+                } catch (e) {
+                  setGreetStatus(`Error: ${e instanceof Error ? e.message : 'unknown'}`);
+                } finally { setGreetLoading(false); }
+              }}
+              disabled={greetLoading || !greetTargetId.trim()}
+              style={{
+                ...mono, fontSize: 9, padding: '6px 14px', borderRadius: 4, cursor: 'pointer',
+                background: greetLoading ? '#9ca3af' : '#7c3aed', color: '#fff', border: 'none',
+              }}
+            >
+              {greetLoading ? '...' : '挨拶を送る'}
+            </button>
+          </div>
+          {greetStatus && (
+            <pre style={{
+              ...mono, fontSize: 8, color: '#374151', marginTop: 8,
+              padding: 8, background: '#fff', borderRadius: 4, border: '1px solid #e5e7eb',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            }}>
+              {greetStatus}
+            </pre>
+          )}
         </div>
 
         {loading ? (
