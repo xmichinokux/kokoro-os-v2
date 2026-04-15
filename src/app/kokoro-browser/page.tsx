@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { GAMESEN_NOTES } from '@/lib/kokoro-browser/gamesenNotes';
 import { MOCK_PUBLIC_NOTES } from '@/lib/kokoro-browser/mockPublicNotes';
 import { matchNotesToGamesen } from '@/lib/kokoro-browser/matchNotes';
-import { getAllNotes } from '@/lib/kokoro/noteStorage';
 import type { PublicNote, GamesenNote, ProductNote } from '@/types/browser';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -109,23 +108,26 @@ export default function KokoroBrowserPage() {
     [selectedId, allGamesen]
   );
 
-  // 公開Noteを取得してPublicNote形式に変換
+  // 全ユーザーの公開Noteを取得
   const [localPublicNotes, setLocalPublicNotes] = useState<PublicNote[]>([]);
   useEffect(() => {
-    getAllNotes().then(all => {
-      setLocalPublicNotes(
-        all.filter(n => n.isPublic && !n.isProduct).map(n => ({
-          id: n.id,
-          title: n.title,
-          body: n.body,
-          tags: n.tags,
-          topic: n.topic,
-          source: n.source as PublicNote['source'],
-          createdAt: n.createdAt,
-          isPublic: true as const,
-        }))
-      );
-    });
+    fetch('/api/kokoro-public-notes')
+      .then(r => r.json())
+      .then(data => {
+        setLocalPublicNotes(
+          (data.notes || []).map((n: Record<string, unknown>) => ({
+            id: n.id as string,
+            title: n.title as string,
+            body: n.body as string,
+            tags: n.tags as string[],
+            source: (n.source || 'manual') as PublicNote['source'],
+            createdAt: n.createdAt as string,
+            isPublic: true as const,
+            authorLabel: n.authorLabel as string | undefined,
+          }))
+        );
+      })
+      .catch(() => {});
   }, []);
 
   const allPublicNotes = useMemo(
