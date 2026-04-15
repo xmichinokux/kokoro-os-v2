@@ -124,8 +124,17 @@ export default function KokoroBrowserPage() {
             createdAt: n.createdAt as string,
             isPublic: true as const,
             authorLabel: n.authorLabel as string | undefined,
+            authorId: n.authorId as string | undefined,
           }))
         );
+        // Note 作者のフォロー状態を取得
+        const noteAuthorIds = [...new Set((data.notes || []).map((n: Record<string, unknown>) => n.authorId).filter(Boolean))] as string[];
+        if (noteAuthorIds.length > 0) {
+          fetch(`/api/kokoro-follows?userIds=${encodeURIComponent(noteAuthorIds.join(','))}`)
+            .then(r => r.json())
+            .then(fd => setFollowState(prev => ({ ...prev, ...(fd.follows || {}) })))
+            .catch(() => {});
+        }
       })
       .catch(() => {});
   }, []);
@@ -779,6 +788,8 @@ export default function KokoroBrowserPage() {
                   accentColor={currentGamesen.color}
                   isLast={idx === timeline.length - 1}
                   onClick={() => router.push(`/kokoro-browser/${item.data.id}`)}
+                  isFollowing={item.data.authorId ? (followState[item.data.authorId] || false) : false}
+                  onFollow={handleFollow}
                 />
               ) : item.type === 'product' ? (
                 <ProductTimelineItem
@@ -820,12 +831,14 @@ export default function KokoroBrowserPage() {
 
 /* ─── Note タイムラインアイテム ─── */
 function NoteTimelineItem({
-  note, accentColor, isLast, onClick,
+  note, accentColor, isLast, onClick, isFollowing, onFollow,
 }: {
   note: PublicNote;
   accentColor: string;
   isLast: boolean;
   onClick: () => void;
+  isFollowing: boolean;
+  onFollow: (userId: string) => void;
 }) {
   const mono = { fontFamily: "'Space Mono', monospace" };
 
@@ -921,6 +934,62 @@ function NoteTimelineItem({
                 {tag}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* 著者 + アクション */}
+        {note.authorId && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}
+            onClick={e => e.stopPropagation()}
+          >
+            {note.authorLabel && (
+              <span style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
+                by {note.authorLabel}
+              </span>
+            )}
+            <button
+              onClick={e => { e.stopPropagation(); onFollow(note.authorId!); }}
+              style={{
+                ...mono, fontSize: 7, letterSpacing: '0.06em', cursor: 'pointer',
+                padding: '1px 6px', borderRadius: 8, border: 'none',
+                background: isFollowing ? '#ede9fe' : '#f3f4f6',
+                color: isFollowing ? '#7c3aed' : '#9ca3af',
+              }}
+            >
+              {isFollowing ? '★ フォロー中' : '☆ フォロー'}
+            </button>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const res = await fetch('/api/kokoro-messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'greet', recipientId: note.authorId }),
+                  });
+                  const data = await res.json();
+                  if (data.error) {
+                    if (res.status === 409) {
+                      window.location.href = '/kokoro-messages';
+                    } else {
+                      alert(data.error);
+                    }
+                    return;
+                  }
+                  window.location.href = '/kokoro-messages';
+                } catch {
+                  alert('送信に失敗しました');
+                }
+              }}
+              style={{
+                ...mono, fontSize: 7, letterSpacing: '0.06em', cursor: 'pointer',
+                padding: '1px 6px', borderRadius: 8,
+                color: '#7c3aed', background: 'transparent',
+                border: '1px solid #ede9fe',
+              }}
+            >
+              挨拶を送る
+            </button>
           </div>
         )}
       </button>
