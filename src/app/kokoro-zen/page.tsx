@@ -197,16 +197,40 @@ export default function KokoroZen() {
 
       <div style={{ maxWidth:680, margin:'0 auto', padding:'40px 20px 80px' }}>
 
-        {/* sessionStorageにデータがない場合 */}
-        {noInput && !isLoading && !result && (
-          <div style={{ textAlign:'center', padding:'80px 20px' }}>
-            <div style={{ fontSize:18, color:'#6b7280', marginBottom:12 }}>Talkから遷移してください</div>
-            <div style={{ fontSize:13, color:'#9ca3af', marginBottom:24 }}>Talkで会話した内容をもとに分析します</div>
-            <button onClick={() => router.push('/kokoro-chat')}
-              title="Talk を開く"
-              style={{ fontFamily:"'Space Mono', monospace", fontSize:11, color:'#7c3aed', background:'#ede9fe', border:'none', borderRadius:6, padding:'10px 24px', cursor:'pointer' }}>
-              ← Talk
-            </button>
+        {/* 入力エリア（結果表示前 & ローディング中でない場合） */}
+        {!isLoading && !result && (
+          <div style={{ padding:'40px 0' }}>
+            <div style={{ textAlign:'center', marginBottom:24 }}>
+              <div style={{ fontSize:18, color:'#1a1a1a', marginBottom:8 }}>何を深掘りしたい？</div>
+              <div style={{ fontSize:13, color:'#9ca3af' }}>悩み・モヤモヤ・気になっていること、なんでも</div>
+            </div>
+            <textarea
+              value={sourceText}
+              onChange={e => setSourceText(e.target.value)}
+              placeholder="例：最近、仕事のモチベーションが上がらない。転職を考えているけど踏み切れない..."
+              rows={5}
+              style={{
+                width:'100%', resize:'vertical', border:'1px solid #e5e7eb', borderRadius:8,
+                padding:'14px 16px', fontSize:14, lineHeight:1.8, outline:'none',
+                fontFamily:"'Noto Serif JP', serif", background:'#f9fafb', color:'#1a1a1a',
+                boxSizing:'border-box', minHeight:120,
+              }}
+            />
+            <div style={{ display:'flex', justifyContent:'center', marginTop:16 }}>
+              <button
+                onClick={() => runZenAnalysis(sourceText)}
+                disabled={!sourceText.trim()}
+                style={{
+                  fontFamily:"'Space Mono', monospace", fontSize:12, fontWeight:600,
+                  letterSpacing:'0.08em',
+                  padding:'10px 32px', borderRadius:8, border:'none', cursor:'pointer',
+                  background: sourceText.trim() ? '#7c3aed' : '#f3f4f6',
+                  color: sourceText.trim() ? '#fff' : '#9ca3af',
+                }}
+              >
+                Yoroshiku
+              </button>
+            </div>
           </div>
         )}
 
