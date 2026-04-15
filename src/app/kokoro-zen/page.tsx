@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { consumeNoteForZen, buildZenPromptFromNoteData } from '@/lib/kokoro/noteLinkage';
 import { saveToNote } from '@/lib/saveToNote';
+import { appendHonneLog } from '@/lib/kokoro/diagnosis/honneStorage';
 import PersonaLoading from '@/components/PersonaLoading';
 // Recipe import removed — bottom buttons simplified
 
@@ -72,6 +73,22 @@ export default function KokoroZen() {
       setLoadStep(3);
       await new Promise(r => setTimeout(r, 300));
       setResult(data);
+      // Zen分析結果を本音ログとして保存（Diagnosis用）
+      if (data.core) {
+        appendHonneLog({
+          id: `zen-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          sourceMode: 'normal',
+          source: 'zen',
+          topic: data.core.main_story?.slice(0, 30) || 'Zen分析',
+          surfaceText: text.slice(0, 200),
+          deepFeeling: data.emiMain || '',
+          conflictAxes: data.core.tensions || [],
+          detectedNeeds: data.core.needs || [],
+          emotionTone: [],
+          confidence: 0.8,
+        });
+      }
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }), 200);
     } catch (e) {
       setError(e instanceof Error ? e.message : '不明なエラー');

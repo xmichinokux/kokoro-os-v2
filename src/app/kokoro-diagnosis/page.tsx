@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PersonalDiagnosis, HonneLog } from '@/types/kokoroDiagnosis';
 import type { Persona } from '@/types/kokoroOutput';
-import { getHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
+import { getZenHonneLogs } from '@/lib/kokoro/diagnosis/honneStorage';
 import { buildPersonalDiagnosis } from '@/lib/kokoro/diagnosis/buildPersonalDiagnosis';
 import { pickFeaturedHonneLogs } from '@/lib/kokoro/diagnosis/pickFeaturedHonneLogs';
 import { buildDiagnosisActions, type DiagnosisAction } from '@/lib/kokoro/diagnosis/buildDiagnosisActions';
@@ -46,7 +46,7 @@ export default function KokoroDiagnosis() {
   const zenResultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const logs = getHonneLogs();
+    const logs = getZenHonneLogs();
     setLogCount(logs.length);
     if (logs.length === 0) return;
 
@@ -156,10 +156,7 @@ export default function KokoroDiagnosis() {
           <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
           <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Diagnosis</span>
         </div>
-        <button onClick={() => router.push('/kokoro-chat')}
-          style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#6b7280', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px', cursor: 'pointer' }}>
-          Talk に戻る
-        </button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 20px 80px', width: '100%' }}>
@@ -167,11 +164,11 @@ export default function KokoroDiagnosis() {
         {/* フォールバック: ログ0件 */}
         {logCount === 0 && (
           <div style={{ textAlign: 'center', padding: '80px 20px' }}>
-            <div style={{ fontSize: 18, color: '#6b7280', marginBottom: 12 }}>まだ本音ログがありません</div>
-            <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 24 }}>Talkで会話してみてください</div>
-            <button onClick={() => router.push('/kokoro-chat')}
+            <div style={{ fontSize: 18, color: '#6b7280', marginBottom: 12 }}>まだ分析ログがありません</div>
+            <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 24 }}>Zenで深掘り分析を行うと、ここに傾向が表示されます</div>
+            <button onClick={() => router.push('/kokoro-zen')}
               style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: '#7c3aed', background: '#ede9fe', border: 'none', borderRadius: 6, padding: '10px 24px', cursor: 'pointer' }}>
-              Talk を開く →
+              Zen を開く →
             </button>
           </div>
         )}
@@ -181,7 +178,7 @@ export default function KokoroDiagnosis() {
             {/* ① タイトル */}
             <div style={{ marginBottom: 32 }}>
               <h1 style={{ fontSize: 20, fontWeight: 400, marginBottom: 6 }}>パーソナル診断</h1>
-              <div style={{ fontSize: 12, color: '#9ca3af' }}>最近の会話から見えた傾向</div>
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>Zenの分析から見えた傾向</div>
               <div style={{ fontSize: 10, color: '#d1d5db', marginTop: 4, fontFamily: "'Space Mono', monospace" }}>
                 {formatDate(diagnosis.updatedAt)} / {diagnosis.sourceLogCount}件の本音ログをもとに生成
               </div>
