@@ -27,6 +27,7 @@ const DOCK_APPS = [
   { emoji: '👔', href: '/kokoro-fashion', label: 'Fashion' },
   { emoji: '🔒', href: '/kokoro-gatekeeper', label: 'Gate' },
   { emoji: '🔨', href: '/kokoro-builder', label: 'Builder' },
+  { emoji: '🎨', href: '/kokoro-creative', label: 'Creative' },
   { emoji: '⚡', href: '/kokoro-strategy', label: 'Strategy' },
   { emoji: '🌍', href: '/kokoro-world', label: 'World' },
   { emoji: '🎛️', href: '/kokoro-tuner', label: 'Tuner' },
