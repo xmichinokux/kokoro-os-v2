@@ -146,16 +146,10 @@ export default function KokoroBuddyPage() {
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>アイデア壁打ちAI</span>
           </div>
         </div>
-        <button
-          onClick={() => router.push('/kokoro-chat')}
-          title="Talkに戻る"
-          style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
-        >
-          ← Talk
-        </button>
+        <div />
       </header>
 
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 40px', display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 60px)' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 120px', display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 60px)' }}>
 
         {/* モード切替 */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, alignItems: 'center' }}>
@@ -178,7 +172,7 @@ export default function KokoroBuddyPage() {
               if (!hasCache) return;
               setMode('michi'); setMessages([]); setError('');
             }}
-            title={!hasCache ? 'Profileページでドライブをスキャンしてください' : 'Buddy Michi'}
+            title={!hasCache ? 'Profileページでドライブをスキャンしてください' : 'Buddy Deep'}
             style={{
               ...mono, fontSize: 10, letterSpacing: '.1em',
               padding: '8px 20px', borderRadius: 2,
@@ -191,7 +185,7 @@ export default function KokoroBuddyPage() {
               transition: 'all 0.15s',
             }}
           >
-            Buddy Michi
+            Buddy Deep
           </button>
           {!hasCache && (
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', marginLeft: 8 }}>
