@@ -380,8 +380,21 @@ export default function KokoroBuilderPage() {
                   // 仕様書を入力してください
                 </div>
                 {fromGatekeeper && (
-                  <div style={{ ...mono, fontSize: 9, letterSpacing: '0.1em', color: '#059669', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '8px 14px', borderRadius: 4, marginBottom: 16 }}>
-                    ✓ Gatekeeperから読み込み済み
+                  <div style={{ ...mono, fontSize: 9, letterSpacing: '0.1em', color: '#059669', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '8px 14px', borderRadius: 4, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                    <span>✓ Gatekeeperから読み込み済み</span>
+                    <button
+                      onClick={() => {
+                        setSpec('');
+                        setFromGatekeeper(false);
+                        try { localStorage.removeItem('kokoro_builder_input'); } catch { /* ignore */ }
+                      }}
+                      style={{
+                        ...mono, fontSize: 9, letterSpacing: '0.08em',
+                        color: '#9ca3af', background: 'transparent',
+                        border: '1px solid #d1d5db', borderRadius: 3,
+                        padding: '3px 10px', cursor: 'pointer',
+                      }}
+                    >✕ リセット</button>
                   </div>
                 )}
                 <textarea value={spec} onChange={e => { setSpec(e.target.value); setFromGatekeeper(false); }}

@@ -91,7 +91,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
     }
 
-    const { phase, input, strategyData, history, questionCount } = await req.json();
+    const { phase, input, noteData, strategyData, history, questionCount } = await req.json();
+    const contextData = noteData || strategyData; // 後方互換
 
     let system: string;
     let userMessage: string;
@@ -99,8 +100,8 @@ export async function POST(req: NextRequest) {
     if (phase === 'start') {
       // フェーズ1: 最初の質問を生成
       system = QUESTION_SYSTEM;
-      const context = strategyData
-        ? `【Strategyデータ】\n${strategyData}\n\n【ユーザーの追加入力】\n${input || '（なし）'}`
+      const context = contextData
+        ? `【参考資料（Note）】\n${contextData}\n\n【ユーザーの追加入力】\n${input || '（なし）'}`
         : input;
       userMessage = `以下の要求から最初の質問を生成してください：\n\n${context}`;
     } else if (phase === 'next') {
