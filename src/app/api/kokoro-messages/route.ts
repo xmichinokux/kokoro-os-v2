@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabase } from '@/lib/supabase/server';
+import { createServerSupabase, createServiceSupabase } from '@/lib/supabase/server';
 
 export const maxDuration = 30;
 
@@ -99,12 +99,12 @@ async function moderateMessage(
   };
 }
 
-// ── プロフィール要約を取得 ──
+// ── プロフィール要約を取得（サービスロールで他ユーザーも参照） ──
 async function getProfileSummary(
-  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
   userId: string,
 ): Promise<string> {
-  const { data } = await supabase
+  const admin = createServiceSupabase();
+  const { data } = await admin
     .from('user_profiles')
     .select('display_name, sensibility_cache, thought, structure')
     .eq('user_id', userId)
@@ -118,14 +118,16 @@ async function getProfileSummary(
   return parts.join('\n') || '(プロフィール未設定)';
 }
 
-// ── 受信設定チェック ──
+// ── 受信設定チェック（サービスロールでRLSバイパス） ──
 async function canSendTo(
-  supabase: Awaited<ReturnType<typeof createServerSupabase>>,
   senderId: string,
   recipientId: string,
 ): Promise<{ allowed: boolean; reason?: string }> {
+  // RLSをバイパスしてクロスユーザーのデータを参照
+  const admin = createServiceSupabase();
+
   // 受け手の設定を取得
-  const { data: profile } = await supabase
+  const { data: profile } = await admin
     .from('user_profiles')
     .select('message_reception, account_type')
     .eq('user_id', recipientId)
@@ -139,8 +141,17 @@ async function canSendTo(
   async function hasBookmarkOrFollow(fromUserId: string, toUserId: string): Promise<{ result: boolean; debug: Record<string, unknown> }> {
     const debug: Record<string, unknown> = { fromUserId, toUserId };
 
+    // account_follows テーブルの全行を確認（デバッグ）
+    const { data: allFollows, error: allErr } = await admin
+      .from('account_follows')
+      .select('*')
+      .limit(20);
+    debug.allFollows = allFollows;
+    debug.allFollowsError = allErr?.message;
+    debug.allFollowsCount = allFollows?.length ?? 0;
+
     // アカウントフォローチェック
-    const { data: follow, error: followErr } = await supabase
+    const { data: follow, error: followErr } = await admin
       .from('account_follows')
       .select('id, follower_id, following_id')
       .eq('follower_id', fromUserId)
@@ -150,32 +161,25 @@ async function canSendTo(
     debug.followError = followErr?.message;
     if ((follow || []).length > 0) return { result: true, debug };
 
-    // 全フォローも確認（デバッグ用）
-    const { data: allFollows } = await supabase
-      .from('account_follows')
-      .select('id, follower_id, following_id')
-      .limit(10);
-    debug.allFollows = allFollows;
-
     // ノートブックマークチェック
-    const { data: notes, error: notesErr } = await supabase
+    const { data: notes, error: notesErr } = await admin
       .from('notes')
       .select('id')
       .eq('user_id', toUserId)
       .eq('is_public', true)
       .limit(50);
-    debug.publicNotes = notes?.length;
     debug.notesError = notesErr?.message;
     const noteIds = (notes || []).map(n => n.id);
+    debug.publicNoteCount = noteIds.length;
     if (noteIds.length === 0) return { result: false, debug };
 
-    const { data: bms } = await supabase
+    const { data: bms } = await admin
       .from('bookmarks')
       .select('id')
       .eq('user_id', fromUserId)
       .in('note_id', noteIds)
       .limit(1);
-    debug.bookmarks = bms?.length;
+    debug.bookmarkCount = bms?.length ?? 0;
     return { result: (bms || []).length > 0, debug };
   }
 
@@ -184,7 +188,7 @@ async function canSendTo(
     if (!check.result) {
       return {
         allowed: false,
-        reason: `ブックマーク/フォローが見つかりません`,
+        reason: '相手があなたをフォロー/ブックマークしていないため送信できません',
         debug: { reception, senderId, recipientId, ...check.debug },
       } as { allowed: boolean; reason: string; debug?: unknown };
     }
@@ -194,11 +198,19 @@ async function canSendTo(
   if (reception === 'mutual') {
     const check1 = await hasBookmarkOrFollow(recipientId, senderId);
     if (!check1.result) {
-      return { allowed: false, reason: '相互フォローが必要です (recipient→sender missing)', debug: check1.debug } as { allowed: boolean; reason: string; debug?: unknown };
+      return {
+        allowed: false,
+        reason: '相互フォローが必要です（相手→あなた が未フォロー）',
+        debug: { reception, ...check1.debug },
+      } as { allowed: boolean; reason: string; debug?: unknown };
     }
     const check2 = await hasBookmarkOrFollow(senderId, recipientId);
     if (!check2.result) {
-      return { allowed: false, reason: '相互フォローが必要です (sender→recipient missing)', debug: check2.debug } as { allowed: boolean; reason: string; debug?: unknown };
+      return {
+        allowed: false,
+        reason: '相互フォローが必要です（あなた→相手 が未フォロー）',
+        debug: { reception, ...check2.debug },
+      } as { allowed: boolean; reason: string; debug?: unknown };
     }
     return { allowed: true };
   }
@@ -321,7 +333,7 @@ export async function POST(req: NextRequest) {
       if (recipientId === user.id) return NextResponse.json({ error: '自分にはメッセージを送れません' }, { status: 400 });
 
       // 受信設定チェック
-      const check = await canSendTo(supabase, user.id, recipientId);
+      const check = await canSendTo(user.id, recipientId);
       if (!check.allowed) {
         return NextResponse.json({
           error: check.reason,
@@ -341,8 +353,8 @@ export async function POST(req: NextRequest) {
       }
 
       // AI挨拶生成
-      const senderProfile = await getProfileSummary(supabase, user.id);
-      const recipientProfile = await getProfileSummary(supabase, recipientId);
+      const senderProfile = await getProfileSummary(user.id);
+      const recipientProfile = await getProfileSummary(recipientId);
       const greeting = await generateGreeting(senderProfile, recipientProfile, apiKey);
 
       // 会話作成
@@ -375,8 +387,8 @@ export async function POST(req: NextRequest) {
       if (!conv) return NextResponse.json({ error: '承認可能な会話が見つかりません' }, { status: 404 });
 
       // AI返答挨拶を生成
-      const recipientProfile = await getProfileSummary(supabase, user.id);
-      const senderProfile = await getProfileSummary(supabase, conv.user_a);
+      const recipientProfile = await getProfileSummary(user.id);
+      const senderProfile = await getProfileSummary(conv.user_a);
       const greeting = await generateGreeting(recipientProfile, senderProfile, apiKey);
 
       const { error } = await supabase
