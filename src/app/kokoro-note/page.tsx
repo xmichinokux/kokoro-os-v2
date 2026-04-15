@@ -1033,82 +1033,37 @@ export default function KokoroNotePage() {
             </button>
           )}
 
-          {/* 商品として登録ボタン */}
-          {!selectedNote.isProduct ? (
-            <button
-              onClick={() => {
-                setShowProductForm(true);
+          {/* 商品として登録 / 商品設定を編集 */}
+          <button
+            onClick={() => {
+              if (selectedNote.isProduct) {
+                // 既存値をプリフィル
+                setProductPrice(selectedNote.productPrice || 0);
+                setProductDescription(selectedNote.productDescription || '');
+                setProductExternalUrl(selectedNote.productExternalUrl || '');
+                setProductType(selectedNote.productType || 'pdf');
+                setProductAuthorName(selectedNote.authorName || '');
+              } else {
                 setProductPrice(0);
                 setProductDescription('');
                 setProductExternalUrl('');
                 setProductType('pdf');
                 setProductAuthorName('');
-                setAiPricing(null);
-              }}
-              style={{
-                fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
-                padding:'8px 16px', borderRadius:6, cursor:'pointer', marginLeft:8,
-                background:'#fef3c7', color:'#92400e', border:'1px solid #fde68a',
-              }}
-            >
-              🏷 商品として登録する
-            </button>
-          ) : (
-            <span style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#f59e0b', marginLeft:8 }}>
-              🏷 商品 ¥{selectedNote.productPrice?.toLocaleString()} ({selectedNote.productType})
-            </span>
-          )}
+              }
+              setAiPricing(null);
+              setShowProductForm(true);
+            }}
+            style={{
+              fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+              padding:'8px 16px', borderRadius:6, cursor:'pointer', marginLeft:8,
+              background:'#fef3c7', color:'#92400e', border:'1px solid #fde68a',
+            }}
+          >
+            {selectedNote.isProduct
+              ? `🏷 商品設定を編集 (¥${selectedNote.productPrice?.toLocaleString()})`
+              : '🏷 商品として登録する'}
+          </button>
         </div>
-
-        {/* PDF生成 */}
-        {selectedNote.isProduct && (
-          <div style={{
-            display:'flex', alignItems:'center', gap:10, marginBottom:16,
-            padding:'10px 14px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8,
-          }}>
-            <button
-              onClick={async () => {
-                setPdfGenerating(true);
-                try {
-                  const res = await fetch('/api/kokoro-pdf', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ noteId: selectedNote.id }),
-                  });
-                  const data = await res.json();
-                  if (data.error) throw new Error(data.error);
-                  // Note を再取得して URL 更新を反映
-                  const all = await getAllNotes();
-                  setNotes(all);
-                  alert('PDF を生成しました');
-                } catch (e) {
-                  alert(e instanceof Error ? e.message : 'PDF 生成に失敗しました');
-                } finally { setPdfGenerating(false); }
-              }}
-              disabled={pdfGenerating}
-              style={{
-                fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
-                padding:'8px 16px', borderRadius:4, cursor: pdfGenerating ? 'not-allowed' : 'pointer',
-                background: pdfGenerating ? '#9ca3af' : '#7c3aed', color:'#fff', border:'none',
-              }}
-            >
-              {pdfGenerating ? 'PDF生成中...' : 'PDF を生成する'}
-            </button>
-            {selectedNote.productExternalUrl && (
-              <a
-                href={selectedNote.productExternalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed',
-                  textDecoration:'underline',
-                }}
-              >
-                生成済み PDF を確認 →
-              </a>
-            )}
-          </div>
-        )}
 
         {/* AI鑑定バッジ表示トグル */}
         {selectedNote.isProduct && selectedNote.aiPricedAmount && (
@@ -1168,14 +1123,14 @@ export default function KokoroNotePage() {
           </div>
         )}
 
-        {/* 商品登録フォーム */}
-        {showProductForm && !selectedNote.isProduct && (
+        {/* 商品登録・編集フォーム */}
+        {showProductForm && (
           <div style={{
             padding:'20px', background:'#fffbeb', border:'1px solid #fde68a',
             borderRadius:8, marginBottom:16,
           }}>
             <div style={{ fontFamily:"'Space Mono', monospace", fontSize:9, letterSpacing:'0.12em', color:'#92400e', marginBottom:16 }}>
-              // 商品として登録
+              // {selectedNote.isProduct ? '商品設定の編集' : '商品として登録'}
             </div>
 
             {/* AI値付け */}
@@ -1279,6 +1234,113 @@ export default function KokoroNotePage() {
               </div>
             </div>
 
+            {/* PDF生成セクション */}
+            <div style={{ marginTop:16, padding:'12px', background:'#fff', border:'1px solid #e5e7eb', borderRadius:6 }}>
+              <div style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#6b7280', marginBottom:8, letterSpacing:'0.1em' }}>
+                // PDF生成
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                <button
+                  onClick={async () => {
+                    setPdfGenerating(true);
+                    try {
+                      // まだ商品登録されていない場合は先に登録
+                      if (!selectedNote.isProduct) {
+                        const regRes = await fetch('/api/kokoro-products', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            noteId: selectedNote.id,
+                            productPrice: productPrice || 0,
+                            productDescription,
+                            productExternalUrl,
+                            productType,
+                            authorName: productAuthorName || '匿名',
+                            aiPricedAmount: aiPricing?.suggestedPrice || undefined,
+                            showAiBadge: !!aiPricing,
+                          }),
+                        });
+                        const regData = await regRes.json();
+                        if (regData.error) throw new Error(regData.error);
+                      }
+                      const res = await fetch('/api/kokoro-pdf', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ noteId: selectedNote.id }),
+                      });
+                      const data = await res.json();
+                      if (data.error) throw new Error(data.error);
+                      setProductExternalUrl(data.url);
+                      const all = await getAllNotes();
+                      setNotes(all);
+                    } catch (e) {
+                      alert(e instanceof Error ? e.message : 'PDF 生成に失敗しました');
+                    } finally { setPdfGenerating(false); }
+                  }}
+                  disabled={pdfGenerating}
+                  style={{
+                    fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+                    padding:'8px 16px', borderRadius:4, cursor: pdfGenerating ? 'not-allowed' : 'pointer',
+                    background: pdfGenerating ? '#9ca3af' : '#7c3aed', color:'#fff', border:'none',
+                  }}
+                >
+                  {pdfGenerating ? 'PDF生成中...' : 'PDF を生成する'}
+                </button>
+                <span style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#9ca3af' }}>
+                  Note の内容から A4 PDF を自動生成します
+                </span>
+              </div>
+              {/* PDF URL表示 + ダウンロード */}
+              {(productExternalUrl && productExternalUrl.includes('kokoro-pdfs')) && (
+                <div style={{ marginTop:10, padding:'10px', background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:6 }}>
+                  <div style={{ fontFamily:"'Space Mono', monospace", fontSize:8, color:'#16a34a', marginBottom:6, letterSpacing:'0.1em' }}>
+                    // 生成済み PDF
+                  </div>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                    <a
+                      href={productExternalUrl}
+                      download
+                      style={{
+                        fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
+                        padding:'6px 14px', borderRadius:4, textDecoration:'none',
+                        background:'#16a34a', color:'#fff',
+                      }}
+                    >
+                      PDF をダウンロード
+                    </a>
+                    <a
+                      href={productExternalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontFamily:"'Space Mono', monospace", fontSize:9, color:'#7c3aed',
+                        textDecoration:'underline',
+                      }}
+                    >
+                      プレビュー →
+                    </a>
+                  </div>
+                  <div style={{ marginTop:6, display:'flex', gap:4, alignItems:'center' }}>
+                    <input
+                      type="text"
+                      readOnly
+                      value={productExternalUrl}
+                      onClick={e => { (e.target as HTMLInputElement).select(); navigator.clipboard.writeText(productExternalUrl); }}
+                      style={{
+                        flex:1, fontFamily:"'Space Mono', monospace", fontSize:9, padding:'4px 8px',
+                        border:'1px solid #bbf7d0', borderRadius:4, background:'#fff', color:'#374151',
+                        outline:'none', cursor:'pointer', boxSizing:'border-box',
+                      }}
+                    />
+                    <span style={{ fontFamily:"'Space Mono', monospace", fontSize:7, color:'#9ca3af' }}>
+                      クリックでコピー
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 登録/更新 + キャンセル */}
             <div style={{ display:'flex', gap:8, marginTop:16 }}>
               <button
                 onClick={async () => {
@@ -1294,13 +1356,12 @@ export default function KokoroNotePage() {
                         productExternalUrl,
                         productType,
                         authorName: productAuthorName || '匿名',
-                        aiPricedAmount: aiPricing?.suggestedPrice || undefined,
-                        showAiBadge: !!aiPricing,
+                        aiPricedAmount: aiPricing?.suggestedPrice || selectedNote.aiPricedAmount || undefined,
+                        showAiBadge: aiPricing ? true : (selectedNote.showAiBadge ?? false),
                       }),
                     });
                     const data = await res.json();
                     if (data.error) throw new Error(data.error);
-                    // ローカルのnoteも更新
                     const all = await getAllNotes();
                     setNotes(all);
                     setShowProductForm(false);
@@ -1316,11 +1377,11 @@ export default function KokoroNotePage() {
                   opacity: productPrice ? 1 : 0.5,
                 }}
               >
-                {productRegistering ? '登録中...' : '🏷 商品として登録'}
+                {productRegistering ? '保存中...' : selectedNote.isProduct ? '🏷 商品設定を保存' : '🏷 商品として登録'}
               </button>
               <button onClick={() => setShowProductForm(false)}
                 style={{ fontFamily:"'Space Mono', monospace", fontSize:10, padding:'10px 16px', borderRadius:4, cursor:'pointer', background:'transparent', color:'#9ca3af', border:'1px solid #e5e7eb' }}>
-                キャンセル
+                閉じる
               </button>
             </div>
           </div>
