@@ -11,7 +11,24 @@ import {
   type KokoroUserProfile,
 } from '@/lib/getProfile';
 
-type Mode = 'coord' | 'check' | 'brand' | 'next';
+type Mode = 'coord' | 'check' | 'brand' | 'next' | 'deep';
+
+const DEEP_CACHE_KEY = 'kokoro_fashion_deep_cache';
+
+type DeepBrand = {
+  name: string;
+  reason: string;
+  price?: string;
+  url?: string;
+  shop?: string;
+};
+type DeepResult = {
+  summary: string;
+  brands: DeepBrand[];
+  avoid: string;
+  sources: { title: string; uri: string }[];
+  generatedAt: string;
+};
 
 type CheckResult = {
   styleName: string;
@@ -70,12 +87,33 @@ export default function KokoroFashion() {
   const [nextResult, setNextResult] = useState<NextResult | null>(null);
   const [nextNoteSaved, setNextNoteSaved] = useState(false);
 
+  // Deep
+  const [deepBudget, setDeepBudget] = useState('ミドル（5千〜2万円）');
+  const [deepAccess, setDeepAccess] = useState('通販・オンライン中心');
+  const [deepArea, setDeepArea] = useState('');
+  const [deepResult, setDeepResult] = useState<DeepResult | null>(null);
+  const [deepNoteSaved, setDeepNoteSaved] = useState(false);
+
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
     if (started) return;
     setStarted(true);
     getKokoroProfile().then(p => { if (p) setKokoroProfile(p); });
+
+    // Deep キャッシュ読み込み
+    try {
+      const raw = localStorage.getItem(DEEP_CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached?.result) {
+          setDeepResult(cached.result);
+          if (cached.budget) setDeepBudget(cached.budget);
+          if (cached.access) setDeepAccess(cached.access);
+          if (cached.area) setDeepArea(cached.area);
+        }
+      }
+    } catch { /* ignore */ }
 
     // Talk 連携：画像引き継ぎ
     const raw = sessionStorage.getItem('fashionIntent');
@@ -244,6 +282,42 @@ export default function KokoroFashion() {
     }
   };
 
+  const runDeep = async () => {
+    setError('');
+    setIsLoading(true);
+    setDeepNoteSaved(false);
+    try {
+      const profile: KokoroProfile = await getProfile();
+      const kp = await getKokoroProfile();
+      const res = await fetch('/api/fashion-deep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile, kokoroProfile: kp,
+          budget: deepBudget, access: deepAccess, area: deepArea,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setDeepResult(data);
+      try {
+        localStorage.setItem(DEEP_CACHE_KEY, JSON.stringify({
+          result: data, budget: deepBudget, access: deepAccess, area: deepArea,
+        }));
+      } catch { /* ignore */ }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '不明なエラー');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const clearDeepCache = () => {
+    try { localStorage.removeItem(DEEP_CACHE_KEY); } catch { /* ignore */ }
+    setDeepResult(null);
+    setDeepNoteSaved(false);
+  };
+
   const saveCoord = async () => {
     if (!coordResult || coordNoteSaved) return;
     const text = [
@@ -290,6 +364,36 @@ export default function KokoroFashion() {
     ].join('\n');
     await saveToNote(text, 'Fashion');
     setBrandNoteSaved(true);
+  };
+
+  const saveDeep = async () => {
+    if (!deepResult || deepNoteSaved) return;
+    const text = [
+      `[おすすめDeep] 予算: ${deepBudget} / 入手: ${deepAccess}${deepArea ? ` / エリア: ${deepArea}` : ''}`,
+      '',
+      deepResult.summary,
+      '',
+      ...deepResult.brands.map(b =>
+        `・${b.name}${b.price ? ` (${b.price})` : ''}\n  ${b.reason}${b.url ? `\n  ${b.url}` : ''}${b.shop ? `\n  取扱: ${b.shop}` : ''}`
+      ),
+      '',
+      `[避けるべき方向性]\n${deepResult.avoid}`,
+    ].join('\n');
+    await saveToNote(text, 'Fashion');
+    setDeepNoteSaved(true);
+  };
+
+  const formatRelative = (iso: string): string => {
+    try {
+      const diff = Date.now() - new Date(iso).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'たった今';
+      if (mins < 60) return `${mins}分前`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}時間前`;
+      const days = Math.floor(hours / 24);
+      return `${days}日前`;
+    } catch { return ''; }
   };
 
   const saveNext = async () => {
@@ -422,6 +526,10 @@ export default function KokoroFashion() {
           <button style={tabStyle(mode === 'check')} onClick={() => setMode('check')}>チェック</button>
           <button style={tabStyle(mode === 'brand')} onClick={() => setMode('brand')}>ブランド</button>
           <button style={tabStyle(mode === 'next')} onClick={() => setMode('next')}>次の一点</button>
+          <button style={tabStyle(mode === 'deep')} onClick={() => setMode('deep')}>
+            おすすめDeep
+            <span style={{ marginLeft: 4, fontSize: 7, color: '#f472b6', letterSpacing: '0.05em' }}>★</span>
+          </button>
         </div>
 
         {/* ① 今日のコーデ */}
@@ -653,6 +761,157 @@ export default function KokoroFashion() {
                 </div>
                 <button onClick={saveNext} disabled={nextNoteSaved} style={noteBtnStyle(nextNoteSaved)}>
                   {nextNoteSaved ? 'Note ✓' : 'Note +'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ⑤ おすすめDeep (Gemini + Google検索) */}
+        {mode === 'deep' && (
+          <div>
+            <div style={{
+              marginBottom: 20, padding: '12px 16px',
+              background: 'rgba(244,114,182,0.06)',
+              border: '1px solid rgba(244,114,182,0.2)',
+              borderLeft: '3px solid #f472b6',
+              borderRadius: '0 4px 4px 0',
+            }}>
+              <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, letterSpacing: '0.14em', color: '#f472b6', marginBottom: 6 }}>
+                // POWERED BY GEMINI + GOOGLE SEARCH
+              </div>
+              <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.7 }}>
+                インターネットを検索して、実在するブランド・ショップを提案します。結果は端末に保存され、次回開いた時も残ります。
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={labelStyle}>// 予算感</label>
+                <select style={selectStyle} value={deepBudget} onChange={e => setDeepBudget(e.target.value)}>
+                  <option>プチプラ（〜5千円）</option>
+                  <option>ミドル（5千〜2万円）</option>
+                  <option>ハイ（2万〜5万円）</option>
+                  <option>ラグジュアリー（5万円〜）</option>
+                  <option>問わない</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>// 入手しやすさ</label>
+                <select style={selectStyle} value={deepAccess} onChange={e => setDeepAccess(e.target.value)}>
+                  <option>通販・オンライン中心</option>
+                  <option>全国展開の店舗</option>
+                  <option>都市部の路面店もOK</option>
+                  <option>問わない</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>// エリア（任意・都市部の路面店を探す場合）</label>
+              <input
+                type="text"
+                value={deepArea}
+                onChange={e => setDeepArea(e.target.value)}
+                placeholder="例：東京（渋谷・原宿）、京都、名古屋..."
+                style={{
+                  width: '100%', background: '#f8f9fa', border: '1px solid #d1d5db',
+                  borderRadius: 4, padding: '10px 12px', fontSize: 13, color: '#111827',
+                  outline: 'none', fontFamily: "'Noto Sans JP', sans-serif", boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {!deepResult && (
+              <button style={runBtn(!isLoading)} onClick={runDeep} disabled={isLoading}>
+                Yoroshiku
+              </button>
+            )}
+
+            {isLoading && (
+              <div style={{ marginTop: 16 }}>
+                <PersonaLoading />
+                <div style={{ textAlign: 'center', marginTop: 10, fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', letterSpacing: '0.12em' }}>
+                  // Googleを検索しています...
+                </div>
+              </div>
+            )}
+
+            {deepResult && (
+              <div style={resultCardStyle}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #e5e7eb',
+                  gap: 8, flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', letterSpacing: '0.1em' }}>
+                    // キャッシュ保存中 · {formatRelative(deepResult.generatedAt)}に生成
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={runDeep} disabled={isLoading}
+                      style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#7c3aed', background: 'transparent', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', letterSpacing: '0.08em' }}>
+                      ↻ 再取得
+                    </button>
+                    <button onClick={clearDeepCache}
+                      style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 4, padding: '4px 10px', cursor: 'pointer', letterSpacing: '0.08em' }}>
+                      ✕ 削除
+                    </button>
+                  </div>
+                </div>
+
+                {deepResult.summary && (
+                  <div style={{ borderLeft: '2px solid #f472b6', paddingLeft: 16, marginBottom: 20 }}>
+                    <div style={{ fontSize: 14, lineHeight: 2, color: '#374151' }}>{deepResult.summary}</div>
+                  </div>
+                )}
+
+                <div style={resultSectionStyle}>
+                  <span style={{ ...resultLabelStyle, color: '#f472b6' }}>// 検索で見つかったブランド</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
+                    {deepResult.brands.map((b, i) => (
+                      <div key={i} style={{ background: '#fff', border: '1px solid #e5e7eb', borderLeft: '2px solid #f472b6', padding: 14, borderRadius: '0 4px 4px 0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                          <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 12, color: '#1a1a1a', fontWeight: 700, letterSpacing: '0.05em' }}>{b.name}</div>
+                          {b.price && <div style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#f472b6', letterSpacing: '0.08em' }}>{b.price}</div>}
+                        </div>
+                        <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.8, marginBottom: 6 }}>{b.reason}</div>
+                        {b.shop && (
+                          <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>取扱: {b.shop}</div>
+                        )}
+                        {b.url && (
+                          <a href={b.url} target="_blank" rel="noopener noreferrer"
+                            style={{ fontFamily: "'Space Mono', monospace", fontSize: 10, color: '#7c3aed', textDecoration: 'none', letterSpacing: '0.05em', wordBreak: 'break-all' }}>
+                            → {b.url.replace(/^https?:\/\//, '').slice(0, 50)}{b.url.length > 57 ? '...' : ''}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {deepResult.avoid && (
+                  <div style={resultSectionStyle}>
+                    <span style={resultLabelStyle}>// 避けるべき方向性</span>
+                    <div style={resultBodyStyle}>{deepResult.avoid}</div>
+                  </div>
+                )}
+
+                {deepResult.sources && deepResult.sources.length > 0 && (
+                  <div style={{ ...resultSectionStyle, marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>
+                    <span style={{ ...resultLabelStyle, color: '#9ca3af' }}>// 検索ソース</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                      {deepResult.sources.slice(0, 5).map((s, i) => (
+                        <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer"
+                          style={{ fontFamily: "'Space Mono', monospace", fontSize: 9, color: '#6b7280', textDecoration: 'none', letterSpacing: '0.03em' }}>
+                          · {s.title.slice(0, 60)}{s.title.length > 60 ? '...' : ''}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={saveDeep} disabled={deepNoteSaved} style={noteBtnStyle(deepNoteSaved)}>
+                  {deepNoteSaved ? 'Note ✓' : 'Note +'}
                 </button>
               </div>
             )}
