@@ -1,40 +1,48 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveToNote } from '@/lib/saveToNote';
 import PersonaLoading from '@/components/PersonaLoading';
 
-type AgendaItem = { topic: string; duration: string; questions: string[] };
-type ActionItem = { task: string; owner?: string };
+type DiscussionItem = { persona: string; text: string };
+type ActionItem = { task: string; persona?: string };
 type BoardResult = {
-  opening: string;
-  agenda_items: AgendaItem[];
+  discussion: DiscussionItem[];
   action_items: ActionItem[];
-  closing: string;
+  conclusion: string;
+};
+
+const PERSONA_MAP: Record<string, { name: string; icon: string; color: string }> = {
+  gnome: { name: 'ノーム', icon: '🌱', color: '#d97706' },
+  shin:  { name: 'シン',   icon: '🔍', color: '#2563eb' },
+  canon: { name: 'カノン', icon: '🌙', color: '#7c3aed' },
+  dig:   { name: 'ディグ', icon: '🎧', color: '#059669' },
+  emi:   { name: 'エミ',   icon: '🌊', color: '#db2777' },
 };
 
 export default function KokoroBoardPage() {
-  const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
   const accentColor = '#0ea5e9';
 
-  const [members, setMembers] = useState('');
   const [agenda, setAgenda] = useState('');
   const [result, setResult] = useState<BoardResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [retryMsg, setRetryMsg] = useState('');
+  const [visibleCount, setVisibleCount] = useState(0);
+  const discussionRef = useRef<HTMLDivElement>(null);
 
   const canSubmit = agenda.trim().length > 0 && !isLoading;
 
+  /* ─── 会議開始 ─── */
   const handleStart = useCallback(async () => {
     if (!agenda.trim()) return;
     setIsLoading(true);
     setError('');
     setResult(null);
     setSaved(false);
+    setVisibleCount(0);
 
     const MAX_RETRIES = 5;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -42,7 +50,7 @@ export default function KokoroBoardPage() {
         const res = await fetch('/api/kokoro-board', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agenda: agenda.trim(), members: members.trim() }),
+          body: JSON.stringify({ agenda: agenda.trim() }),
         });
         const data = await res.json();
         if (res.status === 529 || data.error === 'overloaded') {
@@ -54,7 +62,7 @@ export default function KokoroBoardPage() {
           setError('サーバーが混雑しています。しばらく待ってからお試しください。');
           break;
         }
-        if (!res.ok || data.error) throw new Error(data.error || '会議台本の生成に失敗しました');
+        if (!res.ok || data.error) throw new Error(data.error || '会議の生成に失敗しました');
         setResult(data.data);
         break;
       } catch (e) {
@@ -68,23 +76,49 @@ export default function KokoroBoardPage() {
     }
     setRetryMsg('');
     setIsLoading(false);
-  }, [agenda, members]);
+  }, [agenda]);
 
+  /* ─── 発言を順番に表示するアニメーション ─── */
+  useEffect(() => {
+    if (!result) return;
+    const total = result.discussion.length;
+    if (visibleCount >= total) return;
+
+    const timer = setTimeout(() => {
+      setVisibleCount(prev => prev + 1);
+      // 自動スクロール
+      if (discussionRef.current) {
+        discussionRef.current.scrollTop = discussionRef.current.scrollHeight;
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [result, visibleCount]);
+
+  const allRevealed = result && visibleCount >= result.discussion.length;
+
+  /* ─── Note保存 ─── */
   const handleSaveToNote = async () => {
     if (!result) return;
-    let body = `会議: ${agenda}\n\n[開会]\n${result.opening}\n\n`;
-    body += result.agenda_items.map((a, i) =>
-      `[議題${i + 1}] ${a.topic} (${a.duration})\n${a.questions.map(q => '・' + q).join('\n')}`
-    ).join('\n\n');
+    let body = `会議: ${agenda}\n\n`;
+    body += '[議論]\n';
+    body += result.discussion.map(d => {
+      const p = PERSONA_MAP[d.persona] || { name: d.persona };
+      return `${p.name}：${d.text}`;
+    }).join('\n');
     body += '\n\n[アクションアイテム]\n';
-    body += result.action_items.map(a => `✓ ${a.task}${a.owner ? ` (${a.owner})` : ''}`).join('\n');
-    body += `\n\n[閉会]\n${result.closing}`;
+    body += result.action_items.map(a => {
+      const p = a.persona ? PERSONA_MAP[a.persona]?.name || a.persona : '';
+      return `✓ ${a.task}${p ? `（${p}）` : ''}`;
+    }).join('\n');
+    body += `\n\n[結論]\n${result.conclusion}`;
 
     await saveToNote(body, 'Board');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
+  /* ─── sessionStorage ─── */
   useEffect(() => {
     const raw = sessionStorage.getItem('boardFromTalk');
     if (!raw) return;
@@ -119,52 +153,43 @@ export default function KokoroBoardPage() {
             <div style={{ fontSize: 15, fontWeight: 600, color: '#111827', letterSpacing: '.06em' }}>
               Kokoro <span style={{ color: accentColor }}>Board</span>
             </div>
-            <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>会議ファシリテーターAI</span>
+            <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>5人格が会議するAI</span>
           </div>
         </div>
-        <button
-          onClick={() => router.push('/kokoro-chat')}
-          title="Talkに戻る"
-          style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
-        >
-          ← Talk
-        </button>
+        <div />
       </header>
 
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 100px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 28px 120px' }}>
 
-        {/* 参加者入力 */}
-        <label style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', display: 'block', marginBottom: 10 }}>
-          // 参加者（任意）
-        </label>
-        <input
-          type="text"
-          value={members}
-          onChange={e => setMembers(e.target.value)}
-          placeholder="例：田中、佐藤、鈴木（カンマ区切り）"
-          style={{
-            width: '100%', background: '#f8f9fa', border: '1px solid #d1d5db',
-            borderRadius: 4, padding: '10px 14px', fontSize: 13, color: '#111827',
-            outline: 'none', marginBottom: 12,
-            fontFamily: "'Noto Sans JP', sans-serif", boxSizing: 'border-box',
-          }}
-        />
+        {/* 参加人格一覧 */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+          {Object.entries(PERSONA_MAP).map(([id, p]) => (
+            <div key={id} style={{
+              ...mono, fontSize: 9, letterSpacing: '.06em',
+              padding: '4px 12px', borderRadius: 14,
+              border: `1px solid ${p.color}20`,
+              color: p.color, background: `${p.color}08`,
+            }}>
+              {p.icon} {p.name}
+            </div>
+          ))}
+        </div>
 
         {/* アジェンダ入力 */}
         <label style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', display: 'block', marginBottom: 10 }}>
-          // 今日のアジェンダ
+          // お題
         </label>
         <textarea
           value={agenda}
           onChange={e => setAgenda(e.target.value)}
-          placeholder="例：Q3の売上について振り返り、来期の方針を決める。予算案も確認したい。"
+          placeholder="例：Q3の売上について振り返り、来期の方針を決める。"
           style={{
             width: '100%', background: '#f8f9fa',
             border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
             borderRadius: '0 4px 4px 0',
             padding: 14, fontSize: 14, color: '#111827',
             resize: 'vertical', outline: 'none', minHeight: 80,
-            fontFamily: "'Noto Sans JP', sans-serif",
+            fontFamily: "'Noto Serif JP', serif", lineHeight: 1.8,
             boxSizing: 'border-box', marginBottom: 12,
           }}
           onFocus={e => e.currentTarget.style.borderLeftColor = accentColor}
@@ -174,7 +199,6 @@ export default function KokoroBoardPage() {
         <button
           onClick={handleStart}
           disabled={!canSubmit}
-          title="会議を始める"
           style={{
             width: '100%', background: 'transparent',
             border: `1px solid ${canSubmit ? accentColor : '#d1d5db'}`,
@@ -184,7 +208,7 @@ export default function KokoroBoardPage() {
             borderRadius: 2,
           }}
         >
-          {isLoading ? '// 準備中...' : 'Yoroshiku'}
+          {isLoading ? '// 会議中...' : '会議を始める'}
         </button>
 
         {isLoading && <PersonaLoading />}
@@ -194,114 +218,161 @@ export default function KokoroBoardPage() {
             // {retryMsg}
           </div>
         )}
-
         {error && (
           <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8 }}>
             // エラー: {error}
           </div>
         )}
 
-        {/* 結果表示 */}
+        {/* ─── 会議の様子 ─── */}
         {result && (
           <div style={{ marginTop: 28 }}>
-            {/* 開会 */}
-            <div style={{
-              background: '#f8f9fa', border: '1px solid #e5e7eb',
-              borderLeft: `3px solid ${accentColor}`,
-              padding: '18px 20px', marginBottom: 12, borderRadius: '0 8px 8px 0',
-              animation: 'fadeUp 0.4s ease-out both',
-            }}>
-              <div style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: accentColor, marginBottom: 8 }}>
-                // 開会
-              </div>
-              <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.9, whiteSpace: 'pre-wrap' }}>
-                {result.opening}
-              </div>
+            <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 16 }}>
+              // 会議の様子
             </div>
 
-            {/* 議題 */}
-            {result.agenda_items.map((item, i) => (
-              <div
-                key={i}
-                style={{
-                  background: '#f8f9fa', border: '1px solid #e5e7eb',
-                  borderLeft: `3px solid ${accentColor}`,
-                  padding: '18px 20px', marginBottom: 12, borderRadius: '0 8px 8px 0',
-                  animation: `fadeUp 0.4s ease-out ${(i + 1) * 0.1}s both`,
-                }}
-              >
-                <div style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: accentColor, marginBottom: 8 }}>
-                  // 議題 {i + 1}　{item.duration}
-                </div>
-                <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.9 }}>
-                  <strong>{item.topic}</strong>
-                  {item.questions.map((q, j) => (
-                    <div key={j}>・{q}</div>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* アクションアイテム */}
-            <div style={{
-              marginTop: 20, background: '#f8f9fa',
-              border: '1px solid #e5e7eb', padding: 20,
-              animation: 'fadeUp 0.4s 0.5s ease-out both',
-            }}>
-              <div style={{ ...mono, fontSize: 8, letterSpacing: '.2em', color: accentColor, marginBottom: 14 }}>
-                // アクションアイテム
-              </div>
-              {result.action_items.map((a, i) => (
-                <div
-                  key={i}
-                  style={{
-                    fontSize: 13, color: '#374151', lineHeight: 1.8,
-                    padding: '8px 0',
-                    borderBottom: i < result.action_items.length - 1 ? '1px solid #e5e7eb' : 'none',
-                  }}
-                >
-                  ✓ {a.task}{a.owner ? `（${a.owner}）` : ''}
-                </div>
-              ))}
-            </div>
-
-            {/* 閉会 */}
-            <div style={{
-              background: '#f8f9fa', border: '1px solid #e5e7eb',
-              borderLeft: `3px solid ${accentColor}`,
-              padding: '18px 20px', marginTop: 12, borderRadius: '0 8px 8px 0',
-              animation: 'fadeUp 0.4s 0.6s ease-out both',
-            }}>
-              <div style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: accentColor, marginBottom: 8 }}>
-                // 閉会
-              </div>
-              <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.9, whiteSpace: 'pre-wrap' }}>
-                {result.closing}
-              </div>
-            </div>
-
-            {/* Note保存ボタン */}
-            <button
-              onClick={handleSaveToNote}
-              disabled={saved}
-              title={saved ? 'Noteに保存しました' : 'Noteに保存'}
+            <div
+              ref={discussionRef}
               style={{
-                marginTop: 16, background: 'transparent',
-                border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
-                color: saved ? '#10b981' : '#9ca3af',
-                ...mono, fontSize: 8, letterSpacing: '.12em',
-                padding: '8px 16px', cursor: saved ? 'default' : 'pointer',
-                borderRadius: 3,
+                maxHeight: 500, overflowY: 'auto',
+                border: '1px solid #e5e7eb', borderRadius: 8,
+                padding: '16px 20px', background: '#fafafa',
+                marginBottom: 20,
               }}
             >
-              {saved ? 'Note ✓' : 'Note +'}
-            </button>
+              {result.discussion.slice(0, visibleCount).map((item, i) => {
+                const p = PERSONA_MAP[item.persona] || { name: item.persona, icon: '💭', color: '#6b7280' };
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex', gap: 12, marginBottom: 16,
+                      animation: 'fadeUp 0.3s ease-out forwards',
+                    }}
+                  >
+                    {/* アバター */}
+                    <div style={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      border: `1.5px solid ${p.color}`,
+                      background: `${p.color}10`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 14, flexShrink: 0, marginTop: 2,
+                    }}>
+                      {p.icon}
+                    </div>
+                    {/* 発言 */}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ ...mono, fontSize: 9, color: p.color, letterSpacing: '.08em', marginBottom: 4 }}>
+                        {p.name}
+                      </div>
+                      <div style={{
+                        fontSize: 14, lineHeight: 1.8, color: '#374151',
+                        fontFamily: "'Noto Serif JP', serif",
+                        whiteSpace: 'pre-wrap',
+                      }}>
+                        {item.text}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* 入力中インジケーター */}
+              {!allRevealed && visibleCount > 0 && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: '50%',
+                    border: '1px solid #d1d5db', background: '#f3f4f6',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10,
+                  }}>
+                    💭
+                  </div>
+                  <div style={{ ...mono, fontSize: 9, color: '#9ca3af', animation: 'pulse 1.5s ease-in-out infinite' }}>
+                    typing...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ─── 結論エリア（全発言表示後に表示） ─── */}
+            {allRevealed && (
+              <>
+                {/* アクションアイテム */}
+                <div style={{
+                  background: '#f8f9fa', border: '1px solid #e5e7eb',
+                  padding: 20, marginBottom: 12,
+                  animation: 'fadeUp 0.4s ease-out both',
+                }}>
+                  <div style={{ ...mono, fontSize: 8, letterSpacing: '.2em', color: accentColor, marginBottom: 14 }}>
+                    // アクションアイテム
+                  </div>
+                  {result.action_items.map((a, i) => {
+                    const p = a.persona ? PERSONA_MAP[a.persona] : null;
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          fontSize: 13, color: '#374151', lineHeight: 1.8,
+                          padding: '8px 0',
+                          borderBottom: i < result.action_items.length - 1 ? '1px solid #e5e7eb' : 'none',
+                          display: 'flex', alignItems: 'center', gap: 8,
+                        }}
+                      >
+                        <span>✓ {a.task}</span>
+                        {p && (
+                          <span style={{ ...mono, fontSize: 8, color: p.color, padding: '2px 8px', border: `1px solid ${p.color}30`, borderRadius: 10 }}>
+                            {p.icon} {p.name}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 結論 */}
+                <div style={{
+                  background: '#f8f9fa', border: '1px solid #e5e7eb',
+                  borderLeft: `3px solid ${accentColor}`,
+                  padding: '18px 20px', borderRadius: '0 8px 8px 0',
+                  animation: 'fadeUp 0.4s 0.2s ease-out both',
+                  marginBottom: 16,
+                }}>
+                  <div style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: accentColor, marginBottom: 8 }}>
+                    // 結論
+                  </div>
+                  <div style={{
+                    fontSize: 14, color: '#374151', lineHeight: 1.9,
+                    fontFamily: "'Noto Serif JP', serif",
+                    whiteSpace: 'pre-wrap',
+                  }}>
+                    {result.conclusion}
+                  </div>
+                </div>
+
+                {/* Note保存 */}
+                <button
+                  onClick={handleSaveToNote}
+                  disabled={saved}
+                  style={{
+                    background: 'transparent',
+                    border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
+                    color: saved ? '#10b981' : '#9ca3af',
+                    ...mono, fontSize: 8, letterSpacing: '.12em',
+                    padding: '8px 16px', cursor: saved ? 'default' : 'pointer',
+                    borderRadius: 3,
+                  }}
+                >
+                  {saved ? 'Note ✓' : 'Note +'}
+                </button>
+              </>
+            )}
           </div>
         )}
 
         <style>{`
           @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-          @keyframes sweep { 0% { left: -40%; } 100% { left: 140%; } }
+          @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
         `}</style>
       </div>
     </div>
