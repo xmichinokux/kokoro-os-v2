@@ -29,6 +29,15 @@ ${PERSONAS.map(p => `- ${p.name}（${p.id}）：${p.trait}`).join('\n')}
 - 会議は全体で3〜4ラウンド（15〜20発言程度）で収束させる
 - 空虚な賛同は禁止。具体的な意見のみ
 
+【資料が添付された場合】
+- 会議資料が提供されている場合、全人格がその資料を読んだ前提で議論する
+- 資料の内容を踏まえた具体的な発言をすること
+- ノームは資料の数字・リスクに言及する
+- シンは資料の構造的な穴を指摘する
+- ディグは資料の前提を疑う
+- カノンは資料が人間に与える影響を読む
+- エミは資料を踏まえた結論をまとめる
+
 以下のJSONのみを返してください：
 {
   "discussion": [
@@ -40,8 +49,17 @@ ${PERSONAS.map(p => `- ${p.name}（${p.id}）：${p.trait}`).join('\n')}
   "conclusion": "会議の結論（エミによるまとめ。2〜3文）"
 }`;
 
+function buildUserContent(agenda: string, materials?: string[]): string {
+  let content = `お題：${agenda}`;
+  if (materials && materials.length > 0) {
+    content += '\n\n【会議資料】\n';
+    content += materials.map((m, i) => `--- 資料${i + 1} ---\n${m}`).join('\n\n');
+  }
+  return content;
+}
+
 export async function POST(req: NextRequest) {
-  const { agenda } = await req.json();
+  const { agenda, materials } = await req.json() as { agenda: string; materials?: string[] };
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -66,7 +84,7 @@ export async function POST(req: NextRequest) {
           model: 'claude-sonnet-4-20250514',
           max_tokens: 3000,
           system,
-          messages: [{ role: 'user', content: `お題：${agenda}` }],
+          messages: [{ role: 'user', content: buildUserContent(agenda, materials) }],
         }),
       });
       if (res.status !== 529 || attempt === MAX_RETRIES) break;

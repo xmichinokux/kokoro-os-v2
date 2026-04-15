@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveToNote } from '@/lib/saveToNote';
+import { getAllNotes } from '@/lib/kokoro/noteStorage';
+import type { KokoroNote } from '@/types/note';
 import PersonaLoading from '@/components/PersonaLoading';
 
 type DiscussionItem = { persona: string; text: string };
@@ -33,6 +35,30 @@ export default function KokoroBoardPage() {
   const [visibleCount, setVisibleCount] = useState(0);
   const discussionRef = useRef<HTMLDivElement>(null);
 
+  /* ─── 資料（Note添付） ─── */
+  const [showNotePicker, setShowNotePicker] = useState(false);
+  const [allNotes, setAllNotes] = useState<KokoroNote[]>([]);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [notesLoaded, setNotesLoaded] = useState(false);
+
+  const loadNotes = useCallback(async () => {
+    if (notesLoaded) return;
+    const notes = await getAllNotes();
+    setAllNotes(notes.filter(n => n.body.trim()));
+    setNotesLoaded(true);
+  }, [notesLoaded]);
+
+  const toggleNote = (id: string) => {
+    setSelectedNoteIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedNotes = allNotes.filter(n => selectedNoteIds.has(n.id));
+
   const canSubmit = agenda.trim().length > 0 && !isLoading;
 
   /* ─── 会議開始 ─── */
@@ -50,7 +76,12 @@ export default function KokoroBoardPage() {
         const res = await fetch('/api/kokoro-board', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agenda: agenda.trim() }),
+          body: JSON.stringify({
+            agenda: agenda.trim(),
+            materials: selectedNotes.length > 0
+              ? selectedNotes.map(n => `[${n.title}]\n${n.body}`)
+              : undefined,
+          }),
         });
         const data = await res.json();
         if (res.status === 529 || data.error === 'overloaded') {
@@ -195,6 +226,97 @@ export default function KokoroBoardPage() {
           onFocus={e => e.currentTarget.style.borderLeftColor = accentColor}
           onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
         />
+
+        {/* 📎 資料を添付 */}
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => { setShowNotePicker(!showNotePicker); if (!notesLoaded) loadNotes(); }}
+            style={{
+              ...mono, fontSize: 9, letterSpacing: '.1em',
+              color: selectedNoteIds.size > 0 ? accentColor : '#9ca3af',
+              background: 'transparent', border: `1px solid ${selectedNoteIds.size > 0 ? accentColor : '#e5e7eb'}`,
+              padding: '6px 14px', borderRadius: 4, cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            📎 資料を添付{selectedNoteIds.size > 0 ? ` (${selectedNoteIds.size})` : ''}
+          </button>
+
+          {/* 選択済みのタグ表示 */}
+          {selectedNotes.length > 0 && !showNotePicker && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {selectedNotes.map(n => (
+                <div key={n.id} style={{
+                  ...mono, fontSize: 8, letterSpacing: '.06em',
+                  padding: '3px 10px', borderRadius: 10,
+                  background: '#f0f9ff', border: '1px solid #bae6fd',
+                  color: '#0369a1', display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  {n.title.slice(0, 20)}{n.title.length > 20 ? '…' : ''}
+                  <span
+                    onClick={() => toggleNote(n.id)}
+                    style={{ cursor: 'pointer', opacity: 0.6 }}
+                  >×</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ノート選択パネル */}
+          {showNotePicker && (
+            <div style={{
+              marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8,
+              background: '#fafafa', maxHeight: 240, overflowY: 'auto',
+              padding: 8,
+            }}>
+              {!notesLoaded ? (
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>
+                  // loading...
+                </div>
+              ) : allNotes.length === 0 ? (
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>
+                  // Noteがありません
+                </div>
+              ) : (
+                allNotes.map(note => {
+                  const selected = selectedNoteIds.has(note.id);
+                  return (
+                    <div
+                      key={note.id}
+                      onClick={() => toggleNote(note.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 12px', borderRadius: 4, cursor: 'pointer',
+                        background: selected ? '#f0f9ff' : 'transparent',
+                        border: `1px solid ${selected ? '#bae6fd' : 'transparent'}`,
+                        marginBottom: 2,
+                        transition: 'all 0.1s',
+                      }}
+                    >
+                      <div style={{
+                        width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                        border: `1.5px solid ${selected ? accentColor : '#d1d5db'}`,
+                        background: selected ? accentColor : '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: 10,
+                      }}>
+                        {selected ? '✓' : ''}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {note.title}
+                        </div>
+                        <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginTop: 1 }}>
+                          {note.source} · {note.body.length}字
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
 
         <button
           onClick={handleStart}
