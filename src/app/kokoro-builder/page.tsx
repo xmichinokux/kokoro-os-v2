@@ -127,7 +127,20 @@ export default function KokoroBuilderPage() {
     try {
       const routeData = await apiFetch('/api/builder-route', { spec: spec.trim() });
       const mode = routeData.mode as BuildType;
+      const feasibility = (routeData.feasibility as 'feasible' | 'risky' | 'infeasible') || 'feasible';
+      const reason = (routeData.reason as string) || '';
       setBuildType(mode);
+
+      if (feasibility === 'infeasible') {
+        setError(`現状の機能性能では実現できません${reason ? `（${reason}）` : ''}。よりシンプルな仕様に書き換えてください。`);
+        setPhase('input');
+        return;
+      }
+
+      if (feasibility === 'risky') {
+        const ok = window.confirm(`⚠️ この仕様は複雑で、正常に動作しない可能性があります${reason ? `\n\n理由: ${reason}` : ''}\n\nそれでも生成を続けますか？`);
+        if (!ok) { setPhase('input'); return; }
+      }
 
       if (mode === 'hybrid') {
         setProgressMessage('設計書を生成中...');

@@ -3,17 +3,33 @@ import { NextRequest, NextResponse } from 'next/server';
 export const maxDuration = 30;
 
 const ROUTE_PROMPT = (spec: string) =>
-  `あなたはソフトウェアアーキテクトです。以下の仕様書を読んで、最適な実装モードを判定してください。
+  `あなたはソフトウェアアーキテクトです。以下の仕様書を読んで、(1)実装モードと (2)実現可能性を判定してください。
 
 【仕様書】
 ${spec}
 
-【モード一覧】
-- "html": シンプルなコンテンツ。静的ページ、簡単なツール、計算機、フォームなど。200行以下で実装できるもの。
-- "hybrid": 複雑なインタラクティブアプリ。ゲーム、アニメーション、複数画面、状態管理が必要なもの。Canvas/Phaser/Three.jsを使うもの。
+【モード】
+- "html": 静的ページ、計算機、フォーム、簡単なツールなど200行以下で済むもの。
+- "hybrid": Canvas/Phaser/Three.js・アニメーション・状態管理が必要なインタラクティブアプリ。
 
-以下のJSONのみを返してください（説明不要）：
-{"mode": "html" or "hybrid"}`;
+【実現可能性】単一HTMLファイル（最大1600行程度・1ファイル完結・外部キー不要）で作る前提で判定してください。
+- "feasible": 確実に作れる。静的コンテンツ、フォーム、計算機、Todo、クイズ、単純なアニメ、テキストアドベンチャーなど。
+- "risky": 動く可能性はあるが複雑で不安定になりうる。複数画面遷移、複雑なCanvas描画、タイミング系ゲーム（モグラ叩き等）、単純なパズル、凝ったアニメ。→警告付きで続行。
+- "infeasible": 現状の機能性能では実現困難。以下のいずれかに該当:
+  * 物理演算（重力・衝突判定・反射）が必要なゲーム: ブロック崩し、ピンボール、ビリヤード、プラットフォーマー、物理パズル
+  * リアルタイム多オブジェクト制御: シューティング、敵AI、大量スプライト
+  * 本格的な3D描画（複数モデル・シェーダ・物理）
+  * サーバー／DB／外部APIキー必須の機能
+  * マルチファイル構成が必須な規模（2000行超想定）
+
+"infeasible" の場合は reason に「何が作れないか」を30字以内の日本語で書いてください（例: "物理演算が必要なゲームは作れません"）。
+"risky" の場合は reason に「何が不安か」を30字以内で書いてください（例: "複雑なCanvas描画で崩れる可能性"）。
+"feasible" の場合は reason は空文字列で構いません。
+
+以下のJSONのみを返してください（説明・コードブロック不要）：
+{"mode": "html" | "hybrid", "feasibility": "feasible" | "risky" | "infeasible", "reason": "..."}`;
+
+type Feasibility = 'feasible' | 'risky' | 'infeasible';
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,20 +68,24 @@ export async function POST(req: NextRequest) {
       ?.map((p: { text: string }) => p.text)
       ?.join('') ?? '';
 
-    // JSONを抽出
     const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       const mode = parsed.mode === 'hybrid' ? 'hybrid' : 'html';
-      return NextResponse.json({ mode });
+      const rawF = parsed.feasibility;
+      const feasibility: Feasibility =
+        rawF === 'infeasible' ? 'infeasible'
+        : rawF === 'risky' ? 'risky'
+        : 'feasible';
+      const reason = typeof parsed.reason === 'string' ? parsed.reason.slice(0, 60) : '';
+      return NextResponse.json({ mode, feasibility, reason });
     }
 
-    // JSON解析失敗時はhybridをデフォルト（安全側）
-    return NextResponse.json({ mode: 'hybrid' });
+    // JSON解析失敗時はhybrid + feasibleをデフォルト（続行優先）
+    return NextResponse.json({ mode: 'hybrid', feasibility: 'feasible', reason: '' });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
-    // ルーティング失敗時はhybridをデフォルト
     console.error('Builder route error:', msg);
-    return NextResponse.json({ mode: 'hybrid' });
+    return NextResponse.json({ mode: 'hybrid', feasibility: 'feasible', reason: '' });
   }
 }
