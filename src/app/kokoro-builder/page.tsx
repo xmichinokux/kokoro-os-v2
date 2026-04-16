@@ -51,7 +51,11 @@ export default function KokoroBuilderPage() {
       const raw = localStorage.getItem('kokoro_builder_input');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.spec) { setSpec(parsed.spec); setFromGatekeeper(true); }
+        if (parsed.spec) {
+          setSpec(parsed.spec);
+          setFromGatekeeper(true);
+          if (parsed.osMode === true) setOsMode(true);
+        }
       }
     } catch { /* ignore */ }
   }, []);

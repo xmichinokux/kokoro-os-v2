@@ -24,6 +24,7 @@ export default function KokoroGatekeeperPage() {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [fromBuilderReject, setFromBuilderReject] = useState<{ reason: string } | null>(null);
+  const [osMode, setOsMode] = useState(false);
 
   // Builderから「再検討」で来た場合のシード読み込み
   useEffect(() => {
@@ -115,6 +116,7 @@ export default function KokoroGatekeeperPage() {
         phase: 'start',
         input: input.trim(),
         noteData: noteData || undefined,
+        osMode,
       });
       setCurrentQuestion(data.question);
       setCurrentOptions(data.options);
@@ -127,7 +129,7 @@ export default function KokoroGatekeeperPage() {
     } finally {
       setLoading(false);
     }
-  }, [input, noteData, callApi]);
+  }, [input, noteData, osMode, callApi]);
 
   // 次の質問 or 仕様書生成
   const handleNext = useCallback(async () => {
@@ -145,11 +147,13 @@ export default function KokoroGatekeeperPage() {
           phase: 'generate',
           input: input.trim(),
           history: newHistory,
+          osMode,
         });
         setSpec(data.spec);
-        // Builderへの受け渡し
+        // Builderへの受け渡し（osMode も引き継ぐ）
         localStorage.setItem('kokoro_builder_input', JSON.stringify({
           spec: data.spec,
+          osMode,
           savedAt: new Date().toISOString(),
         }));
         setPhase('done');
@@ -170,6 +174,7 @@ export default function KokoroGatekeeperPage() {
         phase: 'next',
         history: newHistory,
         questionCount: newHistory.length + 1,
+        osMode,
       });
       setCurrentQuestion(data.question);
       setCurrentOptions(data.options);
@@ -181,7 +186,7 @@ export default function KokoroGatekeeperPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedOption, history, currentQuestion, currentOptions, isLast, input, callApi]);
+  }, [selectedOption, history, currentQuestion, currentOptions, isLast, input, osMode, callApi]);
 
   // 持ち帰りリストに追加
   const addToHoldList = useCallback(() => {
@@ -367,6 +372,44 @@ export default function KokoroGatekeeperPage() {
               </div>
             )}
 
+            {/* OS前提モード トグル */}
+            <div
+              onClick={() => setOsMode(v => !v)}
+              style={{
+                marginTop: 16,
+                padding: '14px 16px',
+                border: `1px solid ${osMode ? accentColor : '#e5e7eb'}`,
+                borderRadius: 6,
+                background: osMode ? '#eef2ff' : '#fafafa',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 12,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{
+                width: 36, height: 20, borderRadius: 10,
+                background: osMode ? accentColor : '#d1d5db',
+                position: 'relative', flexShrink: 0, transition: 'background 0.15s',
+                marginTop: 2,
+              }}>
+                <div style={{
+                  width: 16, height: 16, borderRadius: 8, background: '#fff',
+                  position: 'absolute', top: 2, left: osMode ? 18 : 2, transition: 'left 0.15s',
+                }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ ...mono, fontSize: 11, letterSpacing: '0.1em', color: osMode ? accentColor : '#374151', fontWeight: 600 }}>
+                  📦 Kokoro OS mini-app モード {osMode ? 'ON' : 'OFF'}
+                </div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, lineHeight: 1.6 }}>
+                  {osMode
+                    ? '認証・Note DB・LLMは window.kokoro.* 前提で設計。Noteの使い方・LLMモデル等を中心に質問します。'
+                    : 'スタンドアロンHTML前提。データ保存方法・認証・外部API等を広く質問します。'}
+                </div>
+              </div>
+            </div>
+
             <button
               onClick={handleStart}
               disabled={loading || (!input.trim() && !noteData)}
@@ -374,7 +417,7 @@ export default function KokoroGatekeeperPage() {
                 ...mono, fontSize: 11, letterSpacing: '0.16em',
                 background: accentColor, border: 'none', color: '#fff',
                 padding: '14px 32px', borderRadius: 4, cursor: loading ? 'not-allowed' : 'pointer',
-                marginTop: 24, opacity: loading || (!input.trim() && !noteData) ? 0.5 : 1,
+                marginTop: 16, opacity: loading || (!input.trim() && !noteData) ? 0.5 : 1,
                 display: 'block', width: '100%',
               }}
             >
