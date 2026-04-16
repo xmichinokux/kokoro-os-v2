@@ -1,4 +1,4 @@
-export type NoteSource = 'manual' | 'talk' | 'zen' | 'emi' | 'resonance';
+export type NoteSource = 'manual' | 'talk' | 'zen' | 'emi' | 'resonance' | 'mini-app';
 
 export type EmotionTone = 'positive' | 'negative' | 'neutral' | 'mixed';
 
