@@ -210,6 +210,13 @@ const APPS: App[] = [
     href: "/kokoro-resonance",
     ready: true,
   },
+  {
+    icon: "🔮",
+    name: "Kokoro Oracle",
+    desc: "大きな問いから仮説を反復精錬して掘り下げる。",
+    href: "/kokoro-oracle",
+    ready: true,
+  },
 ];
 
 export default function Home() {
