@@ -24,14 +24,43 @@ export default function KokoroPonchiPage() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [strategySaved, setStrategySaved] = useState(false);
+  const [ponchiMode, setPonchiMode] = useState(false);
+  // スライドごとのピクトグラム（index → 状態）
+  const [pictograms, setPictograms] = useState<Record<number, { svg?: string; loading: boolean; error?: string }>>({});
 
   const canSubmit = inputText.trim().length > 0 && !isLoading;
+
+  // ピクトグラム生成（並列）
+  const generatePictograms = useCallback(async (slideList: Slide[]) => {
+    const initial: Record<number, { svg?: string; loading: boolean; error?: string }> = {};
+    slideList.forEach((_, i) => { initial[i] = { loading: true }; });
+    setPictograms(initial);
+
+    await Promise.all(slideList.map(async (s, i) => {
+      try {
+        const res = await fetch('/api/kokoro-ponchi-pictogram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: s.title, body: s.body, type: s.type }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'ピクトグラム生成に失敗');
+        setPictograms(prev => ({ ...prev, [i]: { svg: data.svg as string, loading: false } }));
+      } catch (e) {
+        setPictograms(prev => ({
+          ...prev,
+          [i]: { loading: false, error: e instanceof Error ? e.message : 'エラー' },
+        }));
+      }
+    }));
+  }, []);
 
   const handleRun = useCallback(async () => {
     if (!inputText.trim()) return;
     setIsLoading(true);
     setError('');
     setSlides([]);
+    setPictograms({});
     setSaved(false);
 
     try {
@@ -43,13 +72,26 @@ export default function KokoroPonchiPage() {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'スライド生成に失敗しました');
       const result = data.data as PonchiResult;
-      setSlides(result.slides ?? []);
+      const newSlides = result.slides ?? [];
+      setSlides(newSlides);
+      if (ponchiMode && newSlides.length > 0) {
+        generatePictograms(newSlides);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました');
     } finally {
       setIsLoading(false);
     }
-  }, [inputText]);
+  }, [inputText, ponchiMode, generatePictograms]);
+
+  // 後からPonchi モードをONにした場合、既存スライドにピクトグラムを生成
+  const handleTogglePonchi = useCallback(() => {
+    const next = !ponchiMode;
+    setPonchiMode(next);
+    if (next && slides.length > 0 && Object.keys(pictograms).length === 0) {
+      generatePictograms(slides);
+    }
+  }, [ponchiMode, slides, pictograms, generatePictograms]);
 
   const handleSaveToNote = async () => {
     if (slides.length === 0) return;
@@ -140,6 +182,36 @@ export default function KokoroPonchiPage() {
           onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
         />
 
+        {/* Ponchi モード切替 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: '10px 14px', background: ponchiMode ? 'rgba(139,92,246,0.06)' : '#f8f9fa', border: `1px solid ${ponchiMode ? accentColor : '#e5e7eb'}`, borderRadius: 4 }}>
+          <button
+            onClick={handleTogglePonchi}
+            title="スライドにピクトグラムを添える"
+            style={{
+              width: 36, height: 20, borderRadius: 10,
+              background: ponchiMode ? accentColor : '#d1d5db',
+              border: 'none', cursor: 'pointer',
+              position: 'relative', padding: 0, flexShrink: 0,
+            }}
+          >
+            <span style={{
+              position: 'absolute',
+              top: 2, left: ponchiMode ? 18 : 2,
+              width: 16, height: 16, borderRadius: '50%',
+              background: '#fff',
+              transition: 'left 0.15s ease',
+            }} />
+          </button>
+          <div>
+            <div style={{ ...mono, fontSize: 10, fontWeight: 600, letterSpacing: '.1em', color: ponchiMode ? accentColor : '#6b7280' }}>
+              Ponchi モード
+            </div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, fontFamily: "'Noto Sans JP', sans-serif" }}>
+              各スライドにピクトグラムを自動で添える（生成時間+20〜40秒）
+            </div>
+          </div>
+        </div>
+
         <button
           onClick={handleRun}
           disabled={!canSubmit}
@@ -174,6 +246,8 @@ export default function KokoroPonchiPage() {
             }}>
               {slides.map((s, i) => {
                 const isKey = s.type === 'key';
+                const pict = pictograms[i];
+                const showPict = ponchiMode && (pict?.loading || pict?.svg || pict?.error);
                 return (
                   <div
                     key={i}
@@ -184,29 +258,59 @@ export default function KokoroPonchiPage() {
                       padding: 20, borderRadius: '0 4px 4px 0',
                       gridColumn: isKey ? '1 / -1' : undefined,
                       animation: `fadeUp 0.4s ease-out ${(i + 1) * 0.05}s both`,
+                      display: showPict ? 'flex' : 'block',
+                      gap: 16, alignItems: 'flex-start',
                     }}
                   >
-                    <div style={{
-                      ...mono, fontSize: 8,
-                      color: isKey ? '#9ca3af' : accentColor,
-                      letterSpacing: '.14em', marginBottom: 8,
-                    }}>
-                      // {s.num}
-                    </div>
-                    <div style={{
-                      fontFamily: "'Noto Sans JP', sans-serif",
-                      fontSize: isKey ? 20 : 16, fontWeight: 600,
-                      color: isKey ? '#fff' : '#111827',
-                      marginBottom: 10, lineHeight: 1.3,
-                    }}>
-                      {s.title}
-                    </div>
-                    <div style={{
-                      fontSize: 13,
-                      color: isKey ? '#d1d5db' : '#374151',
-                      lineHeight: 1.8, whiteSpace: 'pre-wrap',
-                    }}>
-                      {formatBody(s.body)}
+                    {showPict && (
+                      <div style={{
+                        flexShrink: 0,
+                        width: 100, height: 100,
+                        background: isKey ? 'rgba(255,255,255,0.05)' : '#fff',
+                        border: `1px solid ${isKey ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}`,
+                        borderRadius: 6,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        overflow: 'hidden',
+                      }}>
+                        {pict?.loading && (
+                          <div style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>...</div>
+                        )}
+                        {pict?.svg && (
+                          <div
+                            style={{ width: '100%', height: '100%', padding: 6, boxSizing: 'border-box' }}
+                            dangerouslySetInnerHTML={{ __html: pict.svg }}
+                          />
+                        )}
+                        {pict?.error && (
+                          <div style={{ ...mono, fontSize: 7, color: '#ef4444', textAlign: 'center', padding: 4 }}>
+                            ×
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        ...mono, fontSize: 8,
+                        color: isKey ? '#9ca3af' : accentColor,
+                        letterSpacing: '.14em', marginBottom: 8,
+                      }}>
+                        // {s.num}
+                      </div>
+                      <div style={{
+                        fontFamily: "'Noto Sans JP', sans-serif",
+                        fontSize: isKey ? 20 : 16, fontWeight: 600,
+                        color: isKey ? '#fff' : '#111827',
+                        marginBottom: 10, lineHeight: 1.3,
+                      }}>
+                        {s.title}
+                      </div>
+                      <div style={{
+                        fontSize: 13,
+                        color: isKey ? '#d1d5db' : '#374151',
+                        lineHeight: 1.8, whiteSpace: 'pre-wrap',
+                      }}>
+                        {formatBody(s.body)}
+                      </div>
                     </div>
                   </div>
                 );

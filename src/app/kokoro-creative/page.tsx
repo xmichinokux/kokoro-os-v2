@@ -672,7 +672,7 @@ export default function KokoroCreativePage() {
         }}>← Home</button>
       </header>
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '32px 28px 100px' }}>
+      <div style={{ maxWidth: mode === 'process' && procPhase === 'editing' ? 1200 : 700, margin: '0 auto', padding: '32px 28px 100px' }}>
         {/* モード切替タブ */}
         <div style={{ display: 'flex', gap: 0, marginBottom: 32, borderBottom: '2px solid #e5e7eb' }}>
           {([['generate', 'Generate'], ['process', 'Process'], ['vector', 'Vector']] as [Mode, string][]).map(([m, label]) => (
@@ -821,18 +821,28 @@ export default function KokoroCreativePage() {
             )}
 
             {procPhase === 'editing' && imageLoaded && (
-              <div>
-                {/* プレビュー */}
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 20, background: '#1a1a1a', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 8 }}>
-                  <canvas
-                    ref={previewCanvasRef}
-                    style={{ maxWidth: '100%', maxHeight: 500, display: 'block' }}
-                  />
-                </div>
-                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginBottom: 20 }}>
-                  {imgSize.w} × {imgSize.h}px — {effectChain.filter(e => e.enabled).length} effects active
+              <div className="creative-process-split" style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) 420px',
+                gap: 20,
+                alignItems: 'start',
+              }}>
+                {/* 左: プレビュー（sticky） */}
+                <div style={{ position: 'sticky', top: 80, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af' }}>PREVIEW</div>
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#1a1a1a', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 8, minHeight: 400 }}>
+                    <canvas
+                      ref={previewCanvasRef}
+                      style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 200px)', display: 'block' }}
+                    />
+                  </div>
+                  <div style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
+                    {imgSize.w} × {imgSize.h}px — {effectChain.filter(e => e.enabled).length} effects active
+                  </div>
                 </div>
 
+                {/* 右: コントロール */}
+                <div style={{ minWidth: 0 }}>
                 {/* スタイルプリセット */}
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af', marginBottom: 10 }}>STYLE PRESETS</div>
@@ -979,6 +989,7 @@ export default function KokoroCreativePage() {
                     ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
                     padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
                   }}>別の画像を読み込む</button>
+                </div>
                 </div>
               </div>
             )}
@@ -1309,6 +1320,17 @@ export default function KokoroCreativePage() {
 
       {/* ランタイムテスト用 非表示iframe */}
       <iframe ref={testIframeRef} style={{ position: 'fixed', left: -9999, top: -9999, width: 375, height: 667 }} sandbox="allow-scripts allow-same-origin" title="Runtime Test" />
+
+      <style>{`
+        @media (max-width: 900px) {
+          .creative-process-split {
+            grid-template-columns: 1fr !important;
+          }
+          .creative-process-split > div:first-child {
+            position: static !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
