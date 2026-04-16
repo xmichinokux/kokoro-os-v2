@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import {
   getProfile, saveProfile, createEmptyProfile, PROFILE_FIELDS,
@@ -339,7 +338,7 @@ function Chip({
 }
 
 export default function KokoroProfilePage() {
-  const router = useRouter();
+
   const [profile, setProfile] = useState<KokoroUserProfile>(createEmptyProfile());
   const [aiFilled, setAiFilled] = useState<Set<ProfileKey>>(new Set());
   const [noteCount, setNoteCount] = useState(0);
@@ -614,17 +613,7 @@ export default function KokoroProfilePage() {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => router.push('/')}
-          title="Homeに戻る"
-          style={{
-            ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af',
-            background: 'transparent', border: '1px solid #e5e7eb',
-            padding: '5px 14px', borderRadius: 3, cursor: 'pointer',
-          }}
-        >
-          ← Home
-        </button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '48px 28px 100px', position: 'relative' }}>
