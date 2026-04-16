@@ -57,6 +57,7 @@ export default function KokoroAppRuntimePage({ params }: { params: Promise<{ id:
         }
         setApp(data as AppRow);
         setLoading(false);
+        try { localStorage.setItem('kokoro_app_lastOpened_' + id, new Date().toISOString()); } catch { /* ignore */ }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'エラー');
         setLoading(false);

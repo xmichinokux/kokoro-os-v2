@@ -12,7 +12,26 @@ type MiniApp = {
   id: string;
   title: string;
   createdAt: string;
+  lastOpenedAt: string | null;
 };
+
+type SortKey = 'created' | 'lastOpened';
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return '未起動';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 0) return '今';
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '今';
+  if (min < 60) return `${min}分前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}時間前`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}日前`;
+  const mon = Math.floor(day / 30);
+  if (mon < 12) return `${mon}ヶ月前`;
+  return `${Math.floor(mon / 12)}年前`;
+}
 
 const TEST_APP_HTML = `<!DOCTYPE html>
 <html lang="ja">
@@ -111,6 +130,10 @@ export default function KokoroAppsListPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('lastOpened');
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   const loadApps = useCallback(async () => {
     setLoading(true);
@@ -128,7 +151,11 @@ export default function KokoroAppsListPage() {
         .eq('source', 'mini-app')
         .order('created_at', { ascending: false });
       if (dbErr) throw new Error(dbErr.message);
-      setApps((data || []).map(r => ({ id: r.id, title: r.title, createdAt: r.created_at })));
+      setApps((data || []).map(r => {
+        let lastOpenedAt: string | null = null;
+        try { lastOpenedAt = localStorage.getItem('kokoro_app_lastOpened_' + r.id); } catch { /* ignore */ }
+        return { id: r.id, title: r.title, createdAt: r.created_at, lastOpenedAt };
+      }));
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラー');
@@ -170,11 +197,51 @@ export default function KokoroAppsListPage() {
     try {
       const { error: dbErr } = await supabase.from('notes').delete().eq('id', id);
       if (dbErr) throw new Error(dbErr.message);
+      try { localStorage.removeItem('kokoro_app_lastOpened_' + id); } catch { /* ignore */ }
       await loadApps();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラー');
     }
   }, [loadApps]);
+
+  const startRename = useCallback((app: MiniApp) => {
+    setRenamingId(app.id);
+    setRenameValue(app.title);
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    setRenamingId(null);
+    setRenameValue('');
+  }, []);
+
+  const saveRename = useCallback(async () => {
+    if (!renamingId) return;
+    const newTitle = renameValue.trim().slice(0, 200);
+    if (!newTitle) { cancelRename(); return; }
+    setRenameSaving(true);
+    try {
+      const { error: dbErr } = await supabase
+        .from('notes')
+        .update({ title: newTitle, updated_at: new Date().toISOString() })
+        .eq('id', renamingId);
+      if (dbErr) throw new Error(dbErr.message);
+      setApps(prev => prev.map(a => a.id === renamingId ? { ...a, title: newTitle } : a));
+      cancelRename();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'エラー');
+    } finally {
+      setRenameSaving(false);
+    }
+  }, [renamingId, renameValue, cancelRename]);
+
+  const sortedApps = [...apps].sort((a, b) => {
+    if (sortKey === 'lastOpened') {
+      const aT = a.lastOpenedAt ? new Date(a.lastOpenedAt).getTime() : 0;
+      const bT = b.lastOpenedAt ? new Date(b.lastOpenedAt).getTime() : 0;
+      if (aT !== bT) return bT - aT;
+    }
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#1a1a1a', fontFamily: "'Noto Sans JP', sans-serif", fontWeight: 300 }}>
@@ -203,7 +270,7 @@ export default function KokoroAppsListPage() {
       </header>
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 28px 100px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: accentColor, textTransform: 'uppercase' }}>
             // マイアプリ（{apps.length}）
           </div>
@@ -218,6 +285,27 @@ export default function KokoroAppsListPage() {
             }}
           >{creating ? '作成中...' : '🧪 テストアプリを追加'}</button>
         </div>
+
+        {apps.length > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 4, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, padding: 3 }}>
+              <button onClick={() => setSortKey('lastOpened')} style={{
+                ...mono, fontSize: 9, letterSpacing: '0.08em',
+                background: sortKey === 'lastOpened' ? '#fff' : 'transparent',
+                border: sortKey === 'lastOpened' ? '1px solid #d1d5db' : '1px solid transparent',
+                color: sortKey === 'lastOpened' ? '#1a1a1a' : '#9ca3af',
+                padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+              }}>最終実行順</button>
+              <button onClick={() => setSortKey('created')} style={{
+                ...mono, fontSize: 9, letterSpacing: '0.08em',
+                background: sortKey === 'created' ? '#fff' : 'transparent',
+                border: sortKey === 'created' ? '1px solid #d1d5db' : '1px solid transparent',
+                color: sortKey === 'created' ? '#1a1a1a' : '#9ca3af',
+                padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+              }}>作成日順</button>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div style={{ ...mono, fontSize: 10, color: '#ef4444', marginBottom: 16 }}>エラー: {error}</div>
@@ -239,29 +327,78 @@ export default function KokoroAppsListPage() {
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
-            {apps.map(app => (
+            {sortedApps.map(app => (
               <div key={app.id} style={{
                 border: '1px solid #e5e7eb', borderRadius: 6, padding: 14,
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
               }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, color: '#1a1a1a', marginBottom: 4 }}>{app.title}</div>
-                  <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.08em' }}>
-                    {new Date(app.createdAt).toLocaleString('ja-JP')}
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  {renamingId === app.id ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') saveRename();
+                          else if (e.key === 'Escape') cancelRename();
+                        }}
+                        disabled={renameSaving}
+                        style={{
+                          flex: 1, fontSize: 14, padding: '6px 10px',
+                          border: `1px solid ${accentColor}`, borderRadius: 4, outline: 'none',
+                          fontFamily: "'Noto Sans JP', sans-serif", color: '#1a1a1a',
+                        }}
+                      />
+                      <button onClick={saveRename} disabled={renameSaving || !renameValue.trim()} style={{
+                        ...mono, fontSize: 9, letterSpacing: '0.1em',
+                        background: accentColor, border: 'none', color: '#fff',
+                        padding: '6px 10px', borderRadius: 3,
+                        cursor: (renameSaving || !renameValue.trim()) ? 'not-allowed' : 'pointer',
+                        opacity: (renameSaving || !renameValue.trim()) ? 0.5 : 1,
+                      }}>{renameSaving ? '保存中' : '保存'}</button>
+                      <button onClick={cancelRename} disabled={renameSaving} style={{
+                        ...mono, fontSize: 9, letterSpacing: '0.1em',
+                        background: 'transparent', border: '1px solid #d1d5db', color: '#6b7280',
+                        padding: '6px 10px', borderRadius: 3, cursor: 'pointer',
+                      }}>×</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 14, color: '#1a1a1a', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, wordBreak: 'break-all' }}>
+                        <span>{app.title}</span>
+                        <button
+                          onClick={() => startRename(app)}
+                          title="リネーム"
+                          style={{
+                            ...mono, fontSize: 10, background: 'transparent', border: 'none',
+                            color: '#9ca3af', cursor: 'pointer', padding: '2px 4px',
+                          }}
+                        >✎</button>
+                      </div>
+                      <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.08em', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <span>作成: {new Date(app.createdAt).toLocaleDateString('ja-JP')}</span>
+                        <span style={{ color: app.lastOpenedAt ? '#6b7280' : '#d1d5db' }}>
+                          最終起動: {formatRelative(app.lastOpenedAt)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {renamingId !== app.id && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Link href={`/kokoro-apps/${app.id}`} style={{
+                      ...mono, fontSize: 10, letterSpacing: '0.1em',
+                      background: accentColor, color: '#fff', textDecoration: 'none',
+                      padding: '8px 14px', borderRadius: 3,
+                    }}>開く →</Link>
+                    <button onClick={() => deleteApp(app.id)} style={{
+                      ...mono, fontSize: 10, letterSpacing: '0.1em',
+                      background: '#fff', border: '1px solid #fca5a5', color: '#ef4444',
+                      padding: '7px 12px', borderRadius: 3, cursor: 'pointer',
+                    }}>削除</button>
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <Link href={`/kokoro-apps/${app.id}`} style={{
-                    ...mono, fontSize: 10, letterSpacing: '0.1em',
-                    background: accentColor, color: '#fff', textDecoration: 'none',
-                    padding: '8px 14px', borderRadius: 3,
-                  }}>開く →</Link>
-                  <button onClick={() => deleteApp(app.id)} style={{
-                    ...mono, fontSize: 10, letterSpacing: '0.1em',
-                    background: '#fff', border: '1px solid #fca5a5', color: '#ef4444',
-                    padding: '7px 12px', borderRadius: 3, cursor: 'pointer',
-                  }}>削除</button>
-                </div>
+                )}
               </div>
             ))}
           </div>
