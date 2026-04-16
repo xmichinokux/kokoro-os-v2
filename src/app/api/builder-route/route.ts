@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KOKORO_OS_FEASIBILITY_NOTE } from '@/lib/kokoro-sdk/builder-prompt';
 
 export const maxDuration = 30;
 
-const ROUTE_PROMPT = (spec: string) =>
+const ROUTE_PROMPT = (spec: string, osMode: boolean) =>
   `あなたはソフトウェアアーキテクトです。以下の仕様書を読んで、(1)実装モードと (2)実現可能性を判定してください。
 
 【仕様書】
@@ -25,7 +26,7 @@ ${spec}
 "infeasible" の場合は reason に「何が作れないか」を30字以内の日本語で書いてください（例: "物理演算が必要なゲームは作れません"）。
 "risky" の場合は reason に「何が不安か」を30字以内で書いてください（例: "複雑なCanvas描画で崩れる可能性"）。
 "feasible" の場合は reason は空文字列で構いません。
-
+${osMode ? '\n' + KOKORO_OS_FEASIBILITY_NOTE + '\n' : ''}
 以下のJSONのみを返してください（説明・コードブロック不要）：
 {"mode": "html" | "hybrid", "feasibility": "feasible" | "risky" | "infeasible", "reason": "..."}`;
 
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { spec } = await req.json() as { spec: string };
+    const { spec, osMode } = await req.json() as { spec: string; osMode?: boolean };
     if (!spec) {
       return NextResponse.json({ error: '仕様書が必要です' }, { status: 400 });
     }
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: ROUTE_PROMPT(spec) }] }],
+          contents: [{ parts: [{ text: ROUTE_PROMPT(spec, osMode === true) }] }],
           generationConfig: {
             thinkingConfig: { thinkingBudget: 0 },
           },

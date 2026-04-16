@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import PersonaLoading from '@/components/PersonaLoading';
+import { supabase } from '@/lib/supabase/client';
+import { getCurrentUserId } from '@/lib/supabase/auth';
 
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#7c3aed';
@@ -33,6 +35,9 @@ export default function KokoroBuilderPage() {
   const [buildType, setBuildType] = useState<BuildType>('html');
   const [fromGatekeeper, setFromGatekeeper] = useState(false);
   const [geminiInstruction, setGeminiInstruction] = useState('');
+  const [osMode, setOsMode] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [registeredAppId, setRegisteredAppId] = useState<string | null>(null);
 
   // === Edit モード ===
   const [editHtml, setEditHtml] = useState('');
@@ -124,9 +129,10 @@ export default function KokoroBuilderPage() {
     if (!spec.trim()) return;
     setPhase('generating'); setError(''); setGeneratedCode(''); setPreviewUrl(null);
     setShowCode(false); setCopied(false); setValidationLog([]); setGeminiInstruction('');
+    setRegisteredAppId(null);
     setProgressMessage('仕様を分析中...');
     try {
-      const routeData = await apiFetch('/api/builder-route', { spec: spec.trim() });
+      const routeData = await apiFetch('/api/builder-route', { spec: spec.trim(), osMode });
       const mode = routeData.mode as BuildType;
       const feasibility = (routeData.feasibility as 'feasible' | 'risky' | 'infeasible') || 'feasible';
       const reason = (routeData.reason as string) || '';
@@ -146,12 +152,12 @@ export default function KokoroBuilderPage() {
 
       if (mode === 'hybrid') {
         setProgressMessage('設計書を生成中...');
-        const designData = await apiFetch('/api/kokoro-builder-hybrid', { spec: spec.trim(), step: 'gemini' });
+        const designData = await apiFetch('/api/kokoro-builder-hybrid', { spec: spec.trim(), step: 'gemini', osMode });
         const instruction = designData.instruction as string;
         setGeminiInstruction(instruction);
 
         setProgressMessage('コードを生成中...');
-        const codeData = await apiFetch('/api/kokoro-builder-hybrid', { spec: spec.trim(), step: 'claude', instruction });
+        const codeData = await apiFetch('/api/kokoro-builder-hybrid', { spec: spec.trim(), step: 'claude', instruction, osMode });
         let currentCode = codeData.code as string;
 
         const MAX_RT_ROUNDS = 3; const logs: string[] = [];
@@ -171,11 +177,11 @@ export default function KokoroBuilderPage() {
         showPreview(currentCode);
       } else {
         setProgressMessage('コードを生成中...');
-        const data = await apiFetch('/api/kokoro-builder', { spec: spec.trim(), buildType: 'html' });
+        const data = await apiFetch('/api/kokoro-builder', { spec: spec.trim(), buildType: 'html', osMode });
         showPreview(data.code as string);
       }
     } catch (e) { setError(e instanceof Error ? e.message : 'エラーが発生しました'); setPhase('input'); }
-  }, [spec, apiFetch, showPreview, testRuntimeErrors]);
+  }, [spec, osMode, apiFetch, showPreview, testRuntimeErrors]);
 
   // ========================
   // Edit モード
@@ -324,10 +330,44 @@ export default function KokoroBuilderPage() {
   const handleReset = useCallback(() => {
     setPhase('input'); setBuildType('html'); setGeneratedCode(''); setPreviewUrl(null);
     setError(''); setShowCode(false); setCopied(false); setGeminiInstruction('');
-    setProgressMessage(''); setValidationLog([]);
+    setProgressMessage(''); setValidationLog([]); setRegisteredAppId(null);
     setEditHtml(''); setEditInstruction(''); setEditHistory([]); setEditLoaded(false);
     if (testIframeRef.current) testIframeRef.current.srcdoc = '';
   }, []);
+
+  // Kokoro OSに登録
+  const handleRegisterToOs = useCallback(async () => {
+    if (!generatedCode || registering) return;
+    setRegistering(true);
+    setError('');
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) throw new Error('ログインが必要です');
+      const defaultTitle = spec.trim().slice(0, 40) || 'Kokoro mini-app';
+      const title = window.prompt('アプリ名を入力してください', defaultTitle);
+      if (!title) { setRegistering(false); return; }
+      const now = new Date().toISOString();
+      const newId = crypto.randomUUID();
+      const { error: dbErr } = await supabase.from('notes').insert({
+        id: newId,
+        user_id: userId,
+        title: title.slice(0, 200),
+        text: generatedCode,
+        source: 'mini-app',
+        tags: ['mini-app'],
+        is_public: false,
+        created_at: now,
+        updated_at: now,
+      });
+      if (dbErr) throw new Error(dbErr.message);
+      setRegisteredAppId(newId);
+      router.push(`/kokoro-apps/${newId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '登録に失敗しました');
+    } finally {
+      setRegistering(false);
+    }
+  }, [generatedCode, registering, spec, router]);
 
   // Editモードで生成完了後にCreate結果を引き継ぐ
   const handleSwitchToEdit = useCallback(() => {
@@ -413,6 +453,45 @@ export default function KokoroBuilderPage() {
                   placeholder="作りたいアプリやゲームの仕様を書いてください。AIが最適な方法で生成します。"
                   style={{ width: '100%', minHeight: 200, resize: 'vertical', fontFamily: "'Noto Sans JP', sans-serif", fontSize: 13, lineHeight: 1.8, background: '#f8f9fa', border: '1px solid #d1d5db', borderRadius: 6, padding: 16, outline: 'none', color: '#374151' }}
                 />
+
+                {/* OS前提モード トグル */}
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: '14px 16px',
+                    border: `1px solid ${osMode ? accentColor : '#e5e7eb'}`,
+                    borderRadius: 6,
+                    background: osMode ? '#faf5ff' : '#fafafa',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setOsMode(v => !v)}
+                >
+                  <div style={{
+                    width: 36, height: 20, borderRadius: 10,
+                    background: osMode ? accentColor : '#d1d5db',
+                    position: 'relative', flexShrink: 0, transition: 'background 0.15s',
+                    marginTop: 2,
+                  }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: 8, background: '#fff',
+                      position: 'absolute', top: 2, left: osMode ? 18 : 2, transition: 'left 0.15s',
+                    }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ ...mono, fontSize: 11, letterSpacing: '0.1em', color: osMode ? accentColor : '#374151', fontWeight: 600 }}>
+                      📦 Kokoro OS mini-app モード {osMode ? 'ON' : 'OFF'}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, lineHeight: 1.6 }}>
+                      {osMode
+                        ? '認証・Note DB・LLM呼び出しが window.kokoro.* で使えます。生成後「Kokoro OSに登録」でアプリ化できます。'
+                        : 'スタンドアロン HTML として生成します。外部APIや認証は使えません。'}
+                    </div>
+                  </div>
+                </div>
+
                 <button onClick={handleYoroshiku} disabled={!spec.trim()} style={{
                   ...mono, fontSize: 11, letterSpacing: '0.16em', background: accentColor, border: 'none', color: '#fff',
                   padding: '14px 32px', borderRadius: 4, cursor: spec.trim() ? 'pointer' : 'not-allowed',
@@ -443,7 +522,27 @@ export default function KokoroBuilderPage() {
                   <iframe ref={iframeRef} srcDoc={previewUrl || undefined} scrolling="yes" style={{ width: '100%', height: 667, border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Builder Preview" />
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <button onClick={handleDownload} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: accentColor, border: 'none', color: '#fff', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>Download ↓</button>
+                  {osMode && (
+                    <button
+                      onClick={handleRegisterToOs}
+                      disabled={registering || registeredAppId !== null}
+                      style={{
+                        ...mono, fontSize: 10, letterSpacing: '0.12em',
+                        background: registeredAppId ? '#059669' : accentColor,
+                        border: 'none', color: '#fff',
+                        padding: '10px 20px', borderRadius: 4,
+                        cursor: registering ? 'wait' : registeredAppId ? 'default' : 'pointer',
+                        opacity: registering ? 0.6 : 1,
+                      }}
+                    >
+                      {registering
+                        ? '登録中...'
+                        : registeredAppId
+                          ? '✓ 登録済み'
+                          : '📦 Kokoro OSに登録'}
+                    </button>
+                  )}
+                  <button onClick={handleDownload} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: osMode ? '#fff' : accentColor, border: osMode ? '1px solid #d1d5db' : 'none', color: osMode ? '#6b7280' : '#fff', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>Download ↓</button>
                   <button onClick={handleSwitchToEdit} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: `1px solid ${accentColor}`, color: accentColor, padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>Edit →</button>
                   <button onClick={handleToWorld} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #10b981', color: '#10b981', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>World →</button>
                   <button onClick={handleToTuner} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #f59e0b', color: '#f59e0b', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>Tuner →</button>

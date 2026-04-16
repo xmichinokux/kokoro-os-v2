@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { KOKORO_OS_BUILDER_PROMPT } from '@/lib/kokoro-sdk/builder-prompt';
 
 const HTML_SYSTEM = (spec: string) => `あなたはKokoro OSのBuilderエンジンです。
 以下の仕様書を読んで、動作するシングルHTMLファイルを生成してください。
@@ -89,11 +90,14 @@ HTMLコードのみを返してください。
 
 type BuildType = 'html' | 'auto';
 
-function getSystem(type: BuildType, spec: string): string {
-  switch (type) {
-    case 'html': return HTML_SYSTEM(spec);
-    case 'auto': return AUTO_SYSTEM(spec);
-  }
+function getSystem(type: BuildType, spec: string, osMode: boolean): string {
+  const base = (() => {
+    switch (type) {
+      case 'html': return HTML_SYSTEM(spec);
+      case 'auto': return AUTO_SYSTEM(spec);
+    }
+  })();
+  return osMode ? `${KOKORO_OS_BUILDER_PROMPT}\n\n---\n\n${base}` : base;
 }
 
 export async function POST(req: NextRequest) {
@@ -103,13 +107,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
     }
 
-    const { spec, buildType } = await req.json() as { spec: string; buildType: BuildType };
+    const { spec, buildType, osMode } = await req.json() as { spec: string; buildType: BuildType; osMode?: boolean };
 
     if (!spec) {
       return NextResponse.json({ error: '仕様書が必要です' }, { status: 400 });
     }
 
-    const system = getSystem(buildType || 'html', spec);
+    const system = getSystem(buildType || 'html', spec, osMode === true);
 
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',

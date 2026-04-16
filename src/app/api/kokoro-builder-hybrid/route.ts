@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { KOKORO_OS_BUILDER_PROMPT } from '@/lib/kokoro-sdk/builder-prompt';
 
 export const maxDuration = 120;
 
@@ -60,7 +61,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const { spec, step, instruction } = await req.json() as { spec: string; step: 'gemini' | 'claude'; instruction?: string };
+    const { spec, step, instruction, osMode } = await req.json() as { spec: string; step: 'gemini' | 'claude'; instruction?: string; osMode?: boolean };
+    const isOsMode = osMode === true;
 
     if (!spec && step === 'gemini') {
       return NextResponse.json({ error: '仕様書が必要です' }, { status: 400 });
@@ -70,7 +72,10 @@ export async function POST(req: NextRequest) {
     if (step === 'gemini') {
       const genAI = new GoogleGenerativeAI(geminiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      const result = await model.generateContent(GEMINI_PROMPT(spec));
+      const geminiPrompt = isOsMode
+        ? `${KOKORO_OS_BUILDER_PROMPT}\n\n---\n\n${GEMINI_PROMPT(spec)}`
+        : GEMINI_PROMPT(spec);
+      const result = await model.generateContent(geminiPrompt);
       const generatedInstruction = result.response.text();
       return NextResponse.json({ instruction: generatedInstruction });
     }
@@ -81,10 +86,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: '実装指示書が必要です' }, { status: 400 });
       }
 
+      const claudePrompt = isOsMode
+        ? `${KOKORO_OS_BUILDER_PROMPT}\n\n---\n\n${CLAUDE_PROMPT(instruction, spec || '')}`
+        : CLAUDE_PROMPT(instruction, spec || '');
       const body = JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 16000,
-        messages: [{ role: 'user', content: CLAUDE_PROMPT(instruction, spec || '') }],
+        messages: [{ role: 'user', content: claudePrompt }],
       });
 
       // 529 Overloaded 自動リトライ（指数バックオフ）
