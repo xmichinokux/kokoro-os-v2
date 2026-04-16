@@ -306,7 +306,7 @@ export default function KokoroMessagesPage() {
 
   /* ── チャット画面 ── */
   return (
-    <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: 'calc(100vh - 80px)', background: '#ffffff', color: '#374151', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* ヘッダー */}
       <header style={{
         padding: '14px 28px', borderBottom: '1px solid #e5e7eb',
@@ -433,7 +433,7 @@ export default function KokoroMessagesPage() {
           {/* 入力エリア（承認後のみ） */}
           {chatData.conversation.status === 'approved' && (
             <div style={{
-              padding: '12px 28px 120px', borderTop: '1px solid #e5e7eb', flexShrink: 0,
+              padding: '12px 28px 16px', borderTop: '1px solid #e5e7eb', flexShrink: 0,
               maxWidth: 640, margin: '0 auto', width: '100%', boxSizing: 'border-box',
             }}>
               {sendError && (
