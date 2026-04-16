@@ -105,6 +105,69 @@ ${designDoc}
    - 要素数が多すぎてパフォーマンスに影響しないよう、全体で3000行以下を目安とする`;
 
 // ==========================
+// Critique Layer: SVGを読んで主題適合性・細部品質を批評
+// ==========================
+const CRITIQUE_PROMPT = (subject: string, style: string, designDoc: string, svg: string) =>
+  `あなたはSVGベクターイラストの辛口批評家です。以下の主題・スタイル・設計書に対し、実際に生成されたSVGコードを読み、**主題への見えやすさ**と**細部の実装品質**を評価してください。
+
+【主題】${subject}
+【スタイル】${style}
+【設計書】
+${designDoc}
+
+【生成されたSVGコード】
+${svg.length > 12000 ? svg.slice(0, 12000) + '\n...(省略)' : svg}
+
+【評価観点】
+A. 主題への整合性
+  - 主題の特徴的な要素（例: 顔なら目鼻口・眉、猫なら耳尻尾ひげ）がすべて存在するか
+  - 各要素の位置関係・比率が自然か（顔中心に目がある、尻尾が胴から生えている、等）
+  - 第一印象で「${subject}」と分かる構成か
+
+B. 設計書の実装忠実度
+  - 設計書の要素リストがすべてSVGに含まれるか（g-xxx IDで確認）
+  - 指定カラーパレット・レイヤー順序が守られているか
+
+C. 細部の完成度
+  - 輪郭が単純な<circle>や<rect>で済まされていないか（jitter済み多角形/pathになっているか）
+  - ハッチング（平行線による影）が設計書の指示通り実装されているか
+  - ストロークの強弱（閉パスによる入り抜き）が表現されているか
+
+【出力形式】以下のJSONのみ返してください（説明・コードブロック不要）：
+{"severity": "ok" | "minor" | "major", "issues": ["具体的な問題1（どの要素がどう不足/ズレているか）", "..."]}
+
+- severity: "ok"=修正不要 / "minor"=細部のみ不満 / "major"=主題が伝わらない・要素欠落
+- issues は最大6件、重要度順、各30〜80字の具体的な日本語
+- 問題なしなら issues は空配列`;
+
+// ==========================
+// Refine Layer: 批評を受けて精緻化
+// ==========================
+const REFINE_PROMPT = (subject: string, style: string, designDoc: string, svg: string, issues: string[]) =>
+  `あなたはSVGコードの精緻化担当です。以下のSVGに対し、批評で指摘された問題を解消してください。
+
+【主題】${subject}
+【スタイル】${style}
+【設計書（参考）】
+${designDoc.slice(0, 1500)}
+
+【批評で指摘された問題（優先度順）】
+${issues.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+【修正ルール】
+・修正後の**完全なSVGコード**を返す（差分ではなく全体）
+・<svg>で始まり</svg>で終わる。マークダウンコードブロックは使わない
+・width, height, viewBox="0 0 800 800", xmlns="http://www.w3.org/2000/svg" を必ず含める
+・既存の構造（グループID g-xxx、レイヤー順序）を壊さず、指摘された部分のみ変更・追加
+・要素欠落の指摘があれば、該当要素を新規 <g id="g-xxx"> として追加
+・「輪郭が単純」系の指摘は、対象を24〜48頂点のjitter済み<polygon>/<path>に置き換える
+・「ハッチング不足」系の指摘は、該当部分に平行線グループを追加（<g id="g-hatch-xxx">）
+・「ストローク強弱不足」系の指摘は、重要輪郭を細長い閉<path>に置き換える
+
+【修正対象のSVG】
+${svg}`;
+
+// ==========================
 // Debug Layer: SVG検証と修正
 // ==========================
 const DEBUG_PROMPT = (svg: string, designDoc: string, errors: string[]) =>
@@ -157,7 +220,7 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
 async function callClaude(
   apiKey: string,
   prompt: string,
-  model: 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-20250514' = 'claude-sonnet-4-20250514',
+  model: 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6' = 'claude-sonnet-4-6',
   maxTokens = 16000,
 ): Promise<string> {
   const body = JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] });
@@ -234,12 +297,13 @@ export async function POST(req: NextRequest) {
     if (!geminiKey) return NextResponse.json({ error: 'GEMINI_API_KEY が設定されていません' }, { status: 500 });
     if (!anthropicKey) return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
 
-    const { subject, style, step, designDoc: inputDesignDoc, svg: inputSvg } = await req.json() as {
+    const { subject, style, step, designDoc: inputDesignDoc, svg: inputSvg, issues: inputIssues } = await req.json() as {
       subject: string;
       style: string;
-      step: 'logic' | 'styling' | 'debug';
+      step: 'logic' | 'styling' | 'critique' | 'refine' | 'debug';
       designDoc?: string;
       svg?: string;
+      issues?: string[];
     };
 
     // Step 1: Logic Layer（Gemini で構造設計）
@@ -258,12 +322,60 @@ export async function POST(req: NextRequest) {
     // Step 2: Styling Layer（Claude Sonnet で SVG生成）
     if (step === 'styling') {
       if (!inputDesignDoc) return NextResponse.json({ error: '設計書が必要です' }, { status: 400 });
-      const raw = await callClaude(anthropicKey, STYLING_PROMPT(inputDesignDoc, subject || '', style || ''));
+      const raw = await callClaude(
+        anthropicKey,
+        STYLING_PROMPT(inputDesignDoc, subject || '', style || ''),
+        'claude-sonnet-4-6',
+        20000,
+      );
       const svg = extractSvg(raw);
 
       // バリデーション
       const errors = validateSvg(svg);
 
+      return NextResponse.json({ svg, errors });
+    }
+
+    // Step 2.5: Critique Layer（Gemini で批評）
+    if (step === 'critique') {
+      if (!inputSvg) return NextResponse.json({ error: 'SVGコードが必要です' }, { status: 400 });
+      const raw = await callGemini(
+        geminiKey,
+        CRITIQUE_PROMPT(subject || '', style || '', inputDesignDoc || '', inputSvg),
+      );
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      let severity: 'ok' | 'minor' | 'major' = 'ok';
+      let issues: string[] = [];
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          const rawSev = parsed.severity;
+          severity = rawSev === 'major' ? 'major' : rawSev === 'minor' ? 'minor' : 'ok';
+          if (Array.isArray(parsed.issues)) {
+            issues = parsed.issues
+              .filter((s: unknown): s is string => typeof s === 'string')
+              .slice(0, 6)
+              .map((s: string) => s.slice(0, 120));
+          }
+        } catch { /* fallthrough: ok */ }
+      }
+      return NextResponse.json({ severity, issues });
+    }
+
+    // Step 2.6: Refine Layer（Claude Sonnet で批評に基づき修正）
+    if (step === 'refine') {
+      if (!inputSvg) return NextResponse.json({ error: 'SVGコードが必要です' }, { status: 400 });
+      if (!inputIssues || inputIssues.length === 0) {
+        return NextResponse.json({ svg: inputSvg });
+      }
+      const raw = await callClaude(
+        anthropicKey,
+        REFINE_PROMPT(subject || '', style || '', inputDesignDoc || '', inputSvg, inputIssues),
+        'claude-sonnet-4-6',
+        20000,
+      );
+      const svg = extractSvg(raw);
+      const errors = validateSvg(svg);
       return NextResponse.json({ svg, errors });
     }
 

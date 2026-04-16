@@ -387,6 +387,57 @@ export default function KokoroCreativePage() {
         logs.push('✓ SVGコードを受信（エラーなし）'); setVecLog([...logs]);
       }
 
+      // Step 2.5+2.6: Critique + Refine ループ（最大2ラウンド）
+      const MAX_REFINE_ROUNDS = 2;
+      for (let refineRound = 0; refineRound < MAX_REFINE_ROUNDS; refineRound++) {
+        setVecProgress(`Critique Layer: 批評中... (${refineRound + 1}/${MAX_REFINE_ROUNDS})`);
+        logs.push(`▶ Critique Layer: ラウンド ${refineRound + 1}/${MAX_REFINE_ROUNDS}...`);
+        setVecLog([...logs]);
+
+        let severity: 'ok' | 'minor' | 'major' = 'ok';
+        let issues: string[] = [];
+        try {
+          const critiqueData = await apiFetch('/api/creative-vector', {
+            subject: vecSubject.trim(), style: vecStyle.trim(), step: 'critique',
+            designDoc, svg: currentSvg,
+          });
+          severity = (critiqueData.severity as 'ok' | 'minor' | 'major') || 'ok';
+          issues = (critiqueData.issues as string[]) || [];
+        } catch (critErr) {
+          logs.push(`  ✗ 批評失敗: ${critErr instanceof Error ? critErr.message : 'エラー'}`);
+          setVecLog([...logs]);
+          break;
+        }
+
+        if (severity === 'ok' || issues.length === 0) {
+          logs.push('✓ 批評: 問題なし'); setVecLog([...logs]);
+          break;
+        }
+
+        logs.push(`  △ ${severity === 'major' ? '重大' : '軽微'}: ${issues.length}件の指摘`);
+        issues.forEach(s => logs.push(`    - ${s}`));
+        setVecLog([...logs]);
+
+        setVecProgress(`Refine Layer: 精緻化中... (${refineRound + 1}/${MAX_REFINE_ROUNDS})`);
+        logs.push(`▶ Refine Layer: 指摘に基づき修正中...`); setVecLog([...logs]);
+        try {
+          const refineData = await apiFetch('/api/creative-vector', {
+            subject: vecSubject.trim(), style: vecStyle.trim(), step: 'refine',
+            designDoc, svg: currentSvg, issues,
+          });
+          currentSvg = refineData.svg as string;
+          currentErrors = (refineData.errors as string[]) || [];
+          logs.push(`✓ 精緻化完了（ラウンド${refineRound + 1}）`); setVecLog([...logs]);
+        } catch (refErr) {
+          logs.push(`  ✗ 精緻化失敗: ${refErr instanceof Error ? refErr.message : 'エラー'}`);
+          setVecLog([...logs]);
+          break;
+        }
+
+        // minor かつ最終ラウンドじゃない場合は1回で打ち切り（major のみ2ラウンド許可）
+        if (severity === 'minor') break;
+      }
+
       // Step 3: Debug Layer（Haiku デバッグループ、最大5回）
       const MAX_DEBUG_ROUNDS = 5;
       for (let round = 0; round < MAX_DEBUG_ROUNDS; round++) {

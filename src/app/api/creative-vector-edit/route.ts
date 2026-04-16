@@ -70,8 +70,8 @@ export async function POST(req: NextRequest) {
     }
 
     const body = JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 16000,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 20000,
       messages: [{
         role: 'user',
         content: EDIT_PROMPT(svg, instruction),
