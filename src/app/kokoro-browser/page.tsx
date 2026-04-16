@@ -16,7 +16,7 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
 };
 
 const SOURCE_LABELS: Record<string, string> = {
-  talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き',
+  talk: 'Talk', zen: 'Zen', emi: 'エミ', manual: '手書き', resonance: 'Resonance',
 };
 
 const WEB_CACHE_KEY = 'kokoroBrowserWebCache';
