@@ -300,8 +300,21 @@ export default function KokoroBrowserPage() {
   }, [topTab, subTabId, selectedCustomTab?.id, syncCounter]);
 
   /* ─── Filtered notes for city (exclude product source notes) ─── */
-  const productIds = useMemo(() => new Set(products.map(p => p.id)), [products]);
-  const safePublicNotes = useMemo(() => publicNotes.filter(n => !productIds.has(n.id)), [publicNotes, productIds]);
+  const safePublicNotes = useMemo(() => {
+    const pIds = new Set(products.map(p => p.id));
+    const pByAuthor = products.reduce<Record<string, Set<string>>>((acc, p) => {
+      if (!acc[p.authorId]) acc[p.authorId] = new Set();
+      (p.tags || []).forEach(t => acc[p.authorId].add(t));
+      return acc;
+    }, {});
+    return publicNotes.filter(n => {
+      if (pIds.has(n.id)) return false;
+      const aid = n.authorId || '';
+      const pTags = pByAuthor[aid];
+      if (aid && pTags && (n.tags || []).some(t => pTags.has(t))) return false;
+      return true;
+    });
+  }, [publicNotes, products]);
 
   const filteredNotes = useMemo(() => {
     if (topTab !== 'city') return [];
