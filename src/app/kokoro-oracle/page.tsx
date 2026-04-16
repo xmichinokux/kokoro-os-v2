@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import PersonaLoading from '@/components/PersonaLoading';
+import { supabase } from '@/lib/supabase/client';
+import { getCurrentUserId } from '@/lib/supabase/auth';
 
 type OracleNode = {
   id: string;
@@ -16,12 +18,21 @@ type OracleNode = {
 };
 
 type OracleSession = {
+  id: string | null;
   rootQuestion: string;
   nodes: OracleNode[];
   model: 'haiku' | 'sonnet';
 };
 
-const STORAGE_KEY = 'kokoro_oracle_session_v1';
+type SavedSession = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  nodeCount: number;
+};
+
+const STORAGE_KEY = 'kokoro_oracle_session_v2';
+const ORACLE_SOURCE = 'oracle';
 
 const EXAMPLE_QUESTIONS = [
   '自動車エンジンのエネルギー効率をどこまで上げられるか',
@@ -39,22 +50,52 @@ function genId(): string {
   return 'node-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 }
 
+function getAncestorChain(nodes: OracleNode[], parentId: string | null): OracleNode[] {
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const chain: OracleNode[] = [];
+  let cur = parentId ? byId.get(parentId) : undefined;
+  while (cur) {
+    chain.unshift(cur);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return chain;
+}
+
+function computeDepth(nodes: OracleNode[], node: OracleNode): number {
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  let depth = 0;
+  let cur: OracleNode | undefined = node;
+  while (cur && cur.parentId) {
+    depth++;
+    cur = byId.get(cur.parentId);
+    if (depth > 50) break;
+  }
+  return depth;
+}
+
 export default function KokoroOraclePage() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [rootQuestion, setRootQuestion] = useState('');
   const [nodes, setNodes] = useState<OracleNode[]>([]);
   const [model, setModel] = useState<'haiku' | 'sonnet'>('haiku');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [input, setInput] = useState('');
+  const [drillFromId, setDrillFromId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
   const chainEndRef = useRef<HTMLDivElement>(null);
 
-  // 初回読み込み: localStorageから復元
+  // localStorageから復元
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as OracleSession;
       if (parsed.rootQuestion && Array.isArray(parsed.nodes)) {
+        setSessionId(parsed.id ?? null);
         setRootQuestion(parsed.rootQuestion);
         setNodes(parsed.nodes);
         if (parsed.model === 'sonnet' || parsed.model === 'haiku') setModel(parsed.model);
@@ -62,17 +103,47 @@ export default function KokoroOraclePage() {
     } catch { /* ignore */ }
   }, []);
 
-  // 保存
+  // 保存（localStorage）
   useEffect(() => {
     if (nodes.length === 0 && !rootQuestion) {
       localStorage.removeItem(STORAGE_KEY);
       return;
     }
     try {
-      const session: OracleSession = { rootQuestion, nodes, model };
+      const session: OracleSession = { id: sessionId, rootQuestion, nodes, model };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     } catch { /* ignore */ }
-  }, [rootQuestion, nodes, model]);
+  }, [sessionId, rootQuestion, nodes, model]);
+
+  // 過去セッション一覧を取得
+  const loadSavedSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) return;
+      const { data, error: e } = await supabase
+        .from('notes')
+        .select('id, title, updated_at, text')
+        .eq('user_id', userId)
+        .eq('source', ORACLE_SOURCE)
+        .order('updated_at', { ascending: false })
+        .limit(10);
+      if (e) return;
+      const list: SavedSession[] = (data || []).map(r => {
+        let nodeCount = 0;
+        try {
+          const parsed = JSON.parse(r.text);
+          if (Array.isArray(parsed.nodes)) nodeCount = parsed.nodes.length;
+        } catch { /* ignore */ }
+        return { id: r.id, title: r.title, updatedAt: r.updated_at, nodeCount };
+      });
+      setSavedSessions(list);
+    } catch { /* ignore */ } finally {
+      setLoadingSessions(false);
+    }
+  }, []);
+
+  useEffect(() => { loadSavedSessions(); }, [loadSavedSessions]);
 
   // 最新ノードへスクロール
   useEffect(() => {
@@ -84,7 +155,8 @@ export default function KokoroOraclePage() {
     setLoading(true);
     setError('');
     try {
-      const context = nodes.map(n => ({
+      const ancestors = getAncestorChain(nodes, parentId);
+      const context = ancestors.map(n => ({
         question: n.question,
         hypothesis: n.hypothesis,
         reasoning: n.reasoning,
@@ -108,6 +180,7 @@ export default function KokoroOraclePage() {
         createdAt: new Date().toISOString(),
       };
       setNodes(prev => [...prev, newNode]);
+      setSavedAt(null); // dirty
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました');
     } finally {
@@ -118,6 +191,8 @@ export default function KokoroOraclePage() {
   const handleStart = useCallback(async () => {
     const q = input.trim();
     if (!q || loading) return;
+    setSessionId(null);
+    setSavedAt(null);
     setRootQuestion(q);
     setNodes([]);
     setInput('');
@@ -126,32 +201,112 @@ export default function KokoroOraclePage() {
 
   const handleDrill = useCallback(async (question: string, parentId: string) => {
     if (loading) return;
+    setDrillFromId(null);
     await callOracle(question, parentId);
   }, [loading, callOracle]);
 
   const handleCustomDrill = useCallback(async () => {
     const q = input.trim();
     if (!q || loading) return;
-    const lastId = nodes.length > 0 ? nodes[nodes.length - 1].id : null;
+    const parentId = drillFromId ?? (nodes.length > 0 ? nodes[nodes.length - 1].id : null);
     setInput('');
-    await callOracle(q, lastId);
-  }, [input, loading, nodes, callOracle]);
+    setDrillFromId(null);
+    await callOracle(q, parentId);
+  }, [input, loading, nodes, drillFromId, callOracle]);
 
   const handleReset = useCallback(() => {
-    if (!window.confirm('探索をすべて初期化します。よろしいですか？')) return;
+    if (!window.confirm('探索をすべて初期化します。保存済みセッションは残ります。')) return;
+    setSessionId(null);
     setRootQuestion('');
     setNodes([]);
     setInput('');
     setError('');
+    setSavedAt(null);
+    setDrillFromId(null);
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-  }, []);
+    loadSavedSessions();
+  }, [loadSavedSessions]);
 
   const handleUndo = useCallback(() => {
     setNodes(prev => prev.slice(0, -1));
     setError('');
+    setSavedAt(null);
   }, []);
 
+  // Supabaseに保存
+  const handleSave = useCallback(async () => {
+    if (nodes.length === 0) return;
+    setSaving(true);
+    setError('');
+    try {
+      const userId = await getCurrentUserId();
+      if (!userId) throw new Error('ログインが必要です');
+      const now = new Date().toISOString();
+      const payload: Omit<OracleSession, 'id'> = { rootQuestion, nodes, model };
+      const text = JSON.stringify(payload);
+      const title = (rootQuestion || 'Oracle session').slice(0, 100);
+      if (sessionId) {
+        const { error: e } = await supabase
+          .from('notes')
+          .update({ title, text, tags: ['oracle'], updated_at: now })
+          .eq('id', sessionId);
+        if (e) throw new Error(e.message);
+      } else {
+        const newId = crypto.randomUUID();
+        const { error: e } = await supabase.from('notes').insert({
+          id: newId, user_id: userId, title, text,
+          source: ORACLE_SOURCE, tags: ['oracle'],
+          is_public: false, created_at: now, updated_at: now,
+        });
+        if (e) throw new Error(e.message);
+        setSessionId(newId);
+      }
+      setSavedAt(now);
+      loadSavedSessions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存エラー');
+    } finally {
+      setSaving(false);
+    }
+  }, [nodes, rootQuestion, model, sessionId, loadSavedSessions]);
+
+  const handleLoadSession = useCallback(async (id: string) => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error: e } = await supabase
+        .from('notes')
+        .select('id, title, text, updated_at')
+        .eq('id', id)
+        .single();
+      if (e || !data) throw new Error(e?.message || 'セッションが見つかりません');
+      const parsed = JSON.parse(data.text) as OracleSession;
+      setSessionId(data.id);
+      setRootQuestion(parsed.rootQuestion || data.title);
+      setNodes(Array.isArray(parsed.nodes) ? parsed.nodes : []);
+      setModel(parsed.model === 'sonnet' ? 'sonnet' : 'haiku');
+      setSavedAt(data.updated_at);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'ロードエラー');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const handleDeleteSession = useCallback(async (id: string) => {
+    if (!window.confirm('この保存済み探索を削除しますか？')) return;
+    try {
+      const { error: e } = await supabase.from('notes').delete().eq('id', id);
+      if (e) throw new Error(e.message);
+      if (sessionId === id) setSessionId(null);
+      loadSavedSessions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '削除エラー');
+    }
+  }, [sessionId, loadSavedSessions]);
+
   const started = rootQuestion !== '' && nodes.length > 0;
+  const dirty = nodes.length > 0 && !savedAt;
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#1a1a1a' }}>
@@ -161,6 +316,7 @@ export default function KokoroOraclePage() {
         background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(12px)',
         position: 'sticky', top: 0, zIndex: 100,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <Link href="/" style={{ ...mono, fontSize: 10, color: '#6b7280', textDecoration: 'none' }}>← Home</Link>
@@ -177,7 +333,7 @@ export default function KokoroOraclePage() {
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.14em' }}>仮説を反復精錬する探索</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 4, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, padding: 3 }}>
             <button onClick={() => setModel('haiku')} style={{
               ...mono, fontSize: 9, letterSpacing: '0.08em',
@@ -195,16 +351,31 @@ export default function KokoroOraclePage() {
             }}>Sonnet</button>
           </div>
           {started && (
-            <button onClick={handleReset} style={{
-              ...mono, fontSize: 9, letterSpacing: '0.1em',
-              background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
-              padding: '6px 12px', borderRadius: 4, cursor: 'pointer',
-            }}>初期化</button>
+            <>
+              <button
+                onClick={handleSave}
+                disabled={saving || !dirty}
+                title={!dirty ? '変更なし' : '保存'}
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '0.1em',
+                  background: dirty ? accent : '#f3f4f6',
+                  border: 'none', color: dirty ? '#fff' : '#9ca3af',
+                  padding: '6px 12px', borderRadius: 4,
+                  cursor: (saving || !dirty) ? 'default' : 'pointer',
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >{saving ? '保存中...' : dirty ? '💾 保存' : '✓ 保存済'}</button>
+              <button onClick={handleReset} style={{
+                ...mono, fontSize: 9, letterSpacing: '0.1em',
+                background: '#fff', border: '1px solid #d1d5db', color: '#6b7280',
+                padding: '6px 12px', borderRadius: 4, cursor: 'pointer',
+              }}>初期化</button>
+            </>
           )}
         </div>
       </header>
 
-      <main style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px 140px' }}>
+      <main style={{ maxWidth: 780, margin: '0 auto', padding: '32px 24px 140px' }}>
         {/* 最初の問いがまだ → 入力画面 */}
         {!started && (
           <div>
@@ -213,7 +384,7 @@ export default function KokoroOraclePage() {
             </div>
             <p style={{ ...serif, fontSize: 14, color: '#6b7280', lineHeight: 1.9, marginBottom: 24 }}>
               問いを投げると、仮説・根拠・見積もり・次に掘るべき3つの問いが返ってきます。<br />
-              そこから一つを選んで掘る、を繰り返すことで真の答えに近づいていきます。
+              そこから任意の問いを選んで掘り進める、を繰り返して仮説を精錬します。
             </p>
 
             <textarea
@@ -263,6 +434,56 @@ export default function KokoroOraclePage() {
                 ))}
               </div>
             </div>
+
+            {/* 過去の探索 */}
+            {savedSessions.length > 0 && (
+              <div style={{ marginTop: 36, borderTop: '1px solid #e5e7eb', paddingTop: 24 }}>
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.12em', marginBottom: 12 }}>
+                  // 過去の探索（{savedSessions.length}）
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {savedSessions.map(s => (
+                    <div key={s.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 14px', border: '1px solid #e5e7eb',
+                      borderRadius: 6, background: '#ffffff',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ ...serif, fontSize: 13, color: '#1a1a1a', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.title}
+                        </div>
+                        <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '0.1em' }}>
+                          {s.nodeCount} nodes · {new Date(s.updatedAt).toLocaleDateString('ja-JP')}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleLoadSession(s.id)}
+                        disabled={loading}
+                        style={{
+                          ...mono, fontSize: 9, letterSpacing: '0.1em',
+                          background: accent, border: 'none', color: '#fff',
+                          padding: '6px 12px', borderRadius: 3,
+                          cursor: loading ? 'wait' : 'pointer',
+                        }}
+                      >開く</button>
+                      <button
+                        onClick={() => handleDeleteSession(s.id)}
+                        style={{
+                          ...mono, fontSize: 9, letterSpacing: '0.1em',
+                          background: 'transparent', border: '1px solid #fca5a5', color: '#ef4444',
+                          padding: '5px 10px', borderRadius: 3, cursor: 'pointer',
+                        }}
+                      >削除</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {loadingSessions && savedSessions.length === 0 && (
+              <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 24, textAlign: 'center' }}>
+                保存済みを確認中...
+              </div>
+            )}
           </div>
         )}
 
@@ -281,105 +502,120 @@ export default function KokoroOraclePage() {
               {rootQuestion}
             </div>
 
-            {nodes.map((node, i) => (
-              <div key={node.id} style={{ marginBottom: 28 }}>
-                {i > 0 && (
-                  <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.14em', marginBottom: 10 }}>
-                    ↓ DRILL {i}
-                  </div>
-                )}
+            {nodes.map((node, i) => {
+              const depth = computeDepth(nodes, node);
+              const indent = Math.min(depth, 4) * 20;
+              const parent = node.parentId ? nodes.find(n => n.id === node.parentId) : null;
+              return (
+                <div key={node.id} style={{ marginBottom: 22, marginLeft: indent }}>
+                  {i > 0 && (
+                    <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.14em', marginBottom: 8, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span>↳ DRILL {i}</span>
+                      {parent && (
+                        <span style={{ color: '#d1d5db', fontSize: 8 }}>
+                          from: {parent.question.slice(0, 30)}{parent.question.length > 30 ? '…' : ''}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
-                {/* 問い（最初以外） */}
-                {i > 0 && (
+                  {i > 0 && (
+                    <div style={{
+                      ...serif, fontSize: 13, color: '#6b7280', lineHeight: 1.8,
+                      padding: '8px 14px', marginBottom: 12,
+                      borderLeft: '2px solid #d1d5db',
+                    }}>
+                      {node.question}
+                    </div>
+                  )}
+
                   <div style={{
-                    ...serif, fontSize: 13, color: '#6b7280', lineHeight: 1.8,
-                    padding: '8px 14px', marginBottom: 12,
-                    borderLeft: '2px solid #d1d5db',
+                    border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden',
+                    background: '#ffffff',
                   }}>
-                    {node.question}
-                  </div>
-                )}
+                    <div style={{ padding: '16px 18px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
+                      <div style={{ ...mono, fontSize: 8, color: accent, letterSpacing: '0.16em', marginBottom: 6 }}>
+                        HYPOTHESIS
+                      </div>
+                      <div style={{ ...serif, fontSize: 14, lineHeight: 1.9, color: '#1a1a1a', fontWeight: 500 }}>
+                        {node.hypothesis}
+                      </div>
+                    </div>
 
-                {/* カード */}
-                <div style={{
-                  border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden',
-                  background: '#ffffff',
-                }}>
-                  {/* 仮説 */}
-                  <div style={{ padding: '16px 18px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                    <div style={{ ...mono, fontSize: 8, color: accent, letterSpacing: '0.16em', marginBottom: 6 }}>
-                      HYPOTHESIS
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6' }}>
+                      <div style={{ ...mono, fontSize: 8, color: '#6b7280', letterSpacing: '0.16em', marginBottom: 6 }}>
+                        REASONING
+                      </div>
+                      <div style={{ ...serif, fontSize: 13, lineHeight: 1.85, color: '#374151' }}>
+                        {node.reasoning}
+                      </div>
                     </div>
-                    <div style={{ ...serif, fontSize: 14, lineHeight: 1.9, color: '#1a1a1a', fontWeight: 500 }}>
-                      {node.hypothesis}
-                    </div>
-                  </div>
 
-                  {/* 根拠 */}
-                  <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6' }}>
-                    <div style={{ ...mono, fontSize: 8, color: '#6b7280', letterSpacing: '0.16em', marginBottom: 6 }}>
-                      REASONING
+                    <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6' }}>
+                      <div style={{ ...mono, fontSize: 8, color: '#6b7280', letterSpacing: '0.16em', marginBottom: 6 }}>
+                        ESTIMATE
+                      </div>
+                      <div style={{ ...serif, fontSize: 13, lineHeight: 1.85, color: '#374151' }}>
+                        {node.estimate}
+                      </div>
                     </div>
-                    <div style={{ ...serif, fontSize: 13, lineHeight: 1.85, color: '#374151' }}>
-                      {node.reasoning}
-                    </div>
-                  </div>
 
-                  {/* 見積 */}
-                  <div style={{ padding: '14px 18px', borderBottom: '1px solid #f3f4f6' }}>
-                    <div style={{ ...mono, fontSize: 8, color: '#6b7280', letterSpacing: '0.16em', marginBottom: 6 }}>
-                      ESTIMATE
-                    </div>
-                    <div style={{ ...serif, fontSize: 13, lineHeight: 1.85, color: '#374151' }}>
-                      {node.estimate}
-                    </div>
-                  </div>
-
-                  {/* 次の問い */}
-                  <div style={{ padding: '14px 18px' }}>
-                    <div style={{ ...mono, fontSize: 8, color: '#6b7280', letterSpacing: '0.16em', marginBottom: 10 }}>
-                      NEXT QUESTIONS
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {node.nextQuestions.map((q, qi) => (
-                        <button
-                          key={qi}
-                          onClick={() => handleDrill(q, node.id)}
-                          disabled={loading || i !== nodes.length - 1}
-                          title={i !== nodes.length - 1 ? '最新ノードからのみ掘れます' : ''}
-                          style={{
-                            ...serif, fontSize: 13, lineHeight: 1.7, textAlign: 'left',
-                            padding: '10px 14px', borderRadius: 6,
-                            border: `1px solid ${i === nodes.length - 1 ? accent + '40' : '#e5e7eb'}`,
-                            background: i === nodes.length - 1 ? `${accent}08` : '#fafafa',
-                            color: i === nodes.length - 1 ? '#1a1a1a' : '#9ca3af',
-                            cursor: (loading || i !== nodes.length - 1) ? 'not-allowed' : 'pointer',
-                            transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={e => {
-                            if (i === nodes.length - 1 && !loading) {
-                              e.currentTarget.style.background = `${accent}15`;
-                              e.currentTarget.style.borderColor = accent;
-                            }
-                          }}
-                          onMouseLeave={e => {
-                            if (i === nodes.length - 1 && !loading) {
-                              e.currentTarget.style.background = `${accent}08`;
-                              e.currentTarget.style.borderColor = accent + '40';
-                            }
-                          }}
-                        >
-                          <span style={{ ...mono, fontSize: 9, color: accent, marginRight: 8, letterSpacing: '0.1em' }}>
-                            Q{qi + 1} ↓
-                          </span>
-                          {q}
-                        </button>
-                      ))}
+                    <div style={{ padding: '14px 18px' }}>
+                      <div style={{ ...mono, fontSize: 8, color: '#6b7280', letterSpacing: '0.16em', marginBottom: 10 }}>
+                        NEXT QUESTIONS — クリックで任意の問いから掘り下げ
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {node.nextQuestions.map((q, qi) => (
+                          <button
+                            key={qi}
+                            onClick={() => handleDrill(q, node.id)}
+                            disabled={loading}
+                            style={{
+                              ...serif, fontSize: 13, lineHeight: 1.7, textAlign: 'left',
+                              padding: '10px 14px', borderRadius: 6,
+                              border: `1px solid ${accent}40`,
+                              background: `${accent}08`,
+                              color: '#1a1a1a',
+                              cursor: loading ? 'not-allowed' : 'pointer',
+                              transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={e => {
+                              if (!loading) {
+                                e.currentTarget.style.background = `${accent}15`;
+                                e.currentTarget.style.borderColor = accent;
+                              }
+                            }}
+                            onMouseLeave={e => {
+                              if (!loading) {
+                                e.currentTarget.style.background = `${accent}08`;
+                                e.currentTarget.style.borderColor = accent + '40';
+                              }
+                            }}
+                          >
+                            <span style={{ ...mono, fontSize: 9, color: accent, marginRight: 8, letterSpacing: '0.1em' }}>
+                              Q{qi + 1} ↓
+                            </span>
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setDrillFromId(node.id === drillFromId ? null : node.id)}
+                        style={{
+                          ...mono, fontSize: 8, letterSpacing: '0.12em', marginTop: 10,
+                          background: node.id === drillFromId ? `${accent}15` : 'transparent',
+                          border: `1px solid ${node.id === drillFromId ? accent : '#e5e7eb'}`,
+                          color: node.id === drillFromId ? accent : '#9ca3af',
+                          padding: '5px 10px', borderRadius: 3, cursor: 'pointer',
+                        }}
+                      >
+                        {node.id === drillFromId ? '✓ このノードから自由に掘る' : '+ このノードから自由に掘る'}
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             <div ref={chainEndRef} />
 
@@ -406,7 +642,9 @@ export default function KokoroOraclePage() {
             {!loading && nodes.length > 0 && (
               <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #e5e7eb' }}>
                 <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.12em', marginBottom: 8 }}>
-                  // 自由に問いを追加
+                  // 自由に問いを追加 — {drillFromId
+                    ? '選択されたノードから分岐'
+                    : '最新ノードから分岐（各カードの + ボタンで分岐元を選択可）'}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <textarea
