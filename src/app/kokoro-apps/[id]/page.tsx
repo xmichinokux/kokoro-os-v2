@@ -15,12 +15,22 @@ type AppRow = {
   text: string;
 };
 
+type RuntimeError = {
+  kind: string;
+  message: string;
+  stack: string;
+  at: number;
+};
+
 export default function KokoroAppRuntimePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [app, setApp] = useState<AppRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [runtimeErrors, setRuntimeErrors] = useState<RuntimeError[]>([]);
+  const [errorOpen, setErrorOpen] = useState(true);
+  const [sdkCallLog, setSdkCallLog] = useState<{ method: string; ok: boolean; error?: string; at: number }[]>([]);
 
   // mini-app をロード
   useEffect(() => {
@@ -156,17 +166,49 @@ export default function KokoroAppRuntimePage({ params }: { params: Promise<{ id:
 
   useEffect(() => {
     const handler = async (e: MessageEvent) => {
-      const msg = e.data as { type?: string; id?: string; method?: string; args?: Record<string, unknown> };
-      if (!msg || msg.type !== 'kokoro:request') return;
+      const msg = e.data as {
+        type?: string;
+        id?: string;
+        method?: string;
+        args?: Record<string, unknown>;
+        kind?: string;
+        message?: string;
+        stack?: string;
+        at?: number;
+      };
+      if (!msg) return;
       const iframe = iframeRef.current;
       if (!iframe || e.source !== iframe.contentWindow) return;
+
+      // Runtime error（mini-app内の window.onerror / unhandledrejection）
+      if (msg.type === 'kokoro:runtime-error') {
+        setRuntimeErrors(prev => [...prev, {
+          kind: msg.kind || 'error',
+          message: msg.message || '',
+          stack: msg.stack || '',
+          at: msg.at || Date.now(),
+        }].slice(-20));
+        setErrorOpen(true);
+        return;
+      }
+
+      if (msg.type !== 'kokoro:request') return;
       const { id, method, args } = msg;
       if (!id || !method) return;
       try {
         const data = await dispatch(method, args || {});
+        setSdkCallLog(prev => [...prev, { method, ok: true, at: Date.now() }].slice(-50));
         iframe.contentWindow?.postMessage({ type: 'kokoro:response', id, ok: true, data }, '*');
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Unknown error';
+        setSdkCallLog(prev => [...prev, { method, ok: false, error: errMsg, at: Date.now() }].slice(-50));
+        setRuntimeErrors(prev => [...prev, {
+          kind: 'sdk:' + method,
+          message: errMsg,
+          stack: '',
+          at: Date.now(),
+        }].slice(-20));
+        setErrorOpen(true);
         iframe.contentWindow?.postMessage({ type: 'kokoro:response', id, ok: false, error: errMsg }, '*');
       }
     };
@@ -198,6 +240,7 @@ export default function KokoroAppRuntimePage({ params }: { params: Promise<{ id:
   }
 
   const injectedHtml = injectSdkIntoHtml(app.text);
+  const errorCount = runtimeErrors.length;
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#ffffff' }}>
@@ -215,10 +258,83 @@ export default function KokoroAppRuntimePage({ params }: { params: Promise<{ id:
             {app.title}
           </div>
         </div>
-        <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.1em' }}>
-          mini-app v0.1
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {errorCount > 0 && (
+            <button
+              onClick={() => setErrorOpen(o => !o)}
+              style={{
+                ...mono, fontSize: 9, letterSpacing: '0.1em',
+                background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626',
+                padding: '4px 10px', borderRadius: 3, cursor: 'pointer',
+              }}
+            >⚠ {errorCount} error{errorCount > 1 ? 's' : ''}</button>
+          )}
+          <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.1em' }}>
+            mini-app v0.1
+          </div>
         </div>
       </header>
+
+      {errorCount > 0 && errorOpen && (
+        <div style={{
+          flex: '0 0 auto',
+          maxHeight: 200,
+          overflowY: 'auto',
+          background: '#fef2f2',
+          borderBottom: '1px solid #fca5a5',
+          padding: '10px 20px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ ...mono, fontSize: 10, color: '#dc2626', fontWeight: 600, letterSpacing: '0.08em' }}>
+              mini-app エラー ({errorCount}件)
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => setRuntimeErrors([])}
+                style={{
+                  ...mono, fontSize: 8, background: '#fff', border: '1px solid #fca5a5', color: '#dc2626',
+                  padding: '2px 8px', borderRadius: 2, cursor: 'pointer',
+                }}
+              >クリア</button>
+              <button
+                onClick={() => setErrorOpen(false)}
+                style={{
+                  ...mono, fontSize: 8, background: 'transparent', border: '1px solid transparent', color: '#9ca3af',
+                  padding: '2px 6px', cursor: 'pointer',
+                }}
+              >✕</button>
+            </div>
+          </div>
+          {runtimeErrors.slice().reverse().map((err, i) => (
+            <div key={err.at + '-' + i} style={{
+              ...mono, fontSize: 10, color: '#7f1d1d', padding: '4px 0',
+              borderTop: i === 0 ? 'none' : '1px solid rgba(220,38,38,0.15)',
+              lineHeight: 1.5, wordBreak: 'break-word',
+            }}>
+              <span style={{ color: '#dc2626', fontWeight: 600 }}>[{err.kind}]</span> {err.message}
+              {err.stack && (
+                <details style={{ marginTop: 2 }}>
+                  <summary style={{ ...mono, fontSize: 9, color: '#991b1b', cursor: 'pointer' }}>stack</summary>
+                  <pre style={{ ...mono, fontSize: 9, color: '#7f1d1d', whiteSpace: 'pre-wrap', margin: '4px 0 0', padding: '4px 8px', background: 'rgba(255,255,255,0.5)', borderRadius: 2 }}>{err.stack}</pre>
+                </details>
+              )}
+            </div>
+          ))}
+          {sdkCallLog.length > 0 && (
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ ...mono, fontSize: 9, color: '#991b1b', cursor: 'pointer' }}>SDK call log ({sdkCallLog.length})</summary>
+              <div style={{ marginTop: 4 }}>
+                {sdkCallLog.slice().reverse().map((log, i) => (
+                  <div key={log.at + '-' + i} style={{ ...mono, fontSize: 9, color: log.ok ? '#6b7280' : '#dc2626', lineHeight: 1.6 }}>
+                    {log.ok ? '✓' : '✗'} {log.method}{log.error ? ' — ' + log.error : ''}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+
       <iframe
         ref={iframeRef}
         srcDoc={injectedHtml}

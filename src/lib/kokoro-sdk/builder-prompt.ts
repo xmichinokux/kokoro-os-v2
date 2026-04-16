@@ -62,6 +62,47 @@ const note = await window.kokoro.notes.create({
 ・viewportメタタグ必須、モバイル対応
 ・日本語UI。Noto Sans JPは Google Fonts から読み込む
 ・window.kokoro は HTMLロード完了時点で利用可能。async関数内で呼ぶこと
+
+【初期化時の厳守事項（重要）】
+**ページロード直後に window.kokoro.llm.complete を呼ばないこと**。
+- LLM呼び出しは「ユーザーのボタンクリック/送信」等のイベント起点でのみ実行する
+- 初期化時に notes.list() や user.me() を呼ぶのは可だが、空リスト（初回ユーザー）でも動く前提で書く
+- 例外は握りつぶさず try/catch して画面に表示する（デバッグのため）
+
+**DOMContentLoaded を必ず使う**:
+<script> を <head> に置く場合、DOM要素は document.addEventListener('DOMContentLoaded', function() { ... }); の中で参照する。
+または <script> を </body> の直前に置く。
+
+**LLM呼び出し前の必須バリデーション**:
+・入力値が空でないことを確認（空なら「入力してください」を表示）
+・呼び出し中はボタンを無効化＆ローディング表示
+・catch句でエラーメッセージを画面に表示（alertではなくDOM内に）
+
+**正しい例**:
+\`\`\`js
+document.addEventListener('DOMContentLoaded', function() {
+  var btn = document.getElementById('translateBtn');
+  var input = document.getElementById('inputText');
+  var output = document.getElementById('output');
+  btn.addEventListener('click', async function() {
+    var text = input.value.trim();
+    if (!text) { output.textContent = '入力してください'; return; }
+    btn.disabled = true;
+    output.textContent = '翻訳中...';
+    try {
+      var result = await window.kokoro.llm.complete({
+        prompt: '次を英訳してください: ' + text,
+        model: 'haiku',
+      });
+      output.textContent = result;
+    } catch (e) {
+      output.textContent = 'エラー: ' + (e.message || e);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+});
+\`\`\`
 `.trim();
 
 export const KOKORO_OS_FEASIBILITY_NOTE = `

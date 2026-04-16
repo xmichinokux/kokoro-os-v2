@@ -7,6 +7,28 @@ export const KOKORO_SDK_CLIENT_SCRIPT = `
   var _pending = new Map();
   var _timeoutMs = 120000;
 
+  function _forwardError(kind, message, stack) {
+    try {
+      window.parent.postMessage({
+        type: 'kokoro:runtime-error',
+        kind: kind,
+        message: String(message || ''),
+        stack: String(stack || ''),
+        at: Date.now(),
+      }, '*');
+    } catch (e) { /* ignore */ }
+  }
+
+  window.addEventListener('error', function(e) {
+    _forwardError('error', e.message, e.error && e.error.stack);
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    var reason = e.reason;
+    var msg = reason && reason.message ? reason.message : String(reason);
+    var stk = reason && reason.stack ? reason.stack : '';
+    _forwardError('unhandledrejection', msg, stk);
+  });
+
   window.addEventListener('message', function(e) {
     var msg = e.data;
     if (!msg || msg.type !== 'kokoro:response') return;
