@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 
 const mono = { fontFamily: "'Space Mono', monospace" };
 
@@ -83,10 +83,15 @@ export default function KokoroResonancePage() {
   const [error, setError] = useState('');
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [hasAestheticMap, setHasAestheticMap] = useState(false);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   // Navigation: viewStack holds node IDs, viewIndex is current position
   const [viewStack, setViewStack] = useState<string[]>([]);
   const [viewIndex, setViewIndex] = useState(0);
+
+  // History / save
+  const [savedTrees, setSavedTrees] = useState<{ keyword: string; tree: TreeNode; savedAt: string }[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   const currentViewId = viewStack[viewIndex] || null;
   const displayTree = useMemo(() => {
@@ -103,6 +108,21 @@ export default function KokoroResonancePage() {
   const canGoBack = viewIndex > 0;
   const canGoForward = viewIndex < viewStack.length - 1;
 
+  // Load saved trees from localStorage on mount
+  const loadSavedTrees = useCallback(() => {
+    try {
+      const raw = localStorage.getItem('kokoroResonanceHistory');
+      if (raw) setSavedTrees(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+
+  const saveTreesToStorage = useCallback((trees: { keyword: string; tree: TreeNode; savedAt: string }[]) => {
+    localStorage.setItem('kokoroResonanceHistory', JSON.stringify(trees));
+    setSavedTrees(trees);
+  }, []);
+
+  useEffect(() => { loadSavedTrees(); }, [loadSavedTrees]);
+
   const handleGenerate = useCallback(async () => {
     const kw = keyword.trim();
     if (!kw) return;
@@ -112,6 +132,7 @@ export default function KokoroResonancePage() {
     setTree(null);
     setViewStack([]);
     setViewIndex(0);
+    setExpandedNodes(new Set());
     nodeCounter = 0;
 
     try {
@@ -131,6 +152,7 @@ export default function KokoroResonancePage() {
       setTree(newTree);
       setViewStack([newTree.id]);
       setViewIndex(0);
+      setExpandedNodes(new Set([newTree.id]));
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成に失敗しました');
     } finally {
@@ -138,21 +160,19 @@ export default function KokoroResonancePage() {
     }
   }, [keyword]);
 
-  // Drill into a node: if leaf, fetch children first then navigate; if has children, just navigate
+  // Drill into a node: if already expanded (cached), navigate; otherwise fetch new children
   const handleDrillDown = useCallback(async (nodeId: string, nodeName: string) => {
     if (!tree || expandingId) return;
 
     const targetNode = findNode(tree, nodeId);
     if (!targetNode) return;
 
-    if (targetNode.children.length > 0) {
-      // Has children already (cached) → just navigate
+    if (expandedNodes.has(nodeId)) {
       setViewStack(prev => [...prev.slice(0, viewIndex + 1), nodeId]);
       setViewIndex(prev => prev + 1);
       return;
     }
 
-    // Leaf node → fetch children, then navigate
     const depth = getNodeDepthInFull(tree, nodeId);
     if (depth >= 8) {
       alert('これ以上掘り下げられません（最大深度）');
@@ -177,7 +197,7 @@ export default function KokoroResonancePage() {
       const children = (data.children || []).map((c: Omit<TreeNode, 'id'>) => assignIds(c));
       if (children.length > 0) {
         setTree(prev => prev ? addChildrenToNode(prev, nodeId, children) : prev);
-        // Navigate into this node
+        setExpandedNodes(prev => new Set(prev).add(nodeId));
         setViewStack(prev => [...prev.slice(0, viewIndex + 1), nodeId]);
         setViewIndex(prev => prev + 1);
       }
@@ -186,7 +206,7 @@ export default function KokoroResonancePage() {
     } finally {
       setExpandingId(null);
     }
-  }, [tree, expandingId, viewIndex]);
+  }, [tree, expandingId, viewIndex, expandedNodes]);
 
   const handleGoBack = () => {
     if (canGoBack) setViewIndex(prev => prev - 1);
@@ -209,8 +229,37 @@ export default function KokoroResonancePage() {
     setError('');
     setViewStack([]);
     setViewIndex(0);
+    setExpandedNodes(new Set());
     nodeCounter = 0;
   };
+
+  const handleSave = useCallback(() => {
+    if (!tree || !keyword.trim()) return;
+    const entry = { keyword: keyword.trim(), tree, savedAt: new Date().toISOString() };
+    const existing = savedTrees.filter(s => s.keyword !== entry.keyword);
+    const updated = [entry, ...existing].slice(0, 30);
+    saveTreesToStorage(updated);
+  }, [tree, keyword, savedTrees, saveTreesToStorage]);
+
+  const handleLoadSaved = useCallback((entry: { keyword: string; tree: TreeNode }) => {
+    nodeCounter = 0;
+    setTree(entry.tree);
+    setKeyword(entry.keyword);
+    setViewStack([entry.tree.id]);
+    setViewIndex(0);
+    setExpandedNodes(new Set([entry.tree.id]));
+    setShowHistory(false);
+    setError('');
+  }, []);
+
+  const handleDeleteSaved = useCallback((kw: string) => {
+    const updated = savedTrees.filter(s => s.keyword !== kw);
+    saveTreesToStorage(updated);
+  }, [savedTrees, saveTreesToStorage]);
+
+  const handleClearAll = useCallback(() => {
+    saveTreesToStorage([]);
+  }, [saveTreesToStorage]);
 
   const isAtRoot = !currentViewId || (tree && currentViewId === tree.id);
 
@@ -245,17 +294,41 @@ export default function KokoroResonancePage() {
             </span>
           )}
         </div>
-        {tree && (
-          <button onClick={handleReset} title="リセット"
-            style={{
-              ...mono, fontSize: 9, letterSpacing: '.1em',
-              color: '#9ca3af', background: 'transparent',
-              border: '1px solid #e5e7eb', borderRadius: 4,
-              padding: '6px 12px', cursor: 'pointer',
-            }}>
-            Reset
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!tree && savedTrees.length > 0 && (
+            <button onClick={() => setShowHistory(!showHistory)} title="履歴"
+              style={{
+                ...mono, fontSize: 9, letterSpacing: '.1em',
+                color: showHistory ? '#7c3aed' : '#9ca3af', background: 'transparent',
+                border: `1px solid ${showHistory ? '#7c3aed' : '#e5e7eb'}`, borderRadius: 4,
+                padding: '6px 12px', cursor: 'pointer',
+              }}>
+              📚 履歴 ({savedTrees.length})
+            </button>
+          )}
+          {tree && (
+            <>
+              <button onClick={handleSave} title="保存"
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '.1em',
+                  color: '#059669', background: 'transparent',
+                  border: '1px solid #bbf7d0', borderRadius: 4,
+                  padding: '6px 12px', cursor: 'pointer',
+                }}>
+                💾 保存
+              </button>
+              <button onClick={handleReset} title="リセット"
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '.1em',
+                  color: '#9ca3af', background: 'transparent',
+                  border: '1px solid #e5e7eb', borderRadius: 4,
+                  padding: '6px 12px', cursor: 'pointer',
+                }}>
+                Reset
+              </button>
+            </>
+          )}
+        </div>
       </header>
 
       <div style={{ maxWidth: '100%', margin: '0 auto', padding: '36px 28px 120px' }}>
@@ -318,7 +391,7 @@ export default function KokoroResonancePage() {
               </div>
             )}
 
-            {!loading && !error && (
+            {!loading && !error && !showHistory && (
               <div style={{ marginTop: 40, padding: '20px 24px', background: '#f9fafb', borderRadius: 8, border: '1px solid #f3f4f6' }}>
                 <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 12 }}>
                   // 使い方
@@ -327,6 +400,57 @@ export default function KokoroResonancePage() {
                   バンド名、映画タイトル、漫画タイトル、ジャンル名など何でも入力できます。<br />
                   入力したキーワードを起点にファミリーツリー形式でおすすめが広がります。<br />
                   どのノードでもクリックして掘り下げることができます。戻る・進むで履歴を移動できます。
+                </div>
+              </div>
+            )}
+
+            {/* 履歴パネル */}
+            {showHistory && savedTrees.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af' }}>
+                    // 保存した探索 ({savedTrees.length})
+                  </div>
+                  <button
+                    onClick={() => { if (confirm('すべての履歴を削除しますか？')) handleClearAll(); }}
+                    style={{
+                      ...mono, fontSize: 8, color: '#ef4444', background: 'transparent',
+                      border: '1px solid #fecaca', borderRadius: 4, padding: '3px 8px', cursor: 'pointer',
+                    }}
+                  >
+                    すべて削除
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {savedTrees.map(s => (
+                    <div key={s.keyword} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '12px 16px', background: '#fff', border: '1px solid #e5e7eb',
+                      borderRadius: 8, cursor: 'pointer', transition: 'border-color 0.15s',
+                    }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                    >
+                      <div onClick={() => handleLoadSaved(s)} style={{ flex: 1, cursor: 'pointer' }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', fontFamily: "'Noto Serif JP', serif" }}>
+                          🎵 {s.keyword}
+                        </div>
+                        <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginTop: 4 }}>
+                          {new Date(s.savedAt).toLocaleDateString('ja-JP')} {new Date(s.savedAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleDeleteSaved(s.keyword); }}
+                        title="削除"
+                        style={{
+                          fontSize: 12, color: '#d1d5db', background: 'transparent',
+                          border: 'none', cursor: 'pointer', padding: '4px 8px',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
