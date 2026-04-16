@@ -430,7 +430,7 @@ export default function KokoroResonancePage() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {loading ? '生成中...' : 'Resonate'}
+                {loading ? '生成中...' : 'Yoroshiku'}
               </button>
             </div>
 
