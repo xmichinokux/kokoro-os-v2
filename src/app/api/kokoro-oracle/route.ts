@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
 
     const apiBody = JSON.stringify({
       model: MODEL_MAP[modelKey],
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -141,11 +141,17 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json();
     const text = (data.content?.[0]?.text as string ?? '').trim();
+    const stopReason = data.stop_reason as string | undefined;
     const parsed = extractJson(text);
     if (!parsed) {
+      const truncated = stopReason === 'max_tokens';
+      const errMsg = truncated
+        ? '応答が長すぎて途中で切れました（max_tokens 超過）。問いを短くするか、チェーンを浅くして再試行してください。'
+        : 'LLM応答をJSON解析できませんでした';
       return NextResponse.json({
-        error: 'LLM応答をJSON解析できませんでした',
-        raw: text.slice(0, 500),
+        error: errMsg,
+        stopReason: stopReason ?? null,
+        raw: text.slice(0, 800),
       }, { status: 500 });
     }
 

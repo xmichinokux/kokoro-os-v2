@@ -80,6 +80,7 @@ export default function KokoroOraclePage() {
   const [model, setModel] = useState<'haiku' | 'sonnet'>('haiku');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [errorRaw, setErrorRaw] = useState('');
   const [input, setInput] = useState('');
   const [drillFromId, setDrillFromId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -154,6 +155,7 @@ export default function KokoroOraclePage() {
   const callOracle = useCallback(async (question: string, parentId: string | null) => {
     setLoading(true);
     setError('');
+    setErrorRaw('');
     try {
       const ancestors = getAncestorChain(nodes, parentId);
       const context = ancestors.map(n => ({
@@ -168,7 +170,10 @@ export default function KokoroOraclePage() {
         body: JSON.stringify({ question, context, model }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `API エラー (${res.status})`);
+      if (!res.ok || data.error) {
+        if (typeof data.raw === 'string') setErrorRaw(data.raw);
+        throw new Error(data.error || `API エラー (${res.status})`);
+      }
       const newNode: OracleNode = {
         id: genId(),
         parentId,
@@ -430,6 +435,16 @@ export default function KokoroOraclePage() {
                     </Link>
                   </div>
                 )}
+                {errorRaw && (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ ...mono, fontSize: 10, color: '#991b1b', cursor: 'pointer' }}>LLM応答を見る</summary>
+                    <pre style={{
+                      ...mono, fontSize: 10, color: '#7f1d1d', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                      margin: '6px 0 0', padding: 8, background: 'rgba(255,255,255,0.6)', borderRadius: 3,
+                      maxHeight: 200, overflowY: 'auto',
+                    }}>{errorRaw}</pre>
+                  </details>
+                )}
               </div>
             )}
 
@@ -652,6 +667,16 @@ export default function KokoroOraclePage() {
                 marginTop: 12,
               }}>
                 // エラー: {error}
+                {errorRaw && (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ ...mono, fontSize: 10, color: '#991b1b', cursor: 'pointer' }}>LLM応答を見る</summary>
+                    <pre style={{
+                      ...mono, fontSize: 10, color: '#7f1d1d', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                      margin: '6px 0 0', padding: 8, background: 'rgba(255,255,255,0.6)', borderRadius: 3,
+                      maxHeight: 200, overflowY: 'auto',
+                    }}>{errorRaw}</pre>
+                  </details>
+                )}
               </div>
             )}
 
