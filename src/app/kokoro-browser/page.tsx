@@ -22,6 +22,7 @@ const SOURCE_LABELS: Record<string, string> = {
 const WEB_CACHE_KEY = 'kokoroBrowserWebCache';
 const CUSTOM_TABS_KEY = 'kokoroBrowserCustomTabs2';
 const BM_CATEGORIES_KEY = 'kokoroBrowserBmCats';
+const WEB_BM_KEY = 'kokoroBrowserWebBm';
 const RESCAN_COOLDOWN_MS = 5 * 60 * 1000;
 
 type TopTab = 'internet' | 'city';
@@ -57,9 +58,12 @@ type BmEntry = {
   noteId: string;
   title: string;
   authorName: string;
-  type: 'note' | 'product';
+  type: 'note' | 'product' | 'web';
   createdAt: string;
+  url?: string;
 };
+
+type WebBmStore = Record<string, { title: string; category: string; snippet: string; bookmarkedAt: string }>;
 
 const DEFAULT_SITES: WebResult[] = [
   { id: 'def_1', title: 'Google', url: 'https://www.google.com', snippet: '世界最大の検索エンジン', reason: '', category: 'other' },
@@ -83,6 +87,12 @@ function loadCustomTabs(): CustomTab[] {
   try { const r = localStorage.getItem(CUSTOM_TABS_KEY); return r ? JSON.parse(r) : []; } catch { return []; }
 }
 function saveCustomTabs(t: CustomTab[]) { localStorage.setItem(CUSTOM_TABS_KEY, JSON.stringify(t)); }
+
+function loadWebBm(): WebBmStore {
+  if (typeof window === 'undefined') return {};
+  try { const r = localStorage.getItem(WEB_BM_KEY); return r ? JSON.parse(r) : {}; } catch { return {}; }
+}
+function saveWebBm(s: WebBmStore) { localStorage.setItem(WEB_BM_KEY, JSON.stringify(s)); }
 
 function loadBmCategories(): BmCategory[] {
   if (typeof window === 'undefined') return [];
@@ -135,6 +145,8 @@ export default function KokoroBrowserPage() {
   const productCacheRef = useRef<Record<string, ProductNote[]>>({});
 
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [webBmUrls, setWebBmUrls] = useState<Set<string>>(new Set());
+  const webBmRef = useRef<WebBmStore>({});
 
   const [showBmViewer, setShowBmViewer] = useState(false);
   const [bmEntries, setBmEntries] = useState<BmEntry[]>([]);
@@ -149,6 +161,9 @@ export default function KokoroBrowserPage() {
     setCustomTabs(loadCustomTabs());
     webCacheRef.current = loadWebCache();
     setBmCategories(loadBmCategories());
+    const wbm = loadWebBm();
+    webBmRef.current = wbm;
+    setWebBmUrls(new Set(Object.keys(wbm)));
   }, []);
 
   // Fetch public notes
@@ -284,19 +299,22 @@ export default function KokoroBrowserPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topTab, subTabId, selectedCustomTab?.id, syncCounter]);
 
-  /* ─── Filtered notes for city ─── */
+  /* ─── Filtered notes for city (exclude product source notes) ─── */
+  const productIds = useMemo(() => new Set(products.map(p => p.id)), [products]);
+  const safePublicNotes = useMemo(() => publicNotes.filter(n => !productIds.has(n.id)), [publicNotes, productIds]);
+
   const filteredNotes = useMemo(() => {
     if (topTab !== 'city') return [];
-    if (subTabId === 'timeline') return publicNotes;
+    if (subTabId === 'timeline') return safePublicNotes;
     if (selectedCustomTab) {
       const pseudo: GamesenNote = {
         id: selectedCustomTab.id, title: selectedCustomTab.title,
         description: '', keywords: selectedCustomTab.keywords, color: selectedCustomTab.color,
       };
-      return matchNotesToGamesen(publicNotes, pseudo);
+      return matchNotesToGamesen(safePublicNotes, pseudo);
     }
     return [];
-  }, [topTab, subTabId, publicNotes, selectedCustomTab]);
+  }, [topTab, subTabId, safePublicNotes, selectedCustomTab]);
 
   /* ─── Timeline ─── */
   const timeline = useMemo<TimelineItem[]>(() => {
@@ -334,6 +352,18 @@ export default function KokoroBrowserPage() {
         p.id === noteId ? { ...p, isBookmarked: data.bookmarked, bookmarkCount: p.bookmarkCount + (data.bookmarked ? 1 : -1) } : p
       ));
     } catch { /* ignore */ }
+  }, []);
+
+  const handleWebBookmark = useCallback((url: string, title: string, category: string, snippet: string) => {
+    const store = { ...webBmRef.current };
+    if (store[url]) {
+      delete store[url];
+    } else {
+      store[url] = { title, category, snippet, bookmarkedAt: new Date().toISOString() };
+    }
+    webBmRef.current = store;
+    saveWebBm(store);
+    setWebBmUrls(new Set(Object.keys(store)));
   }, []);
 
   // Load bookmark states
@@ -431,7 +461,16 @@ export default function KokoroBrowserPage() {
     try {
       const res = await fetch('/api/kokoro-bookmark-list');
       const data = await res.json();
-      setBmEntries(data.bookmarks || []);
+      const dbEntries: BmEntry[] = data.bookmarks || [];
+      const webEntries: BmEntry[] = Object.entries(webBmRef.current).map(([url, info]) => ({
+        noteId: url,
+        title: info.title,
+        authorName: (() => { try { return new URL(url).hostname.replace('www.', ''); } catch { return 'Web'; } })(),
+        type: 'web' as const,
+        createdAt: info.bookmarkedAt,
+        url,
+      }));
+      setBmEntries([...dbEntries, ...webEntries]);
     } catch { /* ignore */ }
     setBmViewerLoading(false);
   };
@@ -611,6 +650,33 @@ export default function KokoroBrowserPage() {
               </span>
             </button>
           ))}
+
+          {/* 編集ボタン（カスタムタブ選択時） */}
+          {selectedCustomTab && (
+            <button
+              onClick={() => {
+                if (editingTabId === selectedCustomTab.id) {
+                  setEditingTabId(null);
+                } else {
+                  setEditingTabId(selectedCustomTab.id);
+                  setEditTitle(selectedCustomTab.title);
+                  setEditKeywords(selectedCustomTab.keywords.join('、'));
+                }
+              }}
+              title="タブを編集"
+              style={{
+                flexShrink: 0, padding: '10px 12px',
+                background: 'transparent', border: 'none',
+                borderBottom: '2px solid transparent',
+                cursor: 'pointer',
+                ...mono, fontSize: 10,
+                color: editingTabId === selectedCustomTab.id ? '#7c3aed' : '#9ca3af',
+                transition: 'color 0.15s',
+              }}
+            >
+              ✏️ 編集
+            </button>
+          )}
 
           {/* +タブ */}
           <button
@@ -839,7 +905,10 @@ export default function KokoroBrowserPage() {
                 );
               }
               return (
-                <WebTimelineItem key={item.data.id} result={item.data} accentColor={currentTabColor} isLast={isLast} />
+                <WebTimelineItem key={item.data.id} result={item.data} accentColor={currentTabColor} isLast={isLast}
+                  isBookmarked={webBmUrls.has(item.data.url)}
+                  onBookmark={handleWebBookmark}
+                />
               );
             })}
           </div>
@@ -984,11 +1053,13 @@ function NoteTimelineItem({
 
 /* ─── Web Timeline Item ─── */
 function WebTimelineItem({
-  result, accentColor, isLast,
+  result, accentColor, isLast, isBookmarked, onBookmark,
 }: {
   result: WebResult;
   accentColor: string;
   isLast: boolean;
+  isBookmarked: boolean;
+  onBookmark: (url: string, title: string, category: string, snippet: string) => void;
 }) {
   return (
     <div style={{ display: 'flex', gap: 16 }}>
@@ -997,41 +1068,58 @@ function WebTimelineItem({
         {!isLast && <div style={{ width: 1, flex: 1, minHeight: 24, background: '#e5e7eb', marginTop: 4 }} />}
       </div>
 
-      <a
-        href={result.url} target="_blank" rel="noopener noreferrer"
-        style={{ flex: 1, textAlign: 'left', textDecoration: 'none', padding: '16px 0 24px' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <span style={{ ...mono, fontSize: 8, color: '#fff', background: '#3b82f6', padding: '1px 6px', borderRadius: 4, letterSpacing: '0.08em' }}>
-            Web
-          </span>
-          <span style={{ ...mono, fontSize: 9, color: '#3b82f6', border: '1px solid #3b82f633', padding: '1px 6px', borderRadius: 8 }}>
-            {CATEGORY_LABELS[result.category] || result.category}
-          </span>
-          <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>
-            {(() => { try { return new URL(result.url).hostname.replace('www.', ''); } catch { return ''; } })()}
-          </span>
-        </div>
-
-        <div style={{ fontSize: 15, fontWeight: 600, fontFamily: 'Noto Serif JP, serif', color: '#1a1a1a', marginBottom: 6, lineHeight: 1.5 }}>
-          {result.title}
-        </div>
-
-        {result.snippet && (
-          <div style={{ fontSize: 13, color: '#6b7280', fontFamily: 'Noto Serif JP, serif', lineHeight: 1.8, marginBottom: 8 }}>
-            {result.snippet}
+      <div style={{ flex: 1, padding: '16px 0 24px' }}>
+        <a
+          href={result.url} target="_blank" rel="noopener noreferrer"
+          style={{ textAlign: 'left', textDecoration: 'none', display: 'block' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ ...mono, fontSize: 8, color: '#fff', background: '#3b82f6', padding: '1px 6px', borderRadius: 4, letterSpacing: '0.08em' }}>
+              Web
+            </span>
+            <span style={{ ...mono, fontSize: 9, color: '#3b82f6', border: '1px solid #3b82f633', padding: '1px 6px', borderRadius: 8 }}>
+              {CATEGORY_LABELS[result.category] || result.category}
+            </span>
+            <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>
+              {(() => { try { return new URL(result.url).hostname.replace('www.', ''); } catch { return ''; } })()}
+            </span>
           </div>
-        )}
 
-        {result.reason && (
-          <div style={{
-            fontSize: 12, color: '#7c3aed', fontFamily: 'Noto Serif JP, serif', lineHeight: 1.6,
-            padding: '6px 10px', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 6,
-          }}>
-            💡 {result.reason}
+          <div style={{ fontSize: 15, fontWeight: 600, fontFamily: 'Noto Serif JP, serif', color: '#1a1a1a', marginBottom: 6, lineHeight: 1.5 }}>
+            {result.title}
           </div>
-        )}
-      </a>
+
+          {result.snippet && (
+            <div style={{ fontSize: 13, color: '#6b7280', fontFamily: 'Noto Serif JP, serif', lineHeight: 1.8, marginBottom: 8 }}>
+              {result.snippet}
+            </div>
+          )}
+
+          {result.reason && (
+            <div style={{
+              fontSize: 12, color: '#7c3aed', fontFamily: 'Noto Serif JP, serif', lineHeight: 1.6,
+              padding: '6px 10px', background: '#f5f3ff', border: '1px solid #ede9fe', borderRadius: 6,
+            }}>
+              💡 {result.reason}
+            </div>
+          )}
+        </a>
+
+        {/* Bookmark button */}
+        <button
+          onClick={(e) => { e.preventDefault(); onBookmark(result.url, result.title, result.category, result.snippet); }}
+          title={isBookmarked ? 'ブックマーク済み' : 'ブックマークする'}
+          style={{
+            ...mono, fontSize: 9, cursor: 'pointer', marginTop: 8,
+            color: isBookmarked ? '#3b82f6' : '#9ca3af',
+            background: isBookmarked ? '#dbeafe' : 'transparent',
+            border: 'none', padding: '2px 8px', borderRadius: 8,
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+          }}
+        >
+          📖 {isBookmarked ? 'ブックマーク済み' : 'ブックマーク'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1385,10 +1473,10 @@ function BookmarkViewer({
                         {e.title}
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ ...mono, fontSize: 8, color: e.type === 'product' ? '#f59e0b' : '#7c3aed', background: e.type === 'product' ? '#fef3c7' : '#ede9fe', padding: '1px 6px', borderRadius: 4 }}>
-                          {e.type === 'product' ? 'Product' : 'Note'}
+                        <span style={{ ...mono, fontSize: 8, color: e.type === 'product' ? '#f59e0b' : e.type === 'web' ? '#3b82f6' : '#7c3aed', background: e.type === 'product' ? '#fef3c7' : e.type === 'web' ? '#dbeafe' : '#ede9fe', padding: '1px 6px', borderRadius: 4 }}>
+                          {e.type === 'product' ? 'Product' : e.type === 'web' ? 'Web' : 'Note'}
                         </span>
-                        <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>by {e.authorName}</span>
+                        <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>{e.type === 'web' ? e.authorName : `by ${e.authorName}`}</span>
                       </div>
                     </div>
                   ))}
