@@ -34,6 +34,7 @@ const DOCK_APPS = [
   { emoji: '🎮', href: '/kokoro-play', label: 'Play' },
   { emoji: '🩺', href: '/kokoro-diagnosis', label: 'Diag' },
   { emoji: '💌', href: '/kokoro-messages', label: 'Msg' },
+  { emoji: '🎵', href: '/kokoro-resonance', label: 'Resonance' },
   { emoji: '⭐', href: '/kokoro-wishlist', label: 'Wish' },
   { emoji: '👤', href: '/kokoro-profile', label: 'Profile' },
 ];
