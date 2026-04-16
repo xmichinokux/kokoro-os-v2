@@ -5,6 +5,18 @@ import { useRouter } from 'next/navigation';
 import PersonaLoading from '@/components/PersonaLoading';
 import { supabase } from '@/lib/supabase/client';
 import { getCurrentUserId } from '@/lib/supabase/auth';
+import { injectSdkIntoHtml } from '@/lib/kokoro-sdk/client';
+
+type PreviewNote = {
+  id: string;
+  title: string;
+  body: string;
+  source: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+  isPublic: boolean;
+};
 
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#7c3aed';
@@ -45,6 +57,9 @@ export default function KokoroBuilderPage() {
   const [editHistory, setEditHistory] = useState<{ instruction: string; code: string }[]>([]);
   const [editLoaded, setEditLoaded] = useState(false);
 
+  // === OSモード プレビュー用のインメモリNoteストア ===
+  const previewNotesRef = useRef<Map<string, PreviewNote>>(new Map());
+
   // Gatekeeperからの読み込み
   useEffect(() => {
     try {
@@ -66,6 +81,108 @@ export default function KokoroBuilderPage() {
     setPreviewUrl(code);
     setPhase('done');
   }, []);
+
+  // OS前提モード プレビュー用 dispatch
+  // - user.me / llm.complete: 本物（認証済みユーザーで実行）
+  // - notes.*: インメモリ（プレビューでDBを汚さない）
+  const previewDispatch = useCallback(async (method: string, args: Record<string, unknown>): Promise<unknown> => {
+    switch (method) {
+      case 'user.me': {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('未ログイン');
+        return { id: user.id, email: user.email };
+      }
+      case 'notes.list': {
+        const tag = typeof args.tag === 'string' ? args.tag : null;
+        const source = typeof args.source === 'string' ? args.source : null;
+        const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
+        const all = Array.from(previewNotesRef.current.values());
+        const filtered = all.filter(n => {
+          if (source && n.source !== source) return false;
+          if (tag && !(n.tags || []).includes(tag)) return false;
+          return true;
+        }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        return filtered.slice(0, limit);
+      }
+      case 'notes.get': {
+        const id = String(args.id || '');
+        const note = previewNotesRef.current.get(id);
+        if (!note) throw new Error('not found（プレビューのインメモリには該当IDなし）');
+        return note;
+      }
+      case 'notes.create': {
+        const now = new Date().toISOString();
+        const newId = crypto.randomUUID();
+        const note: PreviewNote = {
+          id: newId,
+          title: String(args.title || '(無題)').slice(0, 200),
+          body: String(args.body || ''),
+          source: typeof args.source === 'string' ? args.source : 'mini-app-data',
+          tags: Array.isArray(args.tags)
+            ? (args.tags as unknown[]).filter((t): t is string => typeof t === 'string').slice(0, 20)
+            : [],
+          createdAt: now,
+          updatedAt: now,
+          isPublic: false,
+        };
+        previewNotesRef.current.set(newId, note);
+        return note;
+      }
+      case 'notes.update': {
+        const id = String(args.id || '');
+        const note = previewNotesRef.current.get(id);
+        if (!note) throw new Error('not found');
+        const patch = (args.patch as Record<string, unknown>) || {};
+        if (typeof patch.title === 'string') note.title = patch.title.slice(0, 200);
+        if (typeof patch.body === 'string') note.body = patch.body;
+        if (Array.isArray(patch.tags)) {
+          note.tags = (patch.tags as unknown[])
+            .filter((t): t is string => typeof t === 'string')
+            .slice(0, 20);
+        }
+        note.updatedAt = new Date().toISOString();
+        return note;
+      }
+      case 'llm.complete': {
+        const res = await fetch('/api/kokoro-sdk-llm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: String(args.prompt || ''),
+            model: args.model,
+            maxTokens: args.maxTokens,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `LLM error (${res.status})`);
+        return data.text as string;
+      }
+      default:
+        throw new Error('Unknown method: ' + method);
+    }
+  }, []);
+
+  // プレビュー iframe からの SDK リクエストを受ける
+  useEffect(() => {
+    if (!osMode) return;
+    const handler = async (e: MessageEvent) => {
+      const msg = e.data as { type?: string; id?: string; method?: string; args?: Record<string, unknown> };
+      if (!msg || msg.type !== 'kokoro:request') return;
+      const iframe = iframeRef.current;
+      if (!iframe || e.source !== iframe.contentWindow) return;
+      const { id, method, args } = msg;
+      if (!id || !method) return;
+      try {
+        const data = await previewDispatch(method, args || {});
+        iframe.contentWindow?.postMessage({ type: 'kokoro:response', id, ok: true, data }, '*');
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Unknown error';
+        iframe.contentWindow?.postMessage({ type: 'kokoro:response', id, ok: false, error: errMsg }, '*');
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [osMode, previewDispatch]);
 
   // API呼び出しヘルパー
   const apiFetch = useCallback(async (url: string, body: Record<string, unknown>, timeoutMs = 120000) => {
@@ -523,7 +640,7 @@ export default function KokoroBuilderPage() {
               <div>
                 <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase', marginBottom: 16 }}>// 生成完了 — プレビュー</div>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto', marginBottom: 20, background: '#f8f9fa', resize: 'vertical', minHeight: 400 }}>
-                  <iframe ref={iframeRef} srcDoc={previewUrl || undefined} scrolling="yes" style={{ width: '100%', height: 667, border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Builder Preview" />
+                  <iframe ref={iframeRef} srcDoc={previewUrl ? (osMode ? injectSdkIntoHtml(previewUrl) : previewUrl) : undefined} scrolling="yes" style={{ width: '100%', height: 667, border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Builder Preview" />
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   {osMode && (
@@ -640,7 +757,7 @@ export default function KokoroBuilderPage() {
 
                     {/* プレビュー */}
                     <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto', marginBottom: 20, background: '#f8f9fa', resize: 'vertical', minHeight: 300 }}>
-                      <iframe ref={iframeRef} srcDoc={previewUrl || undefined} scrolling="yes" style={{ width: '100%', height: 500, border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Edit Preview" />
+                      <iframe ref={iframeRef} srcDoc={previewUrl ? (osMode ? injectSdkIntoHtml(previewUrl) : previewUrl) : undefined} scrolling="yes" style={{ width: '100%', height: 500, border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Edit Preview" />
                     </div>
                   </>
                 )}
