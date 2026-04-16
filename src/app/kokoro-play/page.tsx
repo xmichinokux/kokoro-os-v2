@@ -75,6 +75,7 @@ type GameState = {
   dragOffsetY: number;
   lastTouchY: number;
   keysDown: Set<string>;
+  boosting: boolean;
 };
 
 function createInitState(): GameState {
@@ -97,6 +98,7 @@ function createInitState(): GameState {
     dragOffsetX: 0, dragOffsetY: 0,
     lastTouchY: 0,
     keysDown: new Set(),
+    boosting: false,
   };
 }
 
@@ -173,7 +175,7 @@ export default function KokoroPlayPage() {
       ctx.font = "11px 'Space Mono', monospace";
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.fillText('ドラッグ: 自機を移動', W / 2, H * 0.55);
-      ctx.fillText('上下スワイプ / ホイール / 右クリック: 速度変更', W / 2, H * 0.55 + 20);
+      ctx.fillText('右クリック長押し: 2倍速ブースト', W / 2, H * 0.55 + 20);
       ctx.fillText('速いほどスコアボーナス↑', W / 2, H * 0.55 + 40);
 
       // START button area
@@ -273,8 +275,9 @@ export default function KokoroPlayPage() {
     s.playerX = Math.max(PLAYER_SIZE, Math.min(gameAreaW - PLAYER_SIZE, s.playerX));
     s.playerY = Math.max(PLAYER_SIZE, Math.min(H - PLAYER_SIZE, s.playerY));
 
-    // スクロール進行
-    s.scrollPos += s.scrollSpeed * 0.5;
+    // スクロール進行（右クリック長押しで2倍速）
+    const effectiveSpeed = s.boosting ? s.scrollSpeed * 2 : s.scrollSpeed;
+    s.scrollPos += effectiveSpeed * 0.5;
     const progress = Math.min(1, s.scrollPos / s.totalDistance);
 
     // 敵のスポーン
@@ -316,7 +319,7 @@ export default function KokoroPlayPage() {
     });
 
     // 敵の移動・射撃
-    const enemyScrollSpeed = s.scrollSpeed * 1.2;
+    const enemyScrollSpeed = effectiveSpeed * 1.2;
     for (const e of s.enemies) {
       if (!e.active) continue;
       e.y += enemyScrollSpeed;
@@ -466,9 +469,10 @@ export default function KokoroPlayPage() {
     ctx.textAlign = 'start';
 
     // ── UI: 速度表示（左上）──
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = s.boosting ? '#facc15' : 'rgba(255,255,255,0.5)';
     ctx.font = "10px 'Space Mono', monospace";
-    ctx.fillText(`SPD: ${s.scrollSpeed.toFixed(1)}x`, 8, 20);
+    ctx.fillText(`SPD: ${effectiveSpeed.toFixed(1)}x${s.boosting ? ' BOOST!' : ''}`, 8, 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.fillText(`KILL: ${s.kills}`, 8, 34);
 
     rafRef.current = requestAnimationFrame(gameLoop);
@@ -481,7 +485,7 @@ export default function KokoroPlayPage() {
 
     const resize = () => {
       const w = Math.min(window.innerWidth, 430);
-      const h = window.innerHeight;
+      const h = window.innerHeight - 80;
       canvas.width = w;
       canvas.height = h;
       const s = stateRef.current;
@@ -566,11 +570,11 @@ export default function KokoroPlayPage() {
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
-      // 右クリック: プレイ中は速度アップ（2.0超えで0.5にリセット）
+      // 右クリック長押し: プレイ中は速度2倍ブースト
       if (e.button === 2) {
         e.preventDefault();
         if (s.scene === 'playing') {
-          s.scrollSpeed = s.scrollSpeed >= 2.0 ? 0.5 : Math.min(2.0, s.scrollSpeed + 0.25);
+          s.boosting = true;
         }
         return;
       }
@@ -606,7 +610,10 @@ export default function KokoroPlayPage() {
       s.playerY = Math.max(PLAYER_SIZE, Math.min(s.height - PLAYER_SIZE, s.playerY));
     };
 
-    const onMouseUp = () => { stateRef.current.dragging = false; };
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 2) { stateRef.current.boosting = false; return; }
+      stateRef.current.dragging = false;
+    };
 
     // ── キーボード ──
     const onKeyDown = (e: KeyboardEvent) => {
@@ -658,14 +665,14 @@ export default function KokoroPlayPage() {
   }, [gameLoop, initStars, startGame]);
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', background: BG_COLOR, minHeight: '100vh' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', background: BG_COLOR, height: 'calc(100vh - 80px)' }}>
       <canvas
         ref={canvasRef}
         style={{
           display: 'block',
           maxWidth: 430,
           width: '100%',
-          height: '100vh',
+          height: '100%',
           background: BG_COLOR,
           touchAction: 'none',
           cursor: 'crosshair',
