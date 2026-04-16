@@ -1010,9 +1010,9 @@ export default function KokoroNotePage() {
           </div>
         )}
 
-        {/* 公開/非公開トグル */}
+        {/* 公開/非公開トグル（封印中 — 商品の場合のみ表示） */}
         <div style={{ paddingTop:16, borderTop:'1px solid #e5e7eb', marginBottom:16 }}>
-          {selectedNote.isProduct ? (
+          {selectedNote.isProduct && (
             <span style={{
               fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
               padding:'8px 16px', borderRadius:6, display:'inline-block',
@@ -1020,19 +1020,6 @@ export default function KokoroNotePage() {
             }}>
               🌐 商品は常に公開されます
             </span>
-          ) : (
-            <button
-              onClick={() => handleTogglePublic(selectedNote.id)}
-              style={{
-                fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700,
-                padding:'8px 16px', borderRadius:6, cursor:'pointer',
-                background: selectedNote.isPublic ? '#f0fdf4' : '#f3f4f6',
-                color: selectedNote.isPublic ? '#16a34a' : '#6b7280',
-                border: `1px solid ${selectedNote.isPublic ? '#bbf7d0' : '#e5e7eb'}`,
-              }}
-            >
-              {selectedNote.isPublic ? '🌐 公開中 → 非公開にする' : '🌐 Browserに公開する'}
-            </button>
           )}
 
           {/* 商品として登録 / 商品設定を編集 */}
@@ -1497,23 +1484,7 @@ export default function KokoroNotePage() {
       </button>
       {aiLoading && <PersonaLoading />}
 
-      {/* 公開設定 */}
-      <div style={{ marginTop:16, padding:'12px 16px', borderRadius:8, background:'#f9fafb', border:'1px solid #e5e7eb', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style={{ fontFamily:"'Space Mono', monospace", fontSize:10, color:'#6b7280' }}>
-          {editIsPublic ? '🌐 Browserに公開' : '🔒 非公開'}
-        </span>
-        <button
-          onClick={() => setEditIsPublic(v => !v)}
-          style={{
-            fontFamily:"'Space Mono', monospace", fontSize:9, padding:'4px 12px', borderRadius:4, cursor:'pointer',
-            background: editIsPublic ? '#f0fdf4' : '#f3f4f6',
-            color: editIsPublic ? '#16a34a' : '#9ca3af',
-            border: `1px solid ${editIsPublic ? '#bbf7d0' : '#e5e7eb'}`,
-          }}
-        >
-          {editIsPublic ? '公開中' : '非公開'}
-        </button>
-      </div>
+      {/* 公開設定（封印中） */}
 
       {/* 保存・キャンセル */}
       <div style={{ display:'flex', gap:12, paddingTop:20, marginTop:20, borderTop:'1px solid #e5e7eb' }}>

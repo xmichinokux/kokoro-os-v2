@@ -38,6 +38,15 @@ type TreeNode = {
 
 type ViewEntry = { id: string; name: string };
 type SavedEntry = { keyword: string; tree: TreeNode; savedAt: string };
+type SharedEntry = {
+  id: string;
+  title: string;
+  treeData: TreeNode | null;
+  tags: string[];
+  authorName: string;
+  authorId: string;
+  createdAt: string;
+};
 
 let nodeCounter = 0;
 function assignIds(node: Omit<TreeNode, 'id'> & { id?: string; children?: unknown[] }): TreeNode {
@@ -48,6 +57,27 @@ function assignIds(node: Omit<TreeNode, 'id'> & { id?: string; children?: unknow
     genre: node.genre || 'other',
     description: node.description || '',
     children: (node.children || []).map((c) => assignIds(c as Omit<TreeNode, 'id'>)),
+  };
+}
+
+function collectGenres(node: TreeNode): string[] {
+  const genres = new Set<string>();
+  function walk(n: TreeNode) {
+    if (n.genre && n.genre !== 'other') genres.add(n.genre);
+    n.children.forEach(walk);
+  }
+  walk(node);
+  return [...genres];
+}
+
+function reassignIds(node: TreeNode): TreeNode {
+  const id = `node_${++nodeCounter}`;
+  return {
+    id,
+    name: node.name || '',
+    genre: node.genre || 'other',
+    description: node.description || '',
+    children: (node.children || []).map(c => reassignIds(c)),
   };
 }
 
@@ -64,6 +94,9 @@ export default function KokoroResonancePage() {
   const [hasAestheticMap, setHasAestheticMap] = useState(false);
   const [savedTrees, setSavedTrees] = useState<SavedEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [sharedTrees, setSharedTrees] = useState<SharedEntry[]>([]);
+  const [showShared, setShowShared] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   const displayTree = useMemo(() => {
     if (!rootTree || viewStack.length === 0) return rootTree;
@@ -223,6 +256,52 @@ export default function KokoroResonancePage() {
     saveTreesToStorage([]);
   }, [saveTreesToStorage]);
 
+  // ─── Share to DB (public Note) ───
+  const handleShare = useCallback(async () => {
+    if (!rootTree || !keyword.trim() || sharing) return;
+    setSharing(true);
+    try {
+      const genreTags = collectGenres(rootTree);
+      const res = await fetch('/api/kokoro-resonance-share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword: keyword.trim(),
+          treeData: rootTree,
+          tags: genreTags,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      alert('Noteに公開しました！他のユーザーが掘り下げを継承できます。');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '公開に失敗しました');
+    } finally {
+      setSharing(false);
+    }
+  }, [rootTree, keyword, sharing]);
+
+  // ─── Load shared trees ───
+  const loadSharedTrees = useCallback(async () => {
+    try {
+      const res = await fetch('/api/kokoro-resonance-share');
+      const data = await res.json();
+      if (data.notes) setSharedTrees(data.notes);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleLoadShared = useCallback((entry: SharedEntry) => {
+    if (!entry.treeData) return;
+    nodeCounter = 0;
+    const tree = reassignIds(entry.treeData);
+    setRootTree(tree);
+    setExpandedTrees({});
+    setKeyword(entry.title.replace(/^🎵\s*/, ''));
+    setViewStack([{ id: tree.id, name: tree.name }]);
+    setShowShared(false);
+    setError('');
+  }, []);
+
   const hasTree = !!rootTree;
 
   return (
@@ -257,20 +336,33 @@ export default function KokoroResonancePage() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {!hasTree && savedTrees.length > 0 && (
-            <button onClick={() => setShowHistory(!showHistory)} title="履歴"
-              style={{
-                ...mono, fontSize: 9, letterSpacing: '.1em',
-                color: showHistory ? '#7c3aed' : '#9ca3af', background: 'transparent',
-                border: `1px solid ${showHistory ? '#7c3aed' : '#e5e7eb'}`, borderRadius: 4,
-                padding: '6px 12px', cursor: 'pointer',
-              }}>
-              📚 履歴 ({savedTrees.length})
-            </button>
+          {!hasTree && (
+            <>
+              {savedTrees.length > 0 && (
+                <button onClick={() => { setShowHistory(!showHistory); setShowShared(false); }} title="履歴"
+                  style={{
+                    ...mono, fontSize: 9, letterSpacing: '.1em',
+                    color: showHistory ? '#7c3aed' : '#9ca3af', background: 'transparent',
+                    border: `1px solid ${showHistory ? '#7c3aed' : '#e5e7eb'}`, borderRadius: 4,
+                    padding: '6px 12px', cursor: 'pointer',
+                  }}>
+                  📚 履歴 ({savedTrees.length})
+                </button>
+              )}
+              <button onClick={() => { setShowShared(!showShared); setShowHistory(false); if (!showShared) loadSharedTrees(); }} title="みんなの探索"
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '.1em',
+                  color: showShared ? '#7c3aed' : '#9ca3af', background: 'transparent',
+                  border: `1px solid ${showShared ? '#7c3aed' : '#e5e7eb'}`, borderRadius: 4,
+                  padding: '6px 12px', cursor: 'pointer',
+                }}>
+                🌐 みんなの探索
+              </button>
+            </>
           )}
           {hasTree && (
             <>
-              <button onClick={handleSave} title="保存"
+              <button onClick={handleSave} title="ローカル保存"
                 style={{
                   ...mono, fontSize: 9, letterSpacing: '.1em',
                   color: '#059669', background: 'transparent',
@@ -278,6 +370,15 @@ export default function KokoroResonancePage() {
                   padding: '6px 12px', cursor: 'pointer',
                 }}>
                 💾 保存
+              </button>
+              <button onClick={handleShare} disabled={sharing} title="Noteに公開"
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '.1em',
+                  color: sharing ? '#9ca3af' : '#2563eb', background: 'transparent',
+                  border: `1px solid ${sharing ? '#e5e7eb' : '#93c5fd'}`, borderRadius: 4,
+                  padding: '6px 12px', cursor: sharing ? 'not-allowed' : 'pointer',
+                }}>
+                {sharing ? '公開中...' : '🌐 公開'}
               </button>
               <button onClick={handleReset} title="リセット"
                 style={{
@@ -414,6 +515,64 @@ export default function KokoroResonancePage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* みんなの探索パネル */}
+            {showShared && (
+              <div style={{ marginTop: 24 }}>
+                <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 12 }}>
+                  // みんなの探索 — 他のユーザーが公開したツリー
+                </div>
+                {sharedTrees.length === 0 ? (
+                  <div style={{ fontSize: 13, color: '#9ca3af', fontFamily: "'Noto Serif JP', serif", textAlign: 'center', padding: '40px 0' }}>
+                    まだ公開された探索がありません
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {sharedTrees.map(s => (
+                      <div key={s.id}
+                        onClick={() => handleLoadShared(s)}
+                        style={{
+                          padding: '12px 16px', background: '#fff', border: '1px solid #e5e7eb',
+                          borderRadius: 8, cursor: 'pointer', transition: 'border-color 0.15s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                      >
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', fontFamily: "'Noto Serif JP', serif" }}>
+                          {s.title}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                          <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>
+                            by {s.authorName}
+                          </span>
+                          <span style={{ ...mono, fontSize: 8, color: '#d1d5db' }}>|</span>
+                          <span style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>
+                            {new Date(s.createdAt).toLocaleDateString('ja-JP')}
+                          </span>
+                          {s.tags.length > 0 && (
+                            <>
+                              <span style={{ ...mono, fontSize: 8, color: '#d1d5db' }}>|</span>
+                              {s.tags.slice(0, 4).map(t => (
+                                <span key={t} style={{
+                                  ...mono, fontSize: 7, color: GENRE_COLORS[t]?.text || '#9ca3af',
+                                  background: GENRE_COLORS[t]?.bg || '#f3f4f6',
+                                  padding: '1px 5px', borderRadius: 4,
+                                }}>
+                                  {GENRE_LABELS[t] || t}
+                                </span>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                        <div style={{ ...mono, fontSize: 8, color: '#7c3aed', marginTop: 6 }}>
+                          📂 掘り下げを継承する →
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
