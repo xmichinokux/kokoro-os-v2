@@ -22,6 +22,44 @@ async function fetchAestheticMap(): Promise<string> {
 }
 
 // ==========================
+// Feasibility Layer: 実現可能性の事前判定
+// ==========================
+const FEASIBILITY_PROMPT = (subject: string, style: string) =>
+  `あなたはSVGベクターイラスト生成の実現可能性判定者です。
+以下の主題とスタイルが、800x800の単一SVGファイル（最大3000行程度）で60〜120秒以内に生成可能か判定してください。
+
+【主題】${subject}
+【スタイル】${style}
+
+【判定基準】
+"infeasible"（突き返す）:
+- 写真のようなリアル描写（光彩・質感・毛穴レベルの厳密再現）
+- 3DCG・リアルタイムシェーダ・動画・アニメーション
+- 大量要素（群衆100人以上、密林全景、都市俯瞰、星図、細胞構造の詳細）
+- 実在する特定個人の肖像（著作権・肖像権）
+- 長文テキストを含む図表・インフォグラフィック主体
+- 複数ページ・絵コンテ全体・漫画の見開き
+
+"risky"（警告付きで続行）:
+- 複雑な風景（複数人物+背景+詳細小物が同居）
+- 特定のアニメ/マンガ/ゲームキャラクターの忠実再現（著作権懸念）
+- 科学的・技術的厳密性が必要な図解（解剖図、回路図、分子構造）
+- 非常に細密なディテールを要求するスタイル（点描、極めて緻密な模様全面）
+
+"feasible"（そのまま続行）:
+- 単体または少数のモチーフ（動物、人物1〜2名、静物、料理）
+- シンプルな風景（1シーン、要素数20以下）
+- ロゴ・アイコン・シンボル
+- 抽象画・パターン
+
+【出力】JSONのみ（説明・コードブロック不要）：
+{"feasibility": "feasible" | "risky" | "infeasible", "reason": "..."}
+
+- reason: infeasibleなら「何が作れないか」を30字以内（例: "写真レベルのリアル描写は不可"）
+- risky なら「何が不安か」を30字以内（例: "著作権のあるキャラクターの可能性"）
+- feasible は空文字列`;
+
+// ==========================
 // Logic Layer: 意図 → 構造設計
 // ==========================
 const LOGIC_PROMPT = (subject: string, style: string, aestheticMap: string) =>
@@ -300,11 +338,29 @@ export async function POST(req: NextRequest) {
     const { subject, style, step, designDoc: inputDesignDoc, svg: inputSvg, issues: inputIssues } = await req.json() as {
       subject: string;
       style: string;
-      step: 'logic' | 'styling' | 'critique' | 'refine' | 'debug';
+      step: 'feasibility' | 'logic' | 'styling' | 'critique' | 'refine' | 'debug';
       designDoc?: string;
       svg?: string;
       issues?: string[];
     };
+
+    // Step 0: Feasibility Layer（Gemini で実現可能性判定）
+    if (step === 'feasibility') {
+      if (!subject) return NextResponse.json({ error: '主題が必要です' }, { status: 400 });
+      const raw = await callGemini(geminiKey, FEASIBILITY_PROMPT(subject, style || ''));
+      const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+      let feasibility: 'feasible' | 'risky' | 'infeasible' = 'feasible';
+      let reason = '';
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          const rawF = parsed.feasibility;
+          feasibility = rawF === 'infeasible' ? 'infeasible' : rawF === 'risky' ? 'risky' : 'feasible';
+          reason = typeof parsed.reason === 'string' ? parsed.reason.slice(0, 60) : '';
+        } catch { /* fallthrough: feasible */ }
+      }
+      return NextResponse.json({ feasibility, reason });
+    }
 
     // Step 1: Logic Layer（Gemini で構造設計）
     if (step === 'logic') {
