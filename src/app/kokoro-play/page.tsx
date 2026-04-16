@@ -173,7 +173,7 @@ export default function KokoroPlayPage() {
       ctx.font = "11px 'Space Mono', monospace";
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.fillText('ドラッグ: 自機を移動', W / 2, H * 0.55);
-      ctx.fillText('上下スワイプ: スクロール速度変更', W / 2, H * 0.55 + 20);
+      ctx.fillText('上下スワイプ / ホイール / 右クリック: 速度変更', W / 2, H * 0.55 + 20);
       ctx.fillText('速いほどスコアボーナス↑', W / 2, H * 0.55 + 40);
 
       // START button area
@@ -558,11 +558,22 @@ export default function KokoroPlayPage() {
     };
 
     // ── マウス操作（PC）──
+    const onContextMenu = (e: Event) => { e.preventDefault(); };
+
     const onMouseDown = (e: MouseEvent) => {
       const s = stateRef.current;
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+
+      // 右クリック: プレイ中は速度アップ（2.0超えで0.5にリセット）
+      if (e.button === 2) {
+        e.preventDefault();
+        if (s.scene === 'playing') {
+          s.scrollSpeed = s.scrollSpeed >= 2.0 ? 0.5 : Math.min(2.0, s.scrollSpeed + 0.25);
+        }
+        return;
+      }
 
       if (s.scene === 'title') {
         const btnY = s.height * 0.75;
@@ -623,6 +634,7 @@ export default function KokoroPlayPage() {
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -638,6 +650,7 @@ export default function KokoroPlayPage() {
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mouseup', onMouseUp);
+      canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { loadWorldInput, clearWorldInput } from '@/lib/worldInput';
 import { saveToNote } from '@/lib/saveToNote';
 import { getAllNotes } from '@/lib/kokoro/noteStorage';
 import type { KokoroNote } from '@/types/note';
@@ -59,13 +58,7 @@ export default function KokoroWorldPage() {
     ? selectedNotes.map(n => `[${n.title}]\n${n.body}`).join('\n\n---\n\n')
     : '';
 
-  // 初回に Strategy から渡された入力があれば textarea にセット
   useEffect(() => {
-    const loaded = loadWorldInput();
-    if (loaded?.strategyText) {
-      setDirectText(loaded.strategyText);
-      clearWorldInput();
-    }
     return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); };
   }, []);
 

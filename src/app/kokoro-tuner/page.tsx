@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { parseHtml, applyParams, type TunerParam, type ParamCategory } from '@/lib/tunerParser';
+import { getAllNotes } from '@/lib/kokoro/noteStorage';
+import type { KokoroNote } from '@/types/note';
 
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 const accentColor = '#7c3aed';
@@ -14,7 +15,6 @@ const CATEGORIES: { value: ParamCategory; label: string; icon: string }[] = [
 ];
 
 export default function KokoroTunerPage() {
-  const router = useRouter();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -25,6 +25,19 @@ export default function KokoroTunerPage() {
   const [previewHtml, setPreviewHtml] = useState('');
   const [pasteHtml, setPasteHtml] = useState('');
   const [hasBuilderData, setHasBuilderData] = useState(false);
+
+  // Note ピッカー
+  const [showNotePicker, setShowNotePicker] = useState(false);
+  const [allNotes, setAllNotes] = useState<KokoroNote[]>([]);
+  const [notesLoaded, setNotesLoaded] = useState(false);
+
+  const loadNotes = useCallback(async () => {
+    if (notesLoaded) return;
+    const notes = await getAllNotes();
+    // HTMLらしき内容のみに絞る（<!DOCTYPEまたは<htmlを含む）
+    setAllNotes(notes.filter(n => /<(!doctype|html|body|div|section)/i.test(n.body)));
+    setNotesLoaded(true);
+  }, [notesLoaded]);
 
   // Builderのデータがあるか確認
   useEffect(() => {
@@ -162,10 +175,7 @@ export default function KokoroTunerPage() {
             </span>
           </div>
         </div>
-        <button onClick={() => router.push('/')} style={{
-          ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af',
-          background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer',
-        }}>← Home</button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 700, margin: '0 auto', padding: '48px 28px 100px' }}>
@@ -178,12 +188,12 @@ export default function KokoroTunerPage() {
             </div>
 
             {/* Builderから */}
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
               <button
                 onClick={loadFromBuilder}
                 disabled={!hasBuilderData}
                 style={{
-                  width: '100%', padding: '16px 20px', textAlign: 'left',
+                  flex: 1, padding: '16px 20px', textAlign: 'left',
                   background: hasBuilderData ? 'rgba(124,58,237,0.04)' : '#f8f9fa',
                   border: hasBuilderData ? `2px solid ${accentColor}` : '1px solid #e5e7eb',
                   borderRadius: 8, cursor: hasBuilderData ? 'pointer' : 'not-allowed',
@@ -197,6 +207,75 @@ export default function KokoroTunerPage() {
                   {hasBuilderData ? '直前に生成したHTMLを調整' : 'Builderのデータがありません'}
                 </div>
               </button>
+              {hasBuilderData && (
+                <button
+                  onClick={() => {
+                    try { localStorage.removeItem('kokoro_world_input'); } catch { /* ignore */ }
+                    setHasBuilderData(false);
+                  }}
+                  title="Builderのデータをリセット"
+                  style={{
+                    ...mono, fontSize: 9, letterSpacing: '0.12em',
+                    background: '#fff', border: '1px solid #d1d5db', color: '#9ca3af',
+                    padding: '0 14px', borderRadius: 6, cursor: 'pointer',
+                  }}
+                >
+                  ✕ リセット
+                </button>
+              )}
+            </div>
+
+            {/* Noteから */}
+            <div style={{ marginBottom: 16 }}>
+              <button
+                onClick={() => { setShowNotePicker(v => !v); if (!notesLoaded) loadNotes(); }}
+                style={{
+                  width: '100%', padding: '16px 20px', textAlign: 'left',
+                  background: '#f8f9fa', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 500, color: '#374151', marginBottom: 4 }}>
+                  📎 Noteから読み込む
+                </div>
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af' }}>
+                  過去にNoteへ保存したHTMLを選択
+                </div>
+              </button>
+
+              {showNotePicker && (
+                <div style={{
+                  marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8,
+                  background: '#fafafa', maxHeight: 260, overflowY: 'auto', padding: 8,
+                }}>
+                  {!notesLoaded ? (
+                    <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>// loading...</div>
+                  ) : allNotes.length === 0 ? (
+                    <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>// HTMLを含むNoteがありません</div>
+                  ) : (
+                    allNotes.map(note => (
+                      <div key={note.id}
+                        onClick={() => { loadHtml(note.body); setShowNotePicker(false); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '8px 12px', borderRadius: 4, cursor: 'pointer',
+                          background: 'transparent', marginBottom: 2,
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,58,237,0.06)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {note.title}
+                          </div>
+                          <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginTop: 1 }}>
+                            {note.source} · {note.body.length}字
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             {/* ファイルから */}
