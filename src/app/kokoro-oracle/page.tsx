@@ -416,6 +416,23 @@ export default function KokoroOraclePage() {
               {loading ? '問いかけ中...' : '問いを投げる →'}
             </button>
 
+            {error && (
+              <div style={{
+                ...mono, fontSize: 11, color: '#dc2626', padding: '10px 14px',
+                background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6,
+                marginTop: 12,
+              }}>
+                // エラー: {error}
+                {error.includes('ログイン') && (
+                  <div style={{ marginTop: 6 }}>
+                    <Link href="/auth" style={{ color: accent, textDecoration: 'underline', fontSize: 10 }}>
+                      → ログインページへ
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ marginTop: 28 }}>
               <div style={{ ...mono, fontSize: 9, color: '#9ca3af', letterSpacing: '0.12em', marginBottom: 10 }}>
                 // EXAMPLES
