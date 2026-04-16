@@ -215,14 +215,7 @@ export default function KokoroGatekeeperPage() {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => router.push('/')}
-          style={{
-            ...mono, fontSize: 9, letterSpacing: '0.12em', color: '#9ca3af',
-            background: 'transparent', border: '1px solid #e5e7eb',
-            padding: '5px 14px', borderRadius: 3, cursor: 'pointer',
-          }}
-        >← Home</button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '48px 28px 100px' }}>
