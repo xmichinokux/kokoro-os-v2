@@ -22,6 +22,7 @@ export default function KokoroBuilderPage() {
   const [generatedCode, setGeneratedCode] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [infeasibleReason, setInfeasibleReason] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [progressMessage, setProgressMessage] = useState('');
@@ -132,7 +133,8 @@ export default function KokoroBuilderPage() {
       setBuildType(mode);
 
       if (feasibility === 'infeasible') {
-        setError(`現状の機能性能では実現できません${reason ? `（${reason}）` : ''}。よりシンプルな仕様に書き換えてください。`);
+        setError(`現状の機能性能では実現できません${reason ? `（${reason}）` : ''}。よりシンプルな仕様に書き換えるか、Gatekeeperで再検討してください。`);
+        setInfeasibleReason(reason || '実装困難');
         setPhase('input');
         return;
       }
@@ -618,7 +620,28 @@ export default function KokoroBuilderPage() {
         {error && (
           <div style={{ marginTop: 16 }}>
             <div style={{ ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6, marginBottom: 12 }}>// エラー: {error}</div>
-            <button onClick={() => setError('')} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #ef4444', color: '#ef4444', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>閉じる</button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {infeasibleReason && spec.trim() && (
+                <button
+                  onClick={() => {
+                    try {
+                      localStorage.setItem('kokoro_gatekeeper_seed', JSON.stringify({
+                        spec: spec.trim(),
+                        reason: infeasibleReason,
+                        savedAt: new Date().toISOString(),
+                      }));
+                    } catch { /* ignore */ }
+                    router.push('/kokoro-gatekeeper');
+                  }}
+                  style={{
+                    ...mono, fontSize: 10, letterSpacing: '0.12em',
+                    background: '#6366f1', border: 'none', color: '#fff',
+                    padding: '10px 20px', borderRadius: 4, cursor: 'pointer',
+                  }}
+                >🔒 Gatekeeperで再検討</button>
+              )}
+              <button onClick={() => { setError(''); setInfeasibleReason(null); }} style={{ ...mono, fontSize: 10, letterSpacing: '0.12em', background: '#fff', border: '1px solid #ef4444', color: '#ef4444', padding: '10px 20px', borderRadius: 4, cursor: 'pointer' }}>閉じる</button>
+            </div>
           </div>
         )}
       </div>

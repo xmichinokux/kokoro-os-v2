@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import PersonaLoading from '@/components/PersonaLoading';
 import { getAllNotes } from '@/lib/kokoro/noteStorage';
@@ -23,6 +23,22 @@ export default function KokoroGatekeeperPage() {
   const [phase, setPhase] = useState<Phase>('input');
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [fromBuilderReject, setFromBuilderReject] = useState<{ reason: string } | null>(null);
+
+  // Builderから「再検討」で来た場合のシード読み込み
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('kokoro_gatekeeper_seed');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { spec?: string; reason?: string };
+      if (parsed.spec) {
+        const seedText = `【Builderで実現困難と判定された仕様の再検討】\n理由: ${parsed.reason || '実装困難'}\n\n元の仕様:\n${parsed.spec}\n\n→ 単一HTMLファイルで実現可能な範囲にスコープを絞って、実現可能な代替案を再設計してください。`;
+        setInput(seedText);
+        setFromBuilderReject({ reason: parsed.reason || '実装困難' });
+      }
+      localStorage.removeItem('kokoro_gatekeeper_seed');
+    } catch { /* ignore */ }
+  }, []);
 
   // Note 添付
   const [showNotePicker, setShowNotePicker] = useState(false);
@@ -226,6 +242,12 @@ export default function KokoroGatekeeperPage() {
             <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: accentColor, textTransform: 'uppercase', marginBottom: 16 }}>
               // 何を作りますか？
             </div>
+            {fromBuilderReject && (
+              <div style={{ ...mono, fontSize: 9, letterSpacing: '0.1em', color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', padding: '10px 14px', borderRadius: 4, marginBottom: 16, lineHeight: 1.6 }}>
+                ⚠ Builderで実装困難と判定された仕様を再検討中<br />
+                <span style={{ color: '#92400e' }}>理由: {fromBuilderReject.reason}</span>
+              </div>
+            )}
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
