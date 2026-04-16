@@ -50,6 +50,7 @@ export default function KokoroBuilderPage() {
   const [osMode, setOsMode] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [registeredAppId, setRegisteredAppId] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('desktop');
 
   // === Edit モード ===
   const [editHtml, setEditHtml] = useState('');
@@ -638,9 +639,42 @@ export default function KokoroBuilderPage() {
 
             {phase === 'done' && generatedCode && (
               <div>
-                <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase', marginBottom: 16 }}>// 生成完了 — プレビュー</div>
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto', marginBottom: 20, background: '#f8f9fa', resize: 'vertical', minHeight: 400 }}>
-                  <iframe ref={iframeRef} srcDoc={previewUrl ? (osMode ? injectSdkIntoHtml(previewUrl) : previewUrl) : undefined} scrolling="yes" style={{ width: '100%', height: 667, border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Builder Preview" />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase' }}>// 生成完了 — プレビュー</div>
+                  <div style={{ display: 'flex', gap: 4, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, padding: 3 }}>
+                    <button onClick={() => setPreviewMode('desktop')} style={{
+                      ...mono, fontSize: 9, letterSpacing: '0.08em',
+                      background: previewMode === 'desktop' ? '#fff' : 'transparent',
+                      border: previewMode === 'desktop' ? '1px solid #d1d5db' : '1px solid transparent',
+                      color: previewMode === 'desktop' ? '#1a1a1a' : '#9ca3af',
+                      padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+                    }}>🖥️ Desktop</button>
+                    <button onClick={() => setPreviewMode('mobile')} style={{
+                      ...mono, fontSize: 9, letterSpacing: '0.08em',
+                      background: previewMode === 'mobile' ? '#fff' : 'transparent',
+                      border: previewMode === 'mobile' ? '1px solid #d1d5db' : '1px solid transparent',
+                      color: previewMode === 'mobile' ? '#1a1a1a' : '#9ca3af',
+                      padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+                    }}>📱 Mobile</button>
+                  </div>
+                </div>
+                <div style={{
+                  border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto', marginBottom: 20, background: '#f8f9fa',
+                  resize: 'vertical', minHeight: previewMode === 'mobile' ? 667 : 500,
+                  display: previewMode === 'mobile' ? 'flex' : 'block',
+                  justifyContent: previewMode === 'mobile' ? 'center' : undefined,
+                  padding: previewMode === 'mobile' ? 16 : 0,
+                }}>
+                  <iframe
+                    ref={iframeRef}
+                    srcDoc={previewUrl ? (osMode ? injectSdkIntoHtml(previewUrl) : previewUrl) : undefined}
+                    scrolling="yes"
+                    style={previewMode === 'mobile'
+                      ? { width: 375, height: 667, border: '1px solid #d1d5db', borderRadius: 8, display: 'block', background: '#fff', flex: '0 0 auto' }
+                      : { width: '100%', height: 500, border: 'none', display: 'block' }}
+                    sandbox="allow-scripts allow-same-origin allow-pointer-lock"
+                    title="Builder Preview"
+                  />
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   {osMode && (
@@ -751,13 +785,46 @@ export default function KokoroBuilderPage() {
                   </div>
                 ) : (
                   <>
-                    <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase', marginBottom: 16 }}>
-                      // プレビュー{editHistory.length > 0 ? ` (編集 ${editHistory.length}回目)` : ''}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: '#059669', textTransform: 'uppercase' }}>
+                        // プレビュー{editHistory.length > 0 ? ` (編集 ${editHistory.length}回目)` : ''}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 6, padding: 3 }}>
+                        <button onClick={() => setPreviewMode('desktop')} style={{
+                          ...mono, fontSize: 9, letterSpacing: '0.08em',
+                          background: previewMode === 'desktop' ? '#fff' : 'transparent',
+                          border: previewMode === 'desktop' ? '1px solid #d1d5db' : '1px solid transparent',
+                          color: previewMode === 'desktop' ? '#1a1a1a' : '#9ca3af',
+                          padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+                        }}>🖥️ Desktop</button>
+                        <button onClick={() => setPreviewMode('mobile')} style={{
+                          ...mono, fontSize: 9, letterSpacing: '0.08em',
+                          background: previewMode === 'mobile' ? '#fff' : 'transparent',
+                          border: previewMode === 'mobile' ? '1px solid #d1d5db' : '1px solid transparent',
+                          color: previewMode === 'mobile' ? '#1a1a1a' : '#9ca3af',
+                          padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+                        }}>📱 Mobile</button>
+                      </div>
                     </div>
 
                     {/* プレビュー */}
-                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto', marginBottom: 20, background: '#f8f9fa', resize: 'vertical', minHeight: 300 }}>
-                      <iframe ref={iframeRef} srcDoc={previewUrl ? (osMode ? injectSdkIntoHtml(previewUrl) : previewUrl) : undefined} scrolling="yes" style={{ width: '100%', height: 500, border: 'none', display: 'block' }} sandbox="allow-scripts allow-same-origin allow-pointer-lock" title="Edit Preview" />
+                    <div style={{
+                      border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto', marginBottom: 20, background: '#f8f9fa',
+                      resize: 'vertical', minHeight: previewMode === 'mobile' ? 667 : 300,
+                      display: previewMode === 'mobile' ? 'flex' : 'block',
+                      justifyContent: previewMode === 'mobile' ? 'center' : undefined,
+                      padding: previewMode === 'mobile' ? 16 : 0,
+                    }}>
+                      <iframe
+                        ref={iframeRef}
+                        srcDoc={previewUrl ? (osMode ? injectSdkIntoHtml(previewUrl) : previewUrl) : undefined}
+                        scrolling="yes"
+                        style={previewMode === 'mobile'
+                          ? { width: 375, height: 667, border: '1px solid #d1d5db', borderRadius: 8, display: 'block', background: '#fff', flex: '0 0 auto' }
+                          : { width: '100%', height: 500, border: 'none', display: 'block' }}
+                        sandbox="allow-scripts allow-same-origin allow-pointer-lock"
+                        title="Edit Preview"
+                      />
                     </div>
                   </>
                 )}
