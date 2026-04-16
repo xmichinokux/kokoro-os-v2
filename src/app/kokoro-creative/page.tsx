@@ -360,30 +360,6 @@ export default function KokoroCreativePage() {
     const logs: string[] = [];
 
     try {
-      // Step 0: Feasibility Layer（Gemini 実現可能性判定）
-      setVecProgress('実現可能性を判定中...');
-      logs.push('▶ 実現可能性を判定中...'); setVecLog([...logs]);
-      const feasData = await apiFetch('/api/creative-vector', {
-        subject: vecSubject.trim(), style: vecStyle.trim(), step: 'feasibility',
-      });
-      const feasibility = (feasData.feasibility as 'feasible' | 'risky' | 'infeasible') || 'feasible';
-      const feasReason = (feasData.reason as string) || '';
-
-      if (feasibility === 'infeasible') {
-        logs.push(`✗ 現状の機能性能では実現できません${feasReason ? `（${feasReason}）` : ''}`); setVecLog([...logs]);
-        setError(`現状の機能性能では実現できません${feasReason ? `（${feasReason}）` : ''}。よりシンプルな主題・スタイルに書き換えてください。`);
-        setVecPhase('input');
-        return;
-      }
-
-      if (feasibility === 'risky') {
-        const ok = window.confirm(`⚠️ この主題/スタイルは複雑で、正常に生成できない可能性があります${feasReason ? `\n\n理由: ${feasReason}` : ''}\n\nそれでも生成を続けますか？`);
-        if (!ok) { setVecPhase('input'); return; }
-        logs.push(`△ risky: ${feasReason}（ユーザー確認済み）`); setVecLog([...logs]);
-      } else {
-        logs.push('✓ 実現可能性OK'); setVecLog([...logs]);
-      }
-
       // Step 1: Logic Layer（Gemini 構造設計）
       setVecProgress('Logic Layer: 構造設計中...');
       logs.push('▶ Logic Layer: 構造を設計中...'); setVecLog([...logs]);
@@ -393,6 +369,31 @@ export default function KokoroCreativePage() {
       const designDoc = logicData.designDoc as string;
       setVecDesignDoc(designDoc);
       logs.push('✓ 構造設計書を受信'); setVecLog([...logs]);
+
+      // Step 1.5: Feasibility Layer（設計書をレビューして実現可能性判定）
+      setVecProgress('実現可能性を判定中...');
+      logs.push('▶ 設計書をレビューして実現可能性を判定中...'); setVecLog([...logs]);
+      const feasData = await apiFetch('/api/creative-vector', {
+        subject: vecSubject.trim(), style: vecStyle.trim(), step: 'feasibility',
+        designDoc,
+      });
+      const feasibility = (feasData.feasibility as 'feasible' | 'risky' | 'infeasible') || 'feasible';
+      const feasReason = (feasData.reason as string) || '';
+
+      if (feasibility === 'infeasible') {
+        logs.push(`✗ 現状の機能性能では実現できません${feasReason ? `（${feasReason}）` : ''}`); setVecLog([...logs]);
+        setError(`現状の機能性能では実現できません${feasReason ? `（${feasReason}）` : ''}。主題やスタイルをよりシンプルに書き換えてください。`);
+        setVecPhase('input');
+        return;
+      }
+
+      if (feasibility === 'risky') {
+        const ok = window.confirm(`⚠️ 設計書のレビュー結果、生成が重くタイムアウトする可能性があります${feasReason ? `\n\n理由: ${feasReason}` : ''}\n\nそれでも生成を続けますか？`);
+        if (!ok) { setVecPhase('input'); return; }
+        logs.push(`△ risky: ${feasReason}（ユーザー確認済み）`); setVecLog([...logs]);
+      } else {
+        logs.push('✓ 実現可能性OK'); setVecLog([...logs]);
+      }
 
       // Step 2: Styling Layer（Claude Sonnet SVG生成）
       setVecProgress('Styling Layer: SVGコード生成中...');

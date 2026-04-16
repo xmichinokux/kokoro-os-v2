@@ -22,41 +22,44 @@ async function fetchAestheticMap(): Promise<string> {
 }
 
 // ==========================
-// Feasibility Layer: 実現可能性の事前判定
+// Feasibility Layer: 設計書レビューによる実現可能性判定
 // ==========================
-const FEASIBILITY_PROMPT = (subject: string, style: string) =>
+const FEASIBILITY_PROMPT = (subject: string, style: string, designDoc: string) =>
   `あなたはSVGベクターイラスト生成の実現可能性判定者です。
-以下の主題とスタイルが、800x800の単一SVGファイル（最大3000行程度）で60〜120秒以内に生成可能か判定してください。
+以下は、主題「${subject}」・スタイル「${style}」に対して生成された構造設計書です。
+この設計書の内容で、**800x800の単一SVGファイル（最大3000行程度）を60〜120秒以内に生成しきれるか**を判定してください。
 
-【主題】${subject}
-【スタイル】${style}
+【構造設計書】
+${designDoc}
 
-【判定基準】
+【判定基準】設計書に書かれた要素数・ハッチング密度・jitter頂点数・テクスチャの重さを具体的に見積もってください。
+
 "infeasible"（突き返す）:
-- 写真のようなリアル描写（光彩・質感・毛穴レベルの厳密再現）
-- 3DCG・リアルタイムシェーダ・動画・アニメーション
-- 大量要素（群衆100人以上、密林全景、都市俯瞰、星図、細胞構造の詳細）
-- 実在する特定個人の肖像（著作権・肖像権）
-- 長文テキストを含む図表・インフォグラフィック主体
-- 複数ページ・絵コンテ全体・漫画の見開き
+- 要素数が膨大（グループが20個以上、または1要素あたりパス数が多数）
+- ハッチング線が総数2000本を超える
+- jitter多角形の頂点数が総計5000点を超える
+- 長文テキストを高密度でレンダリング（各文字にjitter/ディストレス効果など）
+- 写真レベルのリアル描写、3DCG、リアルタイムシェーダ、動画/アニメ
+- 実在特定個人の肖像（著作権・肖像権）
+- 複数シーン・絵コンテ全体
 
 "risky"（警告付きで続行）:
-- 複雑な風景（複数人物+背景+詳細小物が同居）
-- 特定のアニメ/マンガ/ゲームキャラクターの忠実再現（著作権懸念）
-- 科学的・技術的厳密性が必要な図解（解剖図、回路図、分子構造）
-- 非常に細密なディテールを要求するスタイル（点描、極めて緻密な模様全面）
+- 要素数が多め（10〜20グループ）
+- 著作権が懸念される特定キャラ・ブランド・バンドロゴの忠実再現
+- 非常に細密なディテール（点描、全面緻密模様）を要求
+- 科学的・技術的厳密性が必要な図解
 
 "feasible"（そのまま続行）:
-- 単体または少数のモチーフ（動物、人物1〜2名、静物、料理）
-- シンプルな風景（1シーン、要素数20以下）
+- 要素数が妥当（10グループ以下、総パス数300以下）
 - ロゴ・アイコン・シンボル
-- 抽象画・パターン
+- 動物・人物1〜2名・静物・シンプル風景
+- パターン・抽象画
 
 【出力】JSONのみ（説明・コードブロック不要）：
 {"feasibility": "feasible" | "risky" | "infeasible", "reason": "..."}
 
-- reason: infeasibleなら「何が作れないか」を30字以内（例: "写真レベルのリアル描写は不可"）
-- risky なら「何が不安か」を30字以内（例: "著作権のあるキャラクターの可能性"）
+- reason: infeasibleなら「何が重いか」を30字以内（例: "ハッチング3000本で時間内に完了困難"）
+- risky なら「何が不安か」を30字以内（例: "著作権のあるバンドロゴの可能性"）
 - feasible は空文字列`;
 
 // ==========================
@@ -344,10 +347,11 @@ export async function POST(req: NextRequest) {
       issues?: string[];
     };
 
-    // Step 0: Feasibility Layer（Gemini で実現可能性判定）
+    // Step 1.5: Feasibility Layer（Gemini で設計書をレビューして実現可能性判定）
     if (step === 'feasibility') {
       if (!subject) return NextResponse.json({ error: '主題が必要です' }, { status: 400 });
-      const raw = await callGemini(geminiKey, FEASIBILITY_PROMPT(subject, style || ''));
+      if (!inputDesignDoc) return NextResponse.json({ error: '設計書が必要です' }, { status: 400 });
+      const raw = await callGemini(geminiKey, FEASIBILITY_PROMPT(subject, style || '', inputDesignDoc));
       const jsonMatch = raw.match(/\{[\s\S]*?\}/);
       let feasibility: 'feasible' | 'risky' | 'infeasible' = 'feasible';
       let reason = '';
