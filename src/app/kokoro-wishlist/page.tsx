@@ -154,13 +154,7 @@ export default function KokoroWishlistPage() {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => router.push('/kokoro-chat')}
-          title="Talkに戻る"
-          style={{ ...mono, fontSize: 9, letterSpacing: '.12em', color: '#9ca3af', background: 'transparent', border: '1px solid #e5e7eb', padding: '5px 14px', borderRadius: 3, cursor: 'pointer' }}
-        >
-          ← Talk
-        </button>
+        <div />
       </header>
 
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '36px 28px 100px' }}>
