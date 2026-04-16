@@ -5,18 +5,27 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 const mono = { fontFamily: "'Space Mono', monospace" };
 
 const GENRE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  music:  { bg: '#ede9fe', text: '#7c3aed', border: '#c4b5fd' },
-  movie:  { bg: '#dbeafe', text: '#2563eb', border: '#93c5fd' },
-  book:   { bg: '#dcfce7', text: '#16a34a', border: '#86efac' },
-  manga:  { bg: '#ffedd5', text: '#ea580c', border: '#fdba74' },
-  anime:  { bg: '#fce7f3', text: '#db2777', border: '#f9a8d4' },
-  game:   { bg: '#fee2e2', text: '#dc2626', border: '#fca5a5' },
-  other:  { bg: '#f3f4f6', text: '#6b7280', border: '#d1d5db' },
+  music:   { bg: '#ede9fe', text: '#7c3aed', border: '#c4b5fd' },
+  movie:   { bg: '#dbeafe', text: '#2563eb', border: '#93c5fd' },
+  book:    { bg: '#dcfce7', text: '#16a34a', border: '#86efac' },
+  manga:   { bg: '#ffedd5', text: '#ea580c', border: '#fdba74' },
+  anime:   { bg: '#fce7f3', text: '#db2777', border: '#f9a8d4' },
+  game:    { bg: '#fee2e2', text: '#dc2626', border: '#fca5a5' },
+  fashion: { bg: '#fdf4ff', text: '#a855f7', border: '#d8b4fe' },
+  brand:   { bg: '#f0f9ff', text: '#0284c7', border: '#7dd3fc' },
+  food:    { bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
+  art:     { bg: '#fefce8', text: '#a16207', border: '#fde68a' },
+  place:   { bg: '#ecfdf5', text: '#047857', border: '#6ee7b7' },
+  tech:    { bg: '#f0fdf4', text: '#15803d', border: '#86efac' },
+  sports:  { bg: '#eff6ff', text: '#1d4ed8', border: '#93c5fd' },
+  other:   { bg: '#f3f4f6', text: '#6b7280', border: '#d1d5db' },
 };
 
 const GENRE_LABELS: Record<string, string> = {
-  music: 'Music', movie: 'Movie', book: 'Book',
-  manga: 'Manga', anime: 'Anime', game: 'Game', other: 'Other',
+  music: 'Music', movie: 'Movie', book: 'Book', manga: 'Manga',
+  anime: 'Anime', game: 'Game', fashion: 'Fashion', brand: 'Brand',
+  food: 'Food', art: 'Art', place: 'Place', tech: 'Tech',
+  sports: 'Sports', other: 'Other',
 };
 
 type TreeNode = {
@@ -26,6 +35,9 @@ type TreeNode = {
   description: string;
   children: TreeNode[];
 };
+
+type ViewEntry = { id: string; name: string };
+type SavedEntry = { keyword: string; tree: TreeNode; savedAt: string };
 
 let nodeCounter = 0;
 function assignIds(node: Omit<TreeNode, 'id'> & { id?: string; children?: unknown[] }): TreeNode {
@@ -39,100 +51,53 @@ function assignIds(node: Omit<TreeNode, 'id'> & { id?: string; children?: unknow
   };
 }
 
-function addChildrenToNode(tree: TreeNode, targetId: string, children: TreeNode[]): TreeNode {
-  if (tree.id === targetId) {
-    return { ...tree, children };
-  }
-  return {
-    ...tree,
-    children: tree.children.map(c => addChildrenToNode(c, targetId, children)),
-  };
-}
-
-function findNode(tree: TreeNode, targetId: string): TreeNode | null {
-  if (tree.id === targetId) return tree;
-  for (const child of tree.children) {
-    const found = findNode(child, targetId);
-    if (found) return found;
-  }
-  return null;
-}
-
-function getAncestorPath(tree: TreeNode, targetId: string, path: { id: string; name: string }[] = []): { id: string; name: string }[] | null {
-  if (tree.id === targetId) return [...path, { id: tree.id, name: tree.name }];
-  for (const child of tree.children) {
-    const result = getAncestorPath(child, targetId, [...path, { id: tree.id, name: tree.name }]);
-    if (result) return result;
-  }
-  return null;
-}
-
-function getNodeDepthInFull(tree: TreeNode, targetId: string, depth: number = 0): number {
-  if (tree.id === targetId) return depth;
-  for (const child of tree.children) {
-    const d = getNodeDepthInFull(child, targetId, depth + 1);
-    if (d >= 0) return d;
-  }
-  return -1;
-}
+const HISTORY_KEY = 'kokoroResonanceHistory';
 
 export default function KokoroResonancePage() {
   const [keyword, setKeyword] = useState('');
-  const [tree, setTree] = useState<TreeNode | null>(null);
+  const [rootTree, setRootTree] = useState<TreeNode | null>(null);
+  const [expandedTrees, setExpandedTrees] = useState<Record<string, TreeNode>>({});
+  const [viewStack, setViewStack] = useState<ViewEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [hasAestheticMap, setHasAestheticMap] = useState(false);
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-
-  // Navigation: viewStack holds node IDs, viewIndex is current position
-  const [viewStack, setViewStack] = useState<string[]>([]);
-  const [viewIndex, setViewIndex] = useState(0);
-
-  // History / save
-  const [savedTrees, setSavedTrees] = useState<{ keyword: string; tree: TreeNode; savedAt: string }[]>([]);
+  const [savedTrees, setSavedTrees] = useState<SavedEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
-  const currentViewId = viewStack[viewIndex] || null;
   const displayTree = useMemo(() => {
-    if (!tree) return null;
-    if (!currentViewId) return tree;
-    return findNode(tree, currentViewId) || tree;
-  }, [tree, currentViewId]);
+    if (!rootTree || viewStack.length === 0) return rootTree;
+    const current = viewStack[viewStack.length - 1];
+    if (current.id === rootTree.id) return rootTree;
+    return expandedTrees[current.id] || rootTree;
+  }, [rootTree, viewStack, expandedTrees]);
 
-  const breadcrumb = useMemo(() => {
-    if (!tree || !currentViewId) return null;
-    return getAncestorPath(tree, currentViewId);
-  }, [tree, currentViewId]);
+  const canGoBack = viewStack.length > 1;
+  const isAtRoot = viewStack.length <= 1;
 
-  const canGoBack = viewIndex > 0;
-  const canGoForward = viewIndex < viewStack.length - 1;
-
-  // Load saved trees from localStorage on mount
-  const loadSavedTrees = useCallback(() => {
+  // ─── History persistence ───
+  useEffect(() => {
     try {
-      const raw = localStorage.getItem('kokoroResonanceHistory');
+      const raw = localStorage.getItem(HISTORY_KEY);
       if (raw) setSavedTrees(JSON.parse(raw));
     } catch { /* ignore */ }
   }, []);
 
-  const saveTreesToStorage = useCallback((trees: { keyword: string; tree: TreeNode; savedAt: string }[]) => {
-    localStorage.setItem('kokoroResonanceHistory', JSON.stringify(trees));
+  const saveTreesToStorage = useCallback((trees: SavedEntry[]) => {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(trees));
     setSavedTrees(trees);
   }, []);
 
-  useEffect(() => { loadSavedTrees(); }, [loadSavedTrees]);
-
+  // ─── Generate ───
   const handleGenerate = useCallback(async () => {
     const kw = keyword.trim();
     if (!kw) return;
 
     setLoading(true);
     setError('');
-    setTree(null);
+    setRootTree(null);
+    setExpandedTrees({});
     setViewStack([]);
-    setViewIndex(0);
-    setExpandedNodes(new Set());
     nodeCounter = 0;
 
     try {
@@ -149,10 +114,8 @@ export default function KokoroResonancePage() {
 
       if (data.hasAestheticMap) setHasAestheticMap(true);
       const newTree = assignIds(data.tree);
-      setTree(newTree);
-      setViewStack([newTree.id]);
-      setViewIndex(0);
-      setExpandedNodes(new Set([newTree.id]));
+      setRootTree(newTree);
+      setViewStack([{ id: newTree.id, name: newTree.name }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成に失敗しました');
     } finally {
@@ -160,34 +123,27 @@ export default function KokoroResonancePage() {
     }
   }, [keyword]);
 
-  // Drill into a node: if already expanded (cached), navigate; otherwise fetch new children
-  const handleDrillDown = useCallback(async (nodeId: string, nodeName: string) => {
-    if (!tree || expandingId) return;
+  // ─── Drill down (folder-style) ───
+  const handleDrillDown = useCallback(async (node: TreeNode) => {
+    if (expandingId) return;
 
-    const targetNode = findNode(tree, nodeId);
-    if (!targetNode) return;
-
-    if (expandedNodes.has(nodeId)) {
-      setViewStack(prev => [...prev.slice(0, viewIndex + 1), nodeId]);
-      setViewIndex(prev => prev + 1);
+    if (expandedTrees[node.id]) {
+      setViewStack(prev => [...prev, { id: node.id, name: node.name }]);
       return;
     }
 
-    const depth = getNodeDepthInFull(tree, nodeId);
-    if (depth >= 8) {
-      alert('これ以上掘り下げられません（最大深度）');
-      return;
-    }
+    const parentContext = viewStack.map(v => v.name).join(' → ');
 
-    const path = getAncestorPath(tree, nodeId);
-    const parentContext = path ? path.map(p => p.name).join(' → ') : nodeName;
-
-    setExpandingId(nodeId);
+    setExpandingId(node.id);
     try {
       const res = await fetch('/api/kokoro-resonance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: nodeName, mode: 'expand', parentContext }),
+        body: JSON.stringify({
+          keyword: node.name,
+          mode: 'expand',
+          parentContext: parentContext ? `${parentContext} → ${node.name}` : node.name,
+        }),
         signal: AbortSignal.timeout(60000),
       });
 
@@ -196,72 +152,78 @@ export default function KokoroResonancePage() {
 
       const children = (data.children || []).map((c: Omit<TreeNode, 'id'>) => assignIds(c));
       if (children.length > 0) {
-        setTree(prev => prev ? addChildrenToNode(prev, nodeId, children) : prev);
-        setExpandedNodes(prev => new Set(prev).add(nodeId));
-        setViewStack(prev => [...prev.slice(0, viewIndex + 1), nodeId]);
-        setViewIndex(prev => prev + 1);
+        const newRoot: TreeNode = {
+          id: node.id,
+          name: node.name,
+          genre: node.genre,
+          description: node.description,
+          children,
+        };
+        setExpandedTrees(prev => ({ ...prev, [node.id]: newRoot }));
+        setViewStack(prev => [...prev, { id: node.id, name: node.name }]);
       }
     } catch {
       /* ignore */
     } finally {
       setExpandingId(null);
     }
-  }, [tree, expandingId, viewIndex, expandedNodes]);
+  }, [expandingId, expandedTrees, viewStack]);
 
-  const handleGoBack = () => {
-    if (canGoBack) setViewIndex(prev => prev - 1);
-  };
-
-  const handleGoForward = () => {
-    if (canGoForward) setViewIndex(prev => prev + 1);
-  };
-
-  const handleNavigateTo = (nodeId: string) => {
-    const idx = viewStack.indexOf(nodeId);
-    if (idx >= 0) {
-      setViewIndex(idx);
+  // ─── Navigation ───
+  const handleGoBack = useCallback(() => {
+    if (viewStack.length > 1) {
+      setViewStack(prev => prev.slice(0, -1));
     }
-  };
+  }, [viewStack.length]);
 
-  const handleReset = () => {
-    setTree(null);
+  const handleGoToRoot = useCallback(() => {
+    if (rootTree) {
+      setViewStack([{ id: rootTree.id, name: rootTree.name }]);
+    }
+  }, [rootTree]);
+
+  const handleNavigateTo = useCallback((index: number) => {
+    setViewStack(prev => prev.slice(0, index + 1));
+  }, []);
+
+  // ─── Reset ───
+  const handleReset = useCallback(() => {
+    setRootTree(null);
+    setExpandedTrees({});
     setKeyword('');
     setError('');
     setViewStack([]);
-    setViewIndex(0);
-    setExpandedNodes(new Set());
     nodeCounter = 0;
-  };
+  }, []);
 
+  // ─── Save / Load / Delete ───
   const handleSave = useCallback(() => {
-    if (!tree || !keyword.trim()) return;
-    const entry = { keyword: keyword.trim(), tree, savedAt: new Date().toISOString() };
+    if (!rootTree || !keyword.trim()) return;
+    const entry: SavedEntry = { keyword: keyword.trim(), tree: rootTree, savedAt: new Date().toISOString() };
     const existing = savedTrees.filter(s => s.keyword !== entry.keyword);
     const updated = [entry, ...existing].slice(0, 30);
     saveTreesToStorage(updated);
-  }, [tree, keyword, savedTrees, saveTreesToStorage]);
+  }, [rootTree, keyword, savedTrees, saveTreesToStorage]);
 
-  const handleLoadSaved = useCallback((entry: { keyword: string; tree: TreeNode }) => {
+  const handleLoadSaved = useCallback((entry: SavedEntry) => {
     nodeCounter = 0;
-    setTree(entry.tree);
+    setRootTree(entry.tree);
+    setExpandedTrees({});
     setKeyword(entry.keyword);
-    setViewStack([entry.tree.id]);
-    setViewIndex(0);
-    setExpandedNodes(new Set([entry.tree.id]));
+    setViewStack([{ id: entry.tree.id, name: entry.tree.name }]);
     setShowHistory(false);
     setError('');
   }, []);
 
   const handleDeleteSaved = useCallback((kw: string) => {
-    const updated = savedTrees.filter(s => s.keyword !== kw);
-    saveTreesToStorage(updated);
+    saveTreesToStorage(savedTrees.filter(s => s.keyword !== kw));
   }, [savedTrees, saveTreesToStorage]);
 
   const handleClearAll = useCallback(() => {
     saveTreesToStorage([]);
   }, [saveTreesToStorage]);
 
-  const isAtRoot = !currentViewId || (tree && currentViewId === tree.id);
+  const hasTree = !!rootTree;
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151' }}>
@@ -285,7 +247,7 @@ export default function KokoroResonancePage() {
               Kokoro <span style={{ color: '#7c3aed' }}>Resonance</span>
             </div>
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>
-              カルチャーのファミリーツリーを探索する
+              ジャンルを超えたファミリーツリーを探索する
             </span>
           </div>
           {hasAestheticMap && (
@@ -295,7 +257,7 @@ export default function KokoroResonancePage() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {!tree && savedTrees.length > 0 && (
+          {!hasTree && savedTrees.length > 0 && (
             <button onClick={() => setShowHistory(!showHistory)} title="履歴"
               style={{
                 ...mono, fontSize: 9, letterSpacing: '.1em',
@@ -306,7 +268,7 @@ export default function KokoroResonancePage() {
               📚 履歴 ({savedTrees.length})
             </button>
           )}
-          {tree && (
+          {hasTree && (
             <>
               <button onClick={handleSave} title="保存"
                 style={{
@@ -334,7 +296,7 @@ export default function KokoroResonancePage() {
       <div style={{ maxWidth: '100%', margin: '0 auto', padding: '36px 28px 120px' }}>
 
         {/* 入力エリア */}
-        {!tree && (
+        {!hasTree && (
           <div style={{ maxWidth: 560, margin: '0 auto' }}>
             <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 8 }}>
               // キーワードを入力
@@ -345,7 +307,7 @@ export default function KokoroResonancePage() {
                 value={keyword}
                 onChange={e => setKeyword(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleGenerate(); }}
-                placeholder="例: Hatebreed / AKIRA / プラトーン / リアルスクリーモ"
+                placeholder="例: Hatebreed / Supreme / AKIRA / Tesla"
                 disabled={loading}
                 style={{
                   flex: 1, padding: '12px 16px', fontSize: 15,
@@ -397,9 +359,9 @@ export default function KokoroResonancePage() {
                   // 使い方
                 </div>
                 <div style={{ fontSize: 13, color: '#6b7280', fontFamily: "'Noto Serif JP', serif", lineHeight: 2 }}>
-                  バンド名、映画タイトル、漫画タイトル、ジャンル名など何でも入力できます。<br />
-                  入力したキーワードを起点にファミリーツリー形式でおすすめが広がります。<br />
-                  どのノードでもクリックして掘り下げることができます。戻る・進むで履歴を移動できます。
+                  バンド名、映画、漫画、ファッションブランド、車、何でも入力できます。<br />
+                  ジャンルの壁を越えて、ファミリーツリー形式でおすすめが広がります。<br />
+                  ノードをクリックするとフォルダに入るように掘り下げ、戻るで階層を上がれます。
                 </div>
               </div>
             )}
@@ -458,65 +420,49 @@ export default function KokoroResonancePage() {
         )}
 
         {/* ツリー表示 */}
-        {tree && displayTree && (
+        {hasTree && displayTree && (
           <>
             {/* ナビゲーションバー */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20,
               maxWidth: 680, margin: '0 auto 20px',
             }}>
-              {/* 戻る / 進む */}
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button
-                  onClick={handleGoBack}
-                  disabled={!canGoBack}
-                  title="戻る"
-                  style={{
-                    ...mono, fontSize: 11, padding: '6px 10px', borderRadius: 4,
-                    border: '1px solid #e5e7eb', background: canGoBack ? '#fff' : '#f9fafb',
-                    color: canGoBack ? '#7c3aed' : '#d1d5db',
-                    cursor: canGoBack ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  ← 戻る
-                </button>
-                <button
-                  onClick={handleGoForward}
-                  disabled={!canGoForward}
-                  title="進む"
-                  style={{
-                    ...mono, fontSize: 11, padding: '6px 10px', borderRadius: 4,
-                    border: '1px solid #e5e7eb', background: canGoForward ? '#fff' : '#f9fafb',
-                    color: canGoForward ? '#7c3aed' : '#d1d5db',
-                    cursor: canGoForward ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  進む →
-                </button>
-              </div>
+              <button
+                onClick={handleGoBack}
+                disabled={!canGoBack}
+                title="戻る（上の階層へ）"
+                style={{
+                  ...mono, fontSize: 11, padding: '6px 10px', borderRadius: 4,
+                  border: '1px solid #e5e7eb', background: canGoBack ? '#fff' : '#f9fafb',
+                  color: canGoBack ? '#7c3aed' : '#d1d5db',
+                  cursor: canGoBack ? 'pointer' : 'not-allowed',
+                }}
+              >
+                ← 戻る
+              </button>
 
-              {/* パンくずリスト */}
-              {breadcrumb && breadcrumb.length > 1 && (
+              {/* パンくずリスト（フォルダパス） */}
+              {viewStack.length > 0 && (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap',
                   flex: 1, overflow: 'hidden',
                 }}>
-                  {breadcrumb.map((item, i) => (
-                    <span key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {i > 0 && <span style={{ ...mono, fontSize: 9, color: '#d1d5db' }}>→</span>}
+                  {viewStack.map((entry, i) => (
+                    <span key={`${entry.id}_${i}`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {i > 0 && <span style={{ ...mono, fontSize: 9, color: '#d1d5db' }}>/</span>}
                       <button
-                        onClick={() => handleNavigateTo(item.id)}
+                        onClick={() => handleNavigateTo(i)}
                         style={{
                           ...mono, fontSize: 9,
-                          color: i === breadcrumb.length - 1 ? '#7c3aed' : '#9ca3af',
-                          fontWeight: i === breadcrumb.length - 1 ? 600 : 400,
+                          color: i === viewStack.length - 1 ? '#7c3aed' : '#9ca3af',
+                          fontWeight: i === viewStack.length - 1 ? 600 : 400,
                           background: 'transparent', border: 'none',
                           cursor: 'pointer', padding: '2px 4px',
                           whiteSpace: 'nowrap', maxWidth: 120,
                           overflow: 'hidden', textOverflow: 'ellipsis',
                         }}
                       >
-                        {item.name}
+                        {entry.name}
                       </button>
                     </span>
                   ))}
@@ -525,7 +471,7 @@ export default function KokoroResonancePage() {
 
               {!isAtRoot && (
                 <button
-                  onClick={() => { if (tree) { setViewStack([tree.id]); setViewIndex(0); } }}
+                  onClick={handleGoToRoot}
                   title="ルートに戻る"
                   style={{
                     ...mono, fontSize: 8, letterSpacing: '.08em',
@@ -547,7 +493,6 @@ export default function KokoroResonancePage() {
                   isRoot
                   expandingId={expandingId}
                   onDrillDown={handleDrillDown}
-                  currentViewId={currentViewId}
                 />
               </div>
             </div>
@@ -560,26 +505,23 @@ export default function KokoroResonancePage() {
 
 /* ─── Tree Node Component ─── */
 function TreeNodeView({
-  node, isRoot, expandingId, onDrillDown, currentViewId,
+  node, isRoot, expandingId, onDrillDown,
 }: {
   node: TreeNode;
   isRoot?: boolean;
   expandingId: string | null;
-  onDrillDown: (nodeId: string, nodeName: string) => void;
-  currentViewId: string | null;
+  onDrillDown: (node: TreeNode) => void;
 }) {
   const genre = GENRE_COLORS[node.genre] || GENRE_COLORS.other;
-  const isLeaf = node.children.length === 0;
   const isExpanding = expandingId === node.id;
   const lineColor = '#d1d5db';
-  const isCurrentRoot = node.id === currentViewId;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
       {/* Node card */}
       <div
-        onClick={!isExpanding && !isCurrentRoot ? () => onDrillDown(node.id, node.name) : undefined}
+        onClick={!isExpanding && !isRoot ? () => onDrillDown(node) : undefined}
         style={{
           padding: isRoot ? '14px 20px' : '10px 16px',
           border: `1px solid ${genre.border}`,
@@ -588,7 +530,7 @@ function TreeNodeView({
           minWidth: isRoot ? 180 : 130,
           maxWidth: 200,
           textAlign: 'center',
-          cursor: !isExpanding && !isCurrentRoot ? 'pointer' : 'default',
+          cursor: !isExpanding && !isRoot ? 'pointer' : 'default',
           transition: 'box-shadow 0.15s',
           boxShadow: isRoot ? `0 2px 8px ${genre.text}18` : 'none',
           position: 'relative',
@@ -629,13 +571,13 @@ function TreeNodeView({
           </div>
         )}
 
-        {/* Drill-down indicator */}
-        {!isCurrentRoot && !isExpanding && (
+        {/* Drill-down indicator (not on root) */}
+        {!isRoot && !isExpanding && (
           <div style={{
             ...mono, fontSize: 8, color: '#7c3aed',
             marginTop: 6, letterSpacing: '.08em',
           }}>
-            {isLeaf ? '+ 掘り下げる' : '→ 掘り下げる'}
+            📂 掘り下げる
           </div>
         )}
 
@@ -678,7 +620,6 @@ function TreeNodeView({
                   node={child}
                   expandingId={expandingId}
                   onDrillDown={onDrillDown}
-                  currentViewId={currentViewId}
                 />
               </div>
             ))}

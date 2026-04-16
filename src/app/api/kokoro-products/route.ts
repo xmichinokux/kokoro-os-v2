@@ -217,6 +217,31 @@ export async function POST(req: NextRequest) {
 
     if (error) throw new Error(error.message);
 
+    // 排他設定: 同じユーザーの類似公開Noteを非公開にする
+    const { data: productNote } = await supabase
+      .from('notes')
+      .select('tags')
+      .eq('id', noteId)
+      .single();
+
+    if (productNote?.tags && productNote.tags.length > 0) {
+      const { data: similarNotes } = await supabase
+        .from('notes')
+        .select('id, tags')
+        .eq('user_id', user.id)
+        .eq('is_public', true)
+        .or('is_product.is.null,is_product.eq.false')
+        .neq('id', noteId);
+
+      const productTags = new Set(productNote.tags as string[]);
+      for (const sn of (similarNotes || [])) {
+        const overlap = ((sn.tags || []) as string[]).some((t: string) => productTags.has(t));
+        if (overlap) {
+          await supabase.from('notes').update({ is_public: false }).eq('id', sn.id);
+        }
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
