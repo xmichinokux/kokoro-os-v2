@@ -8,24 +8,14 @@ const OUTPUT_TYPES: Record<string, string> = {
   free: '自由（AIに任せる）',
 };
 
-function buildSystem(
-  writer?: string,
-  kami?: string,
-  ponchi?: string,
-  outputType?: string,
-): string {
-  const materials: string[] = [];
-  if (writer) materials.push(`[Writer - 整理された文章]\n${writer}`);
-  if (kami) materials.push(`[Kami - データ・表]\n${kami}`);
-  if (ponchi) materials.push(`[Ponchi - スライド構成]\n${ponchi}`);
-
+function buildSystem(sourceText: string, outputType?: string): string {
   const typeName = OUTPUT_TYPES[outputType ?? 'free'] ?? OUTPUT_TYPES.free;
 
   return `あなたはKokoro OSの「Strategy」エンジンです。
 以下の素材を読んで、一本の完成したドキュメントを生成してください。
 
 【素材】
-${materials.join('\n\n')}
+${sourceText}
 
 【出力タイプ】
 ${typeName}
@@ -56,10 +46,20 @@ ${typeName}
 
 export async function POST(req: NextRequest) {
   try {
-    const { writer, kami, ponchi, outputType } = await req.json();
+    const { sourceText, writer, kami, ponchi, outputType } = await req.json();
 
-    if (!writer && !kami && !ponchi) {
-      return NextResponse.json({ error: '素材が1つもありません' }, { status: 400 });
+    // 後方互換: writer/kami/ponchi が来た場合は結合
+    let source = sourceText as string | undefined;
+    if (!source) {
+      const parts: string[] = [];
+      if (writer) parts.push(`[Writer - 整理された文章]\n${writer}`);
+      if (kami) parts.push(`[Kami - データ・表]\n${kami}`);
+      if (ponchi) parts.push(`[Ponchi - スライド構成]\n${ponchi}`);
+      source = parts.join('\n\n');
+    }
+
+    if (!source) {
+      return NextResponse.json({ error: '素材がありません' }, { status: 400 });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'APIキーが設定されていません' }, { status: 500 });
     }
 
-    const system = buildSystem(writer, kami, ponchi, outputType);
+    const system = buildSystem(source, outputType);
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { loadStrategyInputs, clearStrategyInputs, type StrategyInputs } from '@/lib/strategyInputs';
 import { saveWorldInput } from '@/lib/worldInput';
 import { saveToNote } from '@/lib/saveToNote';
+import { getAllNotes } from '@/lib/kokoro/noteStorage';
+import type { KokoroNote } from '@/types/note';
 import PersonaLoading from '@/components/PersonaLoading';
 
 const OUTPUT_TYPES = [
@@ -40,7 +41,7 @@ export default function KokoroStrategyPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
   const accentColor = '#f59e0b';
 
-  const [inputs, setInputs] = useState<StrategyInputs>({});
+  const [directInput, setDirectInput] = useState('');
   const [outputType, setOutputType] = useState<OutputTypeKey>('free');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -52,17 +53,42 @@ export default function KokoroStrategyPage() {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAX_RETRIES = 5;
 
+  // Note ピッカー
+  const [showNotePicker, setShowNotePicker] = useState(false);
+  const [allNotes, setAllNotes] = useState<KokoroNote[]>([]);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [notesLoaded, setNotesLoaded] = useState(false);
+
+  const loadNotes = useCallback(async () => {
+    if (notesLoaded) return;
+    const notes = await getAllNotes();
+    setAllNotes(notes.filter(n => n.body.trim()));
+    setNotesLoaded(true);
+  }, [notesLoaded]);
+
+  const toggleNote = (id: string) => {
+    setSelectedNoteIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedNotes = allNotes.filter(n => selectedNoteIds.has(n.id));
+  const noteData = selectedNotes.length > 0
+    ? selectedNotes.map(n => `[${n.title}]\n${n.body}`).join('\n\n---\n\n')
+    : '';
+
   useEffect(() => {
-    setInputs(loadStrategyInputs());
     return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); };
   }, []);
 
-  const hasAny = !!(inputs.writer || inputs.kami || inputs.ponchi);
-  const sourceCount = [inputs.writer, inputs.kami, inputs.ponchi].filter(Boolean).length;
+  const combinedSource = [directInput.trim(), noteData].filter(Boolean).join('\n\n---\n\n');
+  const hasAny = combinedSource.length > 0;
   const canSubmit = hasAny && !isLoading;
 
   const handleGenerate = useCallback(async (retryCount = 0) => {
-    if (!hasAny) return;
+    if (!combinedSource) return;
     setIsLoading(true);
     setError('');
     setRetryMsg('');
@@ -77,12 +103,7 @@ export default function KokoroStrategyPage() {
       const res = await fetch('/api/kokoro-strategy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          writer: inputs.writer?.text,
-          kami: inputs.kami?.text,
-          ponchi: inputs.ponchi?.text,
-          outputType,
-        }),
+        body: JSON.stringify({ sourceText: combinedSource, outputType }),
       });
       const data = await res.json();
 
@@ -108,7 +129,7 @@ export default function KokoroStrategyPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [hasAny, inputs, outputType]);
+  }, [combinedSource, outputType]);
 
   const handleCopy = async () => {
     if (!outputPlain) return;
@@ -150,8 +171,8 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
 
   const handleReset = () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    clearStrategyInputs();
-    setInputs({});
+    setDirectInput('');
+    setSelectedNoteIds(new Set());
     setOutputHtml('');
     setOutputPlain('');
     setError('');
@@ -159,17 +180,6 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
     setSaved(false);
     setCopied(false);
   };
-
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-
-  const SOURCES: { key: keyof StrategyInputs; label: string; emoji: string }[] = [
-    { key: 'writer', label: 'Writer', emoji: '✍️' },
-    { key: 'kami',   label: 'Kami',   emoji: '📄' },
-    { key: 'ponchi', label: 'Ponchi', emoji: '🎨' },
-  ];
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151' }}>
@@ -185,56 +195,118 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
           <span style={{ ...mono, fontSize: 13, fontWeight: 700, color: '#7c3aed', marginLeft: 4 }}>OS</span>
           <span style={{ ...mono, fontSize: 9, color: '#9ca3af', marginLeft: 8, letterSpacing: '0.15em' }}>// Strategy</span>
         </div>
-        <button onClick={() => router.push('/kokoro-chat')} title="Talk に戻る"
-          style={{ ...mono, fontSize: 9, color: '#6b7280', background: 'transparent', border: '1px solid #e5e7eb', borderRadius: 2, padding: '6px 12px', cursor: 'pointer' }}>
-          ← Talk
-        </button>
+        <div />
       </header>
 
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 28px 100px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 28px 120px' }}>
 
-        {/* インプットステータス */}
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 12 }}>
-            // INPUT STATUS
+        {/* 直接入力 */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ ...mono, fontSize: 8, letterSpacing: '.18em', color: '#9ca3af', marginBottom: 10 }}>
+            // SOURCE TEXT
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            {SOURCES.map(s => {
-              const entry = inputs[s.key];
-              const has = !!entry;
-              return (
-                <div key={s.key} style={{
-                  flex: 1, padding: '14px 16px',
-                  border: `1px solid ${has ? accentColor : '#e5e7eb'}`,
-                  borderRadius: 6,
-                  background: has ? 'rgba(245,158,11,0.04)' : '#f9fafb',
-                  opacity: has ? 1 : 0.5,
+          <textarea
+            value={directInput}
+            onChange={e => setDirectInput(e.target.value)}
+            placeholder={"統合したい素材を自由に記入してください。\nまたは下の「Noteから読み込む」で過去の保存データを取り込めます。"}
+            style={{
+              width: '100%', minHeight: 140, background: '#f8f9fa',
+              border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
+              padding: 16, fontSize: 14, color: '#111827',
+              resize: 'vertical', outline: 'none', lineHeight: 1.8,
+              fontFamily: "'Noto Serif JP', serif",
+              boxSizing: 'border-box', borderRadius: '0 4px 4px 0',
+            }}
+            onFocus={e => e.currentTarget.style.borderLeftColor = accentColor}
+            onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
+          />
+        </div>
+
+        {/* Noteピッカー */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              onClick={() => { setShowNotePicker(!showNotePicker); if (!notesLoaded) loadNotes(); }}
+              style={{
+                ...mono, fontSize: 9, letterSpacing: '0.12em',
+                background: '#fff',
+                border: `1px solid ${selectedNoteIds.size > 0 ? accentColor : '#d1d5db'}`,
+                color: selectedNoteIds.size > 0 ? accentColor : '#6b7280',
+                padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
+              }}
+            >
+              📎 Noteから読み込む{selectedNoteIds.size > 0 ? ` (${selectedNoteIds.size})` : ''}
+            </button>
+            {(selectedNoteIds.size > 0 || directInput) && (
+              <button
+                onClick={handleReset}
+                style={{
+                  ...mono, fontSize: 9, letterSpacing: '0.12em',
+                  background: '#fff', border: '1px solid #d1d5db', color: '#9ca3af',
+                  padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                ✕ リセット
+              </button>
+            )}
+          </div>
+
+          {/* 選択済みチップ */}
+          {selectedNotes.length > 0 && !showNotePicker && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {selectedNotes.map(n => (
+                <div key={n.id} style={{
+                  ...mono, fontSize: 8, letterSpacing: '.06em',
+                  padding: '3px 10px', borderRadius: 10,
+                  background: 'rgba(245,158,11,0.08)', border: `1px solid ${accentColor}`,
+                  color: accentColor, display: 'flex', alignItems: 'center', gap: 6,
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontSize: 16 }}>{s.emoji}</span>
-                    <span style={{ ...mono, fontSize: 10, fontWeight: 600, color: has ? '#111827' : '#9ca3af' }}>
-                      {has ? '✓' : '✗'} {s.label}
-                    </span>
-                  </div>
-                  <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.08em' }}>
-                    {entry ? formatDate(entry.savedAt) : '未取得'}
-                  </div>
-                  {entry && (
-                    <div style={{
-                      marginTop: 8, fontSize: 11, color: '#6b7280', lineHeight: 1.6,
-                      overflow: 'hidden', textOverflow: 'ellipsis',
-                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
-                    }}>
-                      {entry.text.slice(0, 100)}
-                    </div>
-                  )}
+                  {n.title.slice(0, 24)}{n.title.length > 24 ? '…' : ''}
+                  <span onClick={() => toggleNote(n.id)} style={{ cursor: 'pointer', opacity: 0.6 }}>×</span>
                 </div>
-              );
-            })}
-          </div>
-          {!hasAny && (
-            <div style={{ marginTop: 12, fontSize: 12, color: '#9ca3af', textAlign: 'center', lineHeight: 1.8 }}>
-              Writer・Kami・Ponchi で出力後に「Strategy →」ボタンを押すと、ここにデータが集まります。
+              ))}
+            </div>
+          )}
+
+          {showNotePicker && (
+            <div style={{
+              marginTop: 8, border: '1px solid #e5e7eb', borderRadius: 8,
+              background: '#fafafa', maxHeight: 260, overflowY: 'auto', padding: 8,
+            }}>
+              {!notesLoaded ? (
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>// loading...</div>
+              ) : allNotes.length === 0 ? (
+                <div style={{ ...mono, fontSize: 9, color: '#9ca3af', padding: 12, textAlign: 'center' }}>// Noteがありません</div>
+              ) : (
+                allNotes.map(note => {
+                  const selected = selectedNoteIds.has(note.id);
+                  return (
+                    <div key={note.id} onClick={() => toggleNote(note.id)} style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 12px', borderRadius: 4, cursor: 'pointer',
+                      background: selected ? 'rgba(245,158,11,0.06)' : 'transparent',
+                      border: `1px solid ${selected ? 'rgba(245,158,11,0.4)' : 'transparent'}`,
+                      marginBottom: 2,
+                    }}>
+                      <div style={{
+                        width: 16, height: 16, borderRadius: 3, flexShrink: 0,
+                        border: `1.5px solid ${selected ? accentColor : '#d1d5db'}`,
+                        background: selected ? accentColor : '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: 10,
+                      }}>{selected ? '✓' : ''}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {note.title}
+                        </div>
+                        <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginTop: 1 }}>
+                          {note.source} · {note.body.length}字
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
         </div>
@@ -279,13 +351,11 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
         </button>
 
         <div style={{ ...mono, fontSize: 8, color: '#d1d5db', textAlign: 'center', marginTop: 6, letterSpacing: '.1em' }}>
-          {sourceCount > 0 ? `// ${sourceCount} source${sourceCount > 1 ? 's' : ''} ready` : '// no sources'}
+          {hasAny ? `// ${combinedSource.length} chars ready` : '// no sources'}
         </div>
 
-        {/* ローディング */}
         {isLoading && <PersonaLoading />}
 
-        {/* リトライ */}
         {retryMsg && (
           <div style={{ marginTop: 16, textAlign: 'center', padding: '20px 0' }}>
             <div style={{ fontSize: 13, color: accentColor, marginBottom: 8 }}>{retryMsg}</div>
@@ -293,14 +363,12 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
           </div>
         )}
 
-        {/* エラー */}
         {error && (
           <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8 }}>
             // エラー: {error}
           </div>
         )}
 
-        {/* 出力 */}
         {outputHtml && (
           <div style={{ marginTop: 24 }}>
             <div
@@ -312,52 +380,36 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
                 borderRadius: 2,
               }}
             >
-              <div
-                className="edited-text"
-                dangerouslySetInnerHTML={{ __html: outputHtml }}
-              />
+              <div className="edited-text" dangerouslySetInnerHTML={{ __html: outputHtml }} />
             </div>
 
-            {/* アクションボタン */}
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <button
-                onClick={handleCopy}
-                title="クリップボードにコピー"
+              <button onClick={handleCopy} title="クリップボードにコピー"
                 style={{
                   background: 'transparent',
                   border: `1px solid ${copied ? accentColor : '#d1d5db'}`,
                   color: copied ? accentColor : '#9ca3af',
                   ...mono, fontSize: 9, letterSpacing: '.12em',
                   padding: '8px 16px', cursor: 'pointer', borderRadius: 2,
-                }}
-              >
+                }}>
                 {copied ? 'Copy ✓' : 'Copy ↗'}
               </button>
-              <button
-                onClick={handleSaveToNote}
-                disabled={saved}
-                title="Noteに保存"
+              <button onClick={handleSaveToNote} disabled={saved} title="Noteに保存"
                 style={{
                   background: 'transparent',
                   border: `1px solid ${saved ? '#10b981' : '#d1d5db'}`,
                   color: saved ? '#10b981' : '#9ca3af',
                   ...mono, fontSize: 9, letterSpacing: '.12em',
                   padding: '8px 16px', cursor: saved ? 'default' : 'pointer', borderRadius: 2,
-                }}
-              >
+                }}>
                 {saved ? 'Note ✓' : 'Note +'}
               </button>
-              <button
-                onClick={handleDownload}
-                title="HTMLファイルとしてダウンロード"
+              <button onClick={handleDownload} title="HTMLファイルとしてダウンロード"
                 style={{
-                  background: 'transparent',
-                  border: '1px solid #d1d5db',
-                  color: '#9ca3af',
+                  background: 'transparent', border: '1px solid #d1d5db', color: '#9ca3af',
                   ...mono, fontSize: 9, letterSpacing: '.12em',
                   padding: '8px 16px', cursor: 'pointer', borderRadius: 2,
-                }}
-              >
+                }}>
                 Download ↓
               </button>
               <button
@@ -368,12 +420,10 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
                 title="Worldでデモページを生成"
                 style={{
                   background: 'transparent',
-                  border: '1px solid rgba(16,185,129,0.5)',
-                  color: '#10b981',
+                  border: '1px solid rgba(16,185,129,0.5)', color: '#10b981',
                   ...mono, fontSize: 9, letterSpacing: '.12em',
                   padding: '8px 16px', cursor: 'pointer', borderRadius: 2,
-                }}
-              >
+                }}>
                 World →
               </button>
               <button
@@ -381,25 +431,18 @@ blockquote{border-left:2px solid #ddd;padding:4px 0 4px 20px;font-style:italic;c
                 title="Gatekeeperで仕様書を生成"
                 style={{
                   background: 'transparent',
-                  border: '1px solid rgba(99,102,241,0.5)',
-                  color: '#6366f1',
+                  border: '1px solid rgba(99,102,241,0.5)', color: '#6366f1',
                   ...mono, fontSize: 9, letterSpacing: '.12em',
                   padding: '8px 16px', cursor: 'pointer', borderRadius: 2,
-                }}
-              >
+                }}>
                 Gatekeeper →
               </button>
-              <button
-                onClick={handleReset}
-                title="インプットをクリアして最初から"
+              <button onClick={handleReset} title="インプットをクリアして最初から"
                 style={{
-                  background: 'transparent',
-                  border: '1px solid #d1d5db',
-                  color: '#9ca3af',
+                  background: 'transparent', border: '1px solid #d1d5db', color: '#9ca3af',
                   ...mono, fontSize: 9, letterSpacing: '.12em',
                   padding: '8px 16px', cursor: 'pointer', borderRadius: 2,
-                }}
-              >
+                }}>
                 Reset ×
               </button>
             </div>
