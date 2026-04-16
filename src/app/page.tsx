@@ -196,6 +196,13 @@ const APPS: App[] = [
     href: "/kokoro-messages",
     ready: true,
   },
+  {
+    icon: "🎵",
+    name: "Kokoro Resonance",
+    desc: "キーワードからカルチャーのファミリーツリーを探索。",
+    href: "/kokoro-resonance",
+    ready: true,
+  },
 ];
 
 export default function Home() {
