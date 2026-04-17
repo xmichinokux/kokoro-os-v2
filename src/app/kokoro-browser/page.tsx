@@ -189,6 +189,13 @@ export default function KokoroBrowserPage() {
 
   useEffect(() => { fetchPublicNotes(); }, [fetchPublicNotes]);
 
+  // タブ復帰時に再取得（他ページで削除された場合の同期）
+  useEffect(() => {
+    const onFocus = () => fetchPublicNotes();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchPublicNotes]);
+
   const tierTabs = useMemo(() => customTabs.filter(t => t.tier === topTab), [customTabs, topTab]);
   const selectedCustomTab = useMemo(() => tierTabs.find(t => t.id === subTabId), [tierTabs, subTabId]);
 
