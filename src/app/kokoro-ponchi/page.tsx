@@ -25,34 +25,60 @@ export default function KokoroPonchiPage() {
   const [saved, setSaved] = useState(false);
   const [strategySaved, setStrategySaved] = useState(false);
   const [ponchiMode, setPonchiMode] = useState(false);
-  // スライドごとのピクトグラム（index → 状態）
-  const [pictograms, setPictograms] = useState<Record<number, { svg?: string; loading: boolean; error?: string }>>({});
+  // スライドごとのピクトグラム候補（index → 状態）
+  const [pictograms, setPictograms] = useState<Record<number, {
+    candidates: string[];
+    selected: number;
+    loading: boolean;
+    error?: string;
+  }>>({});
 
   const canSubmit = inputText.trim().length > 0 && !isLoading;
 
-  // ピクトグラム生成（並列）
+  // ピクトグラム生成（スライドごとに3候補を並列、さらに全スライド並列）
+  const CANDIDATES_PER_SLIDE = 3;
   const generatePictograms = useCallback(async (slideList: Slide[]) => {
-    const initial: Record<number, { svg?: string; loading: boolean; error?: string }> = {};
-    slideList.forEach((_, i) => { initial[i] = { loading: true }; });
+    const initial: Record<number, { candidates: string[]; selected: number; loading: boolean; error?: string }> = {};
+    slideList.forEach((_, i) => { initial[i] = { candidates: [], selected: 0, loading: true }; });
     setPictograms(initial);
 
     await Promise.all(slideList.map(async (s, i) => {
       try {
-        const res = await fetch('/api/kokoro-ponchi-pictogram', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: s.title, body: s.body, type: s.type }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || 'ピクトグラム生成に失敗');
-        setPictograms(prev => ({ ...prev, [i]: { svg: data.svg as string, loading: false } }));
+        const results = await Promise.all(
+          Array.from({ length: CANDIDATES_PER_SLIDE }).map(() =>
+            fetch('/api/kokoro-ponchi-pictogram', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: s.title, body: s.body, type: s.type }),
+            }).then(async r => {
+              const d = await r.json();
+              if (!r.ok || d.error) return null;
+              return d.svg as string;
+            }).catch(() => null)
+          )
+        );
+        const candidates = results.filter((x): x is string => typeof x === 'string' && x.length > 0);
+        if (candidates.length === 0) {
+          setPictograms(prev => ({ ...prev, [i]: { candidates: [], selected: 0, loading: false, error: '全候補が生成失敗' } }));
+        } else {
+          setPictograms(prev => ({ ...prev, [i]: { candidates, selected: 0, loading: false } }));
+        }
       } catch (e) {
         setPictograms(prev => ({
           ...prev,
-          [i]: { loading: false, error: e instanceof Error ? e.message : 'エラー' },
+          [i]: { candidates: [], selected: 0, loading: false, error: e instanceof Error ? e.message : 'エラー' },
         }));
       }
     }));
+  }, []);
+
+  // 候補切替
+  const selectCandidate = useCallback((slideIdx: number, candidateIdx: number) => {
+    setPictograms(prev => {
+      const cur = prev[slideIdx];
+      if (!cur) return prev;
+      return { ...prev, [slideIdx]: { ...cur, selected: candidateIdx } };
+    });
   }, []);
 
   const handleRun = useCallback(async () => {
@@ -207,7 +233,7 @@ export default function KokoroPonchiPage() {
               Ponchi モード
             </div>
             <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, fontFamily: "'Noto Sans JP', sans-serif" }}>
-              各スライドにピクトグラムを自動で添える（生成時間+20〜40秒）
+              各スライドにピクトグラム3候補を生成（ドットで切替可能・+30〜60秒）
             </div>
           </div>
         </div>
@@ -247,7 +273,8 @@ export default function KokoroPonchiPage() {
               {slides.map((s, i) => {
                 const isKey = s.type === 'key';
                 const pict = pictograms[i];
-                const showPict = ponchiMode && (pict?.loading || pict?.svg || pict?.error);
+                const currentSvg = pict?.candidates?.[pict.selected];
+                const showPict = ponchiMode && (pict?.loading || currentSvg || pict?.error);
                 return (
                   <div
                     key={i}
@@ -263,27 +290,48 @@ export default function KokoroPonchiPage() {
                     }}
                   >
                     {showPict && (
-                      <div style={{
-                        flexShrink: 0,
-                        width: 100, height: 100,
-                        background: isKey ? 'rgba(255,255,255,0.05)' : '#fff',
-                        border: `1px solid ${isKey ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}`,
-                        borderRadius: 6,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        overflow: 'hidden',
-                      }}>
-                        {pict?.loading && (
-                          <div style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>...</div>
-                        )}
-                        {pict?.svg && (
-                          <div
-                            style={{ width: '100%', height: '100%', padding: 6, boxSizing: 'border-box' }}
-                            dangerouslySetInnerHTML={{ __html: pict.svg }}
-                          />
-                        )}
-                        {pict?.error && (
-                          <div style={{ ...mono, fontSize: 7, color: '#ef4444', textAlign: 'center', padding: 4 }}>
-                            ×
+                      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                        <div style={{
+                          width: 100, height: 100,
+                          background: isKey ? 'rgba(255,255,255,0.05)' : '#fff',
+                          border: `1px solid ${isKey ? 'rgba(255,255,255,0.1)' : '#e5e7eb'}`,
+                          borderRadius: 6,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          overflow: 'hidden',
+                        }}>
+                          {pict?.loading && (
+                            <div style={{ ...mono, fontSize: 8, color: '#9ca3af' }}>...</div>
+                          )}
+                          {currentSvg && (
+                            <div
+                              style={{ width: '100%', height: '100%', padding: 6, boxSizing: 'border-box' }}
+                              dangerouslySetInnerHTML={{ __html: currentSvg }}
+                            />
+                          )}
+                          {pict?.error && !currentSvg && (
+                            <div style={{ ...mono, fontSize: 7, color: '#ef4444', textAlign: 'center', padding: 4 }}>
+                              ×
+                            </div>
+                          )}
+                        </div>
+                        {/* 候補切替ドット（2つ以上ある時だけ表示） */}
+                        {pict && pict.candidates.length > 1 && (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                            {pict.candidates.map((_, cIdx) => (
+                              <button
+                                key={cIdx}
+                                onClick={() => selectCandidate(i, cIdx)}
+                                title={`候補 ${cIdx + 1}`}
+                                style={{
+                                  width: 10, height: 10, borderRadius: '50%',
+                                  background: pict.selected === cIdx
+                                    ? (isKey ? '#fff' : accentColor)
+                                    : (isKey ? 'rgba(255,255,255,0.3)' : '#d1d5db'),
+                                  border: 'none', cursor: 'pointer', padding: 0,
+                                  transition: 'background 0.15s',
+                                }}
+                              />
+                            ))}
                           </div>
                         )}
                       </div>

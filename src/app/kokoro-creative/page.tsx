@@ -66,12 +66,15 @@ export default function KokoroCreativePage() {
   // === Vector モード ===
   const [vecSubject, setVecSubject] = useState('');
   const [vecStyle, setVecStyle] = useState('');
-  const [vecPhase, setVecPhase] = useState<'input' | 'generating' | 'done' | 'editing'>('input');
+  const [vecPhase, setVecPhase] = useState<'input' | 'generating' | 'picking' | 'refining' | 'done' | 'editing'>('input');
   const [vecSvg, setVecSvg] = useState('');
   const [vecDesignDoc, setVecDesignDoc] = useState('');
   const [vecProgress, setVecProgress] = useState('');
   const [vecLog, setVecLog] = useState<string[]>([]);
   const [vecShowCode, setVecShowCode] = useState(false);
+  // Styling 多候補（Level1 感性ドリブン探索の第一歩）
+  const [vecCandidates, setVecCandidates] = useState<string[]>([]);
+  const [vecSelectedCandidate, setVecSelectedCandidate] = useState<number>(0);
 
   // === Vector Edit ===
   const vecFileInputRef = useRef<HTMLInputElement>(null);
@@ -353,14 +356,128 @@ export default function KokoroCreativePage() {
   // ========================
   // Vector モード関数
   // ========================
+  // Step 2.5〜3: Critique + Refine + Debug を選択した候補に適用する（後半パイプライン）
+  const refineFromCandidate = useCallback(async (startSvg: string, designDoc: string, startingLogs: string[]): Promise<string> => {
+    const logs = [...startingLogs];
+    let currentSvg = startSvg;
+    let currentErrors: string[] = [];
+
+    // Step 2.5+2.6: Critique + Refine ループ（最大2ラウンド）
+    const MAX_REFINE_ROUNDS = 2;
+    for (let refineRound = 0; refineRound < MAX_REFINE_ROUNDS; refineRound++) {
+      setVecProgress(`Critique Layer: 批評中... (${refineRound + 1}/${MAX_REFINE_ROUNDS})`);
+      logs.push(`▶ Critique Layer: ラウンド ${refineRound + 1}/${MAX_REFINE_ROUNDS}...`);
+      setVecLog([...logs]);
+
+      let severity: 'ok' | 'minor' | 'major' = 'ok';
+      let issues: string[] = [];
+      try {
+        const critiqueData = await apiFetch('/api/creative-vector', {
+          subject: vecSubject.trim(), style: vecStyle.trim(), step: 'critique',
+          designDoc, svg: currentSvg,
+        });
+        severity = (critiqueData.severity as 'ok' | 'minor' | 'major') || 'ok';
+        issues = (critiqueData.issues as string[]) || [];
+      } catch (critErr) {
+        logs.push(`  ✗ 批評失敗: ${critErr instanceof Error ? critErr.message : 'エラー'}`);
+        setVecLog([...logs]);
+        break;
+      }
+
+      if (severity === 'ok' || issues.length === 0) {
+        logs.push('✓ 批評: 問題なし'); setVecLog([...logs]);
+        break;
+      }
+
+      logs.push(`  △ ${severity === 'major' ? '重大' : '軽微'}: ${issues.length}件の指摘`);
+      issues.forEach(s => logs.push(`    - ${s}`));
+      setVecLog([...logs]);
+
+      setVecProgress(`Refine Layer: 精緻化中... (${refineRound + 1}/${MAX_REFINE_ROUNDS})`);
+      logs.push(`▶ Refine Layer: 指摘に基づき修正中...`); setVecLog([...logs]);
+      try {
+        const refineData = await apiFetch('/api/creative-vector', {
+          subject: vecSubject.trim(), style: vecStyle.trim(), step: 'refine',
+          designDoc, svg: currentSvg, issues,
+        });
+        currentSvg = refineData.svg as string;
+        currentErrors = (refineData.errors as string[]) || [];
+        logs.push(`✓ 精緻化完了（ラウンド${refineRound + 1}）`); setVecLog([...logs]);
+      } catch (refErr) {
+        logs.push(`  ✗ 精緻化失敗: ${refErr instanceof Error ? refErr.message : 'エラー'}`);
+        setVecLog([...logs]);
+        break;
+      }
+
+      if (severity === 'minor') break;
+    }
+
+    // Step 3: Debug Layer（Haiku デバッグループ、最大5回）
+    const MAX_DEBUG_ROUNDS = 5;
+    for (let round = 0; round < MAX_DEBUG_ROUNDS; round++) {
+      if (currentErrors.length === 0) break;
+
+      setVecProgress(`Debug Layer: 修正中... (${round + 1}/${MAX_DEBUG_ROUNDS})`);
+      logs.push(`▶ Debug Layer: ラウンド ${round + 1}/${MAX_DEBUG_ROUNDS}...`); setVecLog([...logs]);
+
+      try {
+        const debugData = await apiFetch('/api/creative-vector', {
+          subject: vecSubject.trim(), style: vecStyle.trim(), step: 'debug',
+          designDoc, svg: currentSvg,
+        });
+
+        if (debugData.fixed) {
+          currentSvg = debugData.svg as string;
+          currentErrors = (debugData.errors as string[]) || [];
+          if (currentErrors.length === 0) {
+            logs.push(`✓ 修正完了（ラウンド${round + 1}）`); setVecLog([...logs]);
+          } else {
+            logs.push(`  △ 残り${currentErrors.length}件`);
+            currentErrors.forEach(e => logs.push(`    - ${e}`));
+            setVecLog([...logs]);
+          }
+        } else {
+          logs.push('✓ 問題なし'); setVecLog([...logs]);
+          break;
+        }
+      } catch (dbgErr) {
+        logs.push(`  ✗ デバッグ失敗: ${dbgErr instanceof Error ? dbgErr.message : 'エラー'}`);
+        setVecLog([...logs]);
+        break;
+      }
+    }
+
+    return currentSvg;
+  }, [vecSubject, vecStyle, apiFetch]);
+
+  // 候補選択 → 後半パイプラインを実行して done に
+  const handleVectorPickCandidate = useCallback(async (idx: number) => {
+    if (idx < 0 || idx >= vecCandidates.length) return;
+    setVecSelectedCandidate(idx);
+    setVecPhase('refining');
+    setError('');
+    const chosen = vecCandidates[idx];
+    try {
+      const startingLogs = [...vecLog, `▶ 候補 ${idx + 1} を選択 → Refine/Debug 実行`];
+      setVecLog(startingLogs);
+      const finalSvg = await refineFromCandidate(chosen, vecDesignDoc, startingLogs);
+      setVecSvg(finalSvg);
+      setVecPhase('done');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'エラーが発生しました');
+      setVecPhase('picking');
+    }
+  }, [vecCandidates, vecDesignDoc, vecLog, refineFromCandidate]);
+
   const handleVectorGenerate = useCallback(async () => {
     if (!vecSubject.trim()) return;
     setVecPhase('generating'); setError(''); setVecSvg(''); setVecDesignDoc('');
+    setVecCandidates([]); setVecSelectedCandidate(0);
     setVecLog([]); setVecShowCode(false);
     const logs: string[] = [];
 
     try {
-      // Step 1: Logic Layer（Gemini 構造設計）
+      // Step 1: Logic Layer
       setVecProgress('Logic Layer: 構造設計中...');
       logs.push('▶ Logic Layer: 構造を設計中...'); setVecLog([...logs]);
       const logicData = await apiFetch('/api/creative-vector', {
@@ -370,7 +487,7 @@ export default function KokoroCreativePage() {
       setVecDesignDoc(designDoc);
       logs.push('✓ 構造設計書を受信'); setVecLog([...logs]);
 
-      // Step 1.5: Feasibility Layer（設計書をレビューして実現可能性判定）
+      // Step 1.5: Feasibility
       setVecProgress('実現可能性を判定中...');
       logs.push('▶ 設計書をレビューして実現可能性を判定中...'); setVecLog([...logs]);
       const feasData = await apiFetch('/api/creative-vector', {
@@ -395,111 +512,34 @@ export default function KokoroCreativePage() {
         logs.push('✓ 実現可能性OK'); setVecLog([...logs]);
       }
 
-      // Step 2: Styling Layer（Claude Sonnet SVG生成）
-      setVecProgress('Styling Layer: SVGコード生成中...');
-      logs.push('▶ Styling Layer: SVGコードを生成中...'); setVecLog([...logs]);
-      const styleData = await apiFetch('/api/creative-vector', {
-        subject: vecSubject.trim(), style: vecStyle.trim(), step: 'styling', designDoc,
-      });
-      let currentSvg = styleData.svg as string;
-      let currentErrors = (styleData.errors as string[]) || [];
+      // Step 2: Styling Layer × 3（並列候補生成）
+      const CANDIDATE_COUNT = 3;
+      setVecProgress(`Styling Layer: ${CANDIDATE_COUNT}候補を並列生成中...`);
+      logs.push(`▶ Styling Layer: ${CANDIDATE_COUNT}候補を並列生成中...`); setVecLog([...logs]);
 
-      if (currentErrors.length > 0) {
-        logs.push(`  △ ${currentErrors.length}件の問題を検出`);
-        currentErrors.forEach(e => logs.push(`    - ${e}`));
-        setVecLog([...logs]);
-      } else {
-        logs.push('✓ SVGコードを受信（エラーなし）'); setVecLog([...logs]);
+      const results = await Promise.all(
+        Array.from({ length: CANDIDATE_COUNT }).map((_, idx) =>
+          apiFetch('/api/creative-vector', {
+            subject: vecSubject.trim(), style: vecStyle.trim(), step: 'styling', designDoc,
+          }).then(d => ({ idx, svg: d.svg as string | undefined }))
+            .catch(() => ({ idx, svg: undefined as string | undefined }))
+        )
+      );
+      const candidates = results
+        .map(r => r.svg)
+        .filter((s): s is string => typeof s === 'string' && s.length > 0);
+
+      if (candidates.length === 0) {
+        throw new Error('全候補の生成に失敗しました');
       }
 
-      // Step 2.5+2.6: Critique + Refine ループ（最大2ラウンド）
-      const MAX_REFINE_ROUNDS = 2;
-      for (let refineRound = 0; refineRound < MAX_REFINE_ROUNDS; refineRound++) {
-        setVecProgress(`Critique Layer: 批評中... (${refineRound + 1}/${MAX_REFINE_ROUNDS})`);
-        logs.push(`▶ Critique Layer: ラウンド ${refineRound + 1}/${MAX_REFINE_ROUNDS}...`);
-        setVecLog([...logs]);
+      logs.push(`✓ ${candidates.length}候補を受信（残り ${CANDIDATE_COUNT - candidates.length}件は失敗）`);
+      setVecLog([...logs]);
 
-        let severity: 'ok' | 'minor' | 'major' = 'ok';
-        let issues: string[] = [];
-        try {
-          const critiqueData = await apiFetch('/api/creative-vector', {
-            subject: vecSubject.trim(), style: vecStyle.trim(), step: 'critique',
-            designDoc, svg: currentSvg,
-          });
-          severity = (critiqueData.severity as 'ok' | 'minor' | 'major') || 'ok';
-          issues = (critiqueData.issues as string[]) || [];
-        } catch (critErr) {
-          logs.push(`  ✗ 批評失敗: ${critErr instanceof Error ? critErr.message : 'エラー'}`);
-          setVecLog([...logs]);
-          break;
-        }
-
-        if (severity === 'ok' || issues.length === 0) {
-          logs.push('✓ 批評: 問題なし'); setVecLog([...logs]);
-          break;
-        }
-
-        logs.push(`  △ ${severity === 'major' ? '重大' : '軽微'}: ${issues.length}件の指摘`);
-        issues.forEach(s => logs.push(`    - ${s}`));
-        setVecLog([...logs]);
-
-        setVecProgress(`Refine Layer: 精緻化中... (${refineRound + 1}/${MAX_REFINE_ROUNDS})`);
-        logs.push(`▶ Refine Layer: 指摘に基づき修正中...`); setVecLog([...logs]);
-        try {
-          const refineData = await apiFetch('/api/creative-vector', {
-            subject: vecSubject.trim(), style: vecStyle.trim(), step: 'refine',
-            designDoc, svg: currentSvg, issues,
-          });
-          currentSvg = refineData.svg as string;
-          currentErrors = (refineData.errors as string[]) || [];
-          logs.push(`✓ 精緻化完了（ラウンド${refineRound + 1}）`); setVecLog([...logs]);
-        } catch (refErr) {
-          logs.push(`  ✗ 精緻化失敗: ${refErr instanceof Error ? refErr.message : 'エラー'}`);
-          setVecLog([...logs]);
-          break;
-        }
-
-        // minor かつ最終ラウンドじゃない場合は1回で打ち切り（major のみ2ラウンド許可）
-        if (severity === 'minor') break;
-      }
-
-      // Step 3: Debug Layer（Haiku デバッグループ、最大5回）
-      const MAX_DEBUG_ROUNDS = 5;
-      for (let round = 0; round < MAX_DEBUG_ROUNDS; round++) {
-        if (currentErrors.length === 0) break;
-
-        setVecProgress(`Debug Layer: 修正中... (${round + 1}/${MAX_DEBUG_ROUNDS})`);
-        logs.push(`▶ Debug Layer: ラウンド ${round + 1}/${MAX_DEBUG_ROUNDS}...`); setVecLog([...logs]);
-
-        try {
-          const debugData = await apiFetch('/api/creative-vector', {
-            subject: vecSubject.trim(), style: vecStyle.trim(), step: 'debug',
-            designDoc, svg: currentSvg,
-          });
-
-          if (debugData.fixed) {
-            currentSvg = debugData.svg as string;
-            currentErrors = (debugData.errors as string[]) || [];
-            if (currentErrors.length === 0) {
-              logs.push(`✓ 修正完了（ラウンド${round + 1}）`); setVecLog([...logs]);
-            } else {
-              logs.push(`  △ 残り${currentErrors.length}件`);
-              currentErrors.forEach(e => logs.push(`    - ${e}`));
-              setVecLog([...logs]);
-            }
-          } else {
-            logs.push('✓ 問題なし'); setVecLog([...logs]);
-            break;
-          }
-        } catch (dbgErr) {
-          logs.push(`  ✗ デバッグ失敗: ${dbgErr instanceof Error ? dbgErr.message : 'エラー'}`);
-          setVecLog([...logs]);
-          break;
-        }
-      }
-
-      setVecSvg(currentSvg);
-      setVecPhase('done');
+      setVecCandidates(candidates);
+      setVecSelectedCandidate(0);
+      setVecPhase('picking');
+      setVecProgress('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました');
       setVecPhase('input');
@@ -1085,12 +1125,12 @@ export default function KokoroCreativePage() {
               </div>
             )}
 
-            {vecPhase === 'generating' && (
+            {(vecPhase === 'generating' || vecPhase === 'refining') && (
               <div style={{ textAlign: 'center', paddingTop: 60 }}>
-                <div style={{ ...mono, fontSize: 11, letterSpacing: '0.16em', color: accentColor }}>// {vecProgress || '生成中...'}</div>
+                <div style={{ ...mono, fontSize: 11, letterSpacing: '0.16em', color: accentColor }}>// {vecProgress || (vecPhase === 'refining' ? '精緻化中...' : '生成中...')}</div>
                 <PersonaLoading />
                 <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 8 }}>
-                  Logic → Styling → Debug の3レイヤーで構築中
+                  {vecPhase === 'refining' ? '選択した候補を Critique → Refine → Debug で仕上げ中' : 'Logic → Styling(3候補) で構築中'}
                 </div>
                 {vecLog.length > 0 && (
                   <div style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, padding: 14, marginTop: 24, maxHeight: 250, overflowY: 'auto', textAlign: 'left' }}>
@@ -1099,6 +1139,66 @@ export default function KokoroCreativePage() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {vecPhase === 'picking' && vecCandidates.length > 0 && (
+              <div>
+                <div style={{ ...mono, fontSize: 10, letterSpacing: '0.2em', color: accentColor, textTransform: 'uppercase', marginBottom: 8 }}>
+                  // 候補を選ぶ — {vecCandidates.length}案から1つ
+                </div>
+                <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.8, marginBottom: 20, padding: '12px 16px', background: '#fdf2f8', borderRadius: 8, border: '1px solid #fce7f3' }}>
+                  Styling Layer が{vecCandidates.length}案のベクターを並列生成しました。<br/>
+                  気に入った案をクリックすると、その案だけを Refine / Debug で仕上げます。
+                </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${Math.min(vecCandidates.length, 3)}, 1fr)`,
+                  gap: 12, marginBottom: 20,
+                }}>
+                  {vecCandidates.map((svg, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleVectorPickCandidate(idx)}
+                      style={{
+                        cursor: 'pointer', background: '#f8f9fa',
+                        border: `1px solid ${vecSelectedCandidate === idx ? accentColor : '#e5e7eb'}`,
+                        borderRadius: 8, padding: 8, transition: 'border-color 0.15s',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = accentColor)}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = vecSelectedCandidate === idx ? accentColor : '#e5e7eb')}
+                      title={`候補 ${idx + 1} を選んで仕上げる`}
+                    >
+                      <div style={{
+                        width: '100%', aspectRatio: '1 / 1',
+                        background: '#fff', borderRadius: 4, overflow: 'hidden',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <div
+                          style={{ width: '100%', height: '100%', padding: 4, boxSizing: 'border-box' }}
+                          dangerouslySetInnerHTML={{ __html: svg }}
+                        />
+                      </div>
+                      <div style={{ ...mono, fontSize: 10, letterSpacing: '0.1em', color: '#6b7280' }}>
+                        候補 {idx + 1}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    setVecCandidates([]);
+                    setVecPhase('input');
+                  }}
+                  style={{
+                    ...mono, fontSize: 9, letterSpacing: '0.12em',
+                    background: 'transparent', border: '1px solid #d1d5db', color: '#9ca3af',
+                    padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
+                  }}
+                >
+                  ← 入力に戻る
+                </button>
               </div>
             )}
 
