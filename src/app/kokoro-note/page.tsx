@@ -286,7 +286,12 @@ export default function KokoroNotePage() {
   };
 
   const handleDelete = async (id: string) => {
-    await deleteNote(id);
+    try {
+      await deleteNote(id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '削除に失敗しました');
+      return;
+    }
     await refresh();
     setView('list');
   };
@@ -435,10 +440,16 @@ export default function KokoroNotePage() {
               onClick={async () => {
                 if (selectedForDelete.size === 0) return;
                 if (!confirm(`${selectedForDelete.size}件のNoteを削除しますか？`)) return;
+                let failCount = 0;
                 for (const id of selectedForDelete) {
-                  await deleteNote(id);
-                  deleteImageNote(id);
+                  try {
+                    await deleteNote(id);
+                    deleteImageNote(id);
+                  } catch {
+                    failCount++;
+                  }
                 }
+                if (failCount > 0) alert(`${failCount}件の削除に失敗しました`);
                 setSelectedForDelete(new Set());
                 setDeleteMode(false);
                 await refresh();

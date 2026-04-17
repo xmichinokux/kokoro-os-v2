@@ -134,8 +134,13 @@ async function saveNoteDb(userId: string, note: KokoroNote): Promise<void> {
 }
 
 async function deleteNoteDb(id: string): Promise<void> {
-  const { error } = await supabase.from('notes').delete().eq('id', id);
-  if (error) console.error('Note delete error:', error.message);
+  const userId = await getCurrentUserId();
+  const { error } = await supabase
+    .from('notes')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId!);
+  if (error) throw new Error('ノート削除に失敗しました: ' + error.message);
 }
 
 async function togglePinDb(_id: string): Promise<void> {
