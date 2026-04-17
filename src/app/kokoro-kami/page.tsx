@@ -32,6 +32,7 @@ export default function KokoroKamiPage() {
   const [addColLoading, setAddColLoading] = useState(false);
   const [addRowInput, setAddRowInput] = useState('');
   const [addRowLoading, setAddRowLoading] = useState(false);
+  const [recalcLoading, setRecalcLoading] = useState(false);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // シート一覧読み込み
@@ -183,6 +184,51 @@ export default function KokoroKamiPage() {
       setError(e instanceof Error ? e.message : '行の追加に失敗しました');
     } finally { setAddRowLoading(false); }
   }, [currentSheet, addRowInput, updateSheet]);
+
+  // ========================
+  // 再計算（formula列だけを現在のデータから再計算）
+  // ========================
+  const handleRecalculate = useCallback(async () => {
+    if (!currentSheet) return;
+    const hasFormulaCol = currentSheet.columns.some(c => c.formula && c.formula.trim());
+    if (!hasFormulaCol) {
+      setError('計算式(formula)を持つ列がありません');
+      return;
+    }
+    setRecalcLoading(true); setError('');
+
+    try {
+      const res = await fetch('/api/kokoro-kami', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'recalculate',
+          columns: currentSheet.columns,
+          rows: currentSheet.rows,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      const { updates } = data.data as { updates: { columnId: string; values: string[] }[] };
+
+      updateSheet(s => {
+        // columnId → カラムインデックスのマップ
+        const idToIdx = new Map(s.columns.map((c, i) => [c.id, i]));
+        const newRows = s.rows.map(row => [...row]);
+        for (const upd of updates) {
+          const colIdx = idToIdx.get(upd.columnId);
+          if (colIdx === undefined) continue;
+          for (let i = 0; i < newRows.length && i < upd.values.length; i++) {
+            newRows[i][colIdx] = upd.values[i];
+          }
+        }
+        return { ...s, rows: newRows };
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '再計算に失敗しました');
+    } finally { setRecalcLoading(false); }
+  }, [currentSheet, updateSheet]);
 
   // ========================
   // セル編集
@@ -577,6 +623,22 @@ export default function KokoroKamiPage() {
 
                 {/* テーブル操作 */}
                 <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                  {currentSheet.columns.some(c => c.formula && c.formula.trim()) && (
+                    <button
+                      onClick={handleRecalculate}
+                      disabled={recalcLoading}
+                      title="数値を編集した後にこれを押すと、計算式を持つ列が再計算されます"
+                      style={{
+                        ...mono, fontSize: 8, letterSpacing: '.1em', padding: '6px 14px',
+                        border: `1px solid ${recalcLoading ? '#9ca3af' : accentColor}`, borderRadius: 3,
+                        cursor: recalcLoading ? 'not-allowed' : 'pointer',
+                        color: recalcLoading ? '#9ca3af' : accentColor,
+                        background: recalcLoading ? '#f3f4f6' : 'transparent',
+                      }}
+                    >
+                      {recalcLoading ? '... 再計算中' : '↻ 再計算'}
+                    </button>
+                  )}
                   <button onClick={addEmptyRow} style={{
                     ...mono, fontSize: 8, letterSpacing: '.1em', padding: '6px 14px',
                     border: '1px solid #d1d5db', borderRadius: 3, cursor: 'pointer',
