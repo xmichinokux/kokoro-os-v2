@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 // 全ユーザーの公開Note（商品除外）を取得
 export async function GET() {
   try {
