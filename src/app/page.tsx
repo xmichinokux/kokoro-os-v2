@@ -85,10 +85,49 @@ const CATEGORIES: Category[] = [
   },
 ];
 
+// 「今日のあなたに」キュレーションロジック
+// 第5回評議会の 70/20/10 比率（物語/リズム/意外性）に基づく
+// 現時点は時間帯ベース（2 アプリ）+ 意外性（1 アプリ）
+function pickTodayForYou(): App[] {
+  const hour = new Date().getHours();
+  const allApps = CATEGORIES.flatMap(c => c.apps);
+
+  // 時間帯に応じた優先アプリ（href のリスト）
+  let timeHrefs: string[] = [];
+  if (hour >= 5 && hour < 10) {
+    // 朝: 内省・準備
+    timeHrefs = ['/kokoro-zen', '/kokoro-plan', '/kokoro-note', '/kokoro-animal'];
+  } else if (hour >= 10 && hour < 17) {
+    // 日中: 創作・構築
+    timeHrefs = ['/kokoro-writer', '/kokoro-builder', '/kokoro-kami', '/kokoro-strategy'];
+  } else if (hour >= 17 && hour < 22) {
+    // 夜: 対話・振り返り
+    timeHrefs = ['/kokoro-note', '/kokoro-couple', '/kokoro-chat', '/kokoro-recipe'];
+  } else {
+    // 深夜: 静かな内省
+    timeHrefs = ['/kokoro-zen', '/kokoro-philo', '/kokoro-oracle', '/kokoro-note'];
+  }
+
+  // 2つを時間帯から、1つを意外性枠から
+  const timeMatches = timeHrefs
+    .map(href => allApps.find(a => a.href === href))
+    .filter((a): a is App => !!a);
+  const primary = timeMatches.slice(0, 2);
+
+  const usedHrefs = new Set(primary.map(a => a.href));
+  const candidates = allApps.filter(a => !usedHrefs.has(a.href));
+  // 日付ベースで擬似ランダム（同じ日は同じ意外性）
+  const daySeed = new Date().getDate() + new Date().getMonth() * 31;
+  const surprise = candidates[daySeed % candidates.length];
+
+  return surprise ? [...primary, surprise] : primary;
+}
+
 export default function Home() {
   const [hasHonneLogs, setHasHonneLogs] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState<string>('self');
+  const [todayPicks, setTodayPicks] = useState<App[]>([]);
 
   useEffect(() => {
     try {
@@ -98,6 +137,9 @@ export default function Home() {
         setHasHonneLogs(Array.isArray(logs) && logs.length > 0);
       }
     } catch { /* ignore */ }
+
+    // 今日のあなたに: クライアント側で時刻を取得してキュレーション
+    setTodayPicks(pickTodayForYou());
 
     supabase.auth.getSession().then(({ data: { session } }: { data: { session: { user: User } | null } }) => {
       setUser(session?.user ?? null);
@@ -153,7 +195,7 @@ export default function Home() {
       </header>
 
       {/* Hero */}
-      <section className="px-8 pt-16 pb-12 text-center">
+      <section className="px-8 pt-16 pb-8 text-center">
         <h1
           className="text-xl font-bold tracking-tight mb-3"
           style={{
@@ -168,6 +210,66 @@ export default function Home() {
           Kokoro OSは、あなたの日常・創作・思考を静かに支えるAI OSです。
         </p>
       </section>
+
+      {/* 今日のあなたに */}
+      {todayPicks.length > 0 && (
+        <section className="px-8 pb-12">
+          <div className="max-w-2xl mx-auto">
+            <div
+              className="text-center mb-4"
+              style={{
+                color: '#9ca3af',
+                fontFamily: "var(--font-noto-serif-jp), serif",
+                fontSize: 12,
+                fontStyle: 'italic',
+              }}
+            >
+              — 今日、寄り添うもの —
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {todayPicks.map((app, idx) => {
+                const isSurprise = idx === 2;
+                return (
+                  <Link
+                    key={app.href}
+                    href={app.href}
+                    className="border rounded-2xl p-4 flex flex-col gap-2 transition-colors"
+                    style={{
+                      borderColor: '#e5e7eb',
+                      background: '#fff',
+                      textDecoration: 'none',
+                      animation: isSurprise ? 'todaySurprise 4s ease-in-out infinite' : undefined,
+                    }}
+                  >
+                    <div className="text-xl">{app.icon}</div>
+                    <div
+                      className="text-xs font-bold"
+                      style={{ color: '#1a1a1a' }}
+                    >
+                      {app.name}
+                    </div>
+                    <div
+                      className="text-[10px] leading-relaxed"
+                      style={{
+                        color: '#6b7280',
+                        fontFamily: "var(--font-noto-serif-jp), serif",
+                      }}
+                    >
+                      {app.desc}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+          <style>{`
+            @keyframes todaySurprise {
+              0%, 100% { opacity: 1; }
+              50% { opacity: 0.85; }
+            }
+          `}</style>
+        </section>
+      )}
 
       {/* Category tabs */}
       <div className="px-8 mb-6">
