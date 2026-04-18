@@ -563,7 +563,7 @@ export default function KokoroInsightPage() {
               <img src={imagePreview} alt="preview" style={{ width: '100%', maxHeight: 280, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 3, background: '#f1f3f5' }} />
               <button
                 onClick={() => { setImagePreview(null); setImageBase64(null); }}
-                style={{ position: 'absolute', top: 6, right: 6, background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: 24, height: 24, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(26,26,26,0.6)', color: '#fff', border: 'none', borderRadius: '50%', width: 24, height: 24, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >✕</button>
             </div>
           ) : (
@@ -868,12 +868,12 @@ export default function KokoroInsightPage() {
                   <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < currentResult.perReview.length - 1 ? '1px solid #e5e7eb' : 'none' }}>
                     <div style={{
                       fontSize: 12, lineHeight: 1.8, fontStyle: 'italic', marginBottom: 6,
-                      borderLeft: `2px solid ${p.isNegative ? '#ef4444' : '#e5e7eb'}`,
-                      paddingLeft: 10, color: p.isNegative ? '#ef4444' : '#6b7280',
+                      borderLeft: `2px solid ${p.isNegative ? '#f97316' : '#e5e7eb'}`,
+                      paddingLeft: 10, color: p.isNegative ? '#f97316' : '#6b7280',
                     }}>
-                      {p.isNegative ? '🔴 ' : ''}「{p.quote}」
+                      「{p.quote}」
                     </div>
-                    <div style={{ ...mono, fontSize: 9, letterSpacing: '.08em', color: p.isNegative ? '#ef4444' : '#7c3aed' }}>
+                    <div style={{ ...mono, fontSize: 9, letterSpacing: '.08em', color: p.isNegative ? '#f97316' : '#7c3aed' }}>
                       {p.isNegative ? '⚡ 逆算 // ' : '// '}{p.signal}
                     </div>
                   </div>

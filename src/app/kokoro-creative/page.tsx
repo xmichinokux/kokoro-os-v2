@@ -505,7 +505,7 @@ export default function KokoroCreativePage() {
       }
 
       if (feasibility === 'risky') {
-        const ok = window.confirm(`⚠️ 設計書のレビュー結果、生成が重くタイムアウトする可能性があります${feasReason ? `\n\n理由: ${feasReason}` : ''}\n\nそれでも生成を続けますか？`);
+        const ok = window.confirm(`設計書のレビュー結果、生成が重くタイムアウトする可能性があります${feasReason ? `\n\n理由: ${feasReason}` : ''}\n\nそれでも生成を続けますか？`);
         if (!ok) { setVecPhase('input'); return; }
         logs.push(`△ risky: ${feasReason}（ユーザー確認済み）`); setVecLog([...logs]);
       } else {

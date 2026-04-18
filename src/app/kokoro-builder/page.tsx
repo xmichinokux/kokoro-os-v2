@@ -268,7 +268,7 @@ export default function KokoroBuilderPage() {
       }
 
       if (feasibility === 'risky') {
-        const ok = window.confirm(`⚠️ この仕様は複雑で、正常に動作しない可能性があります${reason ? `\n\n理由: ${reason}` : ''}\n\nそれでも生成を続けますか？`);
+        const ok = window.confirm(`この仕様は複雑で、正常に動作しない可能性があります${reason ? `\n\n理由: ${reason}` : ''}\n\nそれでも生成を続けますか？`);
         if (!ok) { setPhase('input'); return; }
       }
 
