@@ -9,6 +9,23 @@ import PersonaLoading from '@/components/PersonaLoading';
 
 type WriterMode = 'lite' | 'deep' | 'spark' | 'michi' | 'trip';
 
+type SparkFormat = 'default' | 'poem' | 'story' | 'email_formal' | 'email_casual' | 'sns' | 'pitch_lead' | 'self_intro' | 'speech' | 'ad_copy' | 'review' | 'letter';
+
+const SPARK_FORMATS: { id: SparkFormat; label: string; hint: string }[] = [
+  { id: 'default', label: '自由', hint: '自然な長さで一つの読み物に' },
+  { id: 'poem', label: '詩', hint: '余白と行間に意味を持たせる' },
+  { id: 'story', label: '短編', hint: '一視点の情景と内面' },
+  { id: 'email_formal', label: 'メール・フォーマル', hint: '敬語で簡潔に' },
+  { id: 'email_casual', label: 'メール・カジュアル', hint: '親しみのある文体' },
+  { id: 'sns', label: 'SNS 投稿', hint: '一息で読める凝縮' },
+  { id: 'pitch_lead', label: '企画書リード', hint: 'コンセプトを簡潔に' },
+  { id: 'self_intro', label: '自己紹介', hint: '大事にしていることが見える' },
+  { id: 'speech', label: 'プレゼン台本', hint: '話し言葉の掴みと流れ' },
+  { id: 'ad_copy', label: '広告コピー', hint: '短く強い言葉' },
+  { id: 'review', label: '感想文', hint: '主観的な「私にとって」' },
+  { id: 'letter', label: '手紙', hint: '敬意を込めた文体' },
+];
+
 const MODE_CONFIG: Record<WriterMode, { label: string; placeholder: string }> = {
   lite: {
     label: 'Lite',
@@ -162,6 +179,7 @@ export default function KokoroWriterPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
 
   const [mode, setMode] = useState<WriterMode>('deep');
+  const [sparkFormat, setSparkFormat] = useState<SparkFormat>('default');
   const [inputText, setInputText] = useState('');
   const [outputText, setOutputText] = useState('');
   const [outputHtml, setOutputHtml] = useState('');
@@ -222,7 +240,12 @@ export default function KokoroWriterPage() {
       const res = await fetch('/api/kokoro-writer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: t, mode: m, ...(accessToken ? { accessToken } : {}) }),
+        body: JSON.stringify({
+          text: t,
+          mode: m,
+          ...(accessToken ? { accessToken } : {}),
+          ...(m === 'spark' ? { sparkFormat } : {}),
+        }),
       });
       if (!res.ok) throw new Error('編集に失敗しました');
       const data = await res.json();
@@ -243,7 +266,7 @@ export default function KokoroWriterPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, mode]);
+  }, [inputText, mode, sparkFormat]);
 
   const handleCopy = async () => {
     if (!outputText) return;
@@ -385,7 +408,42 @@ export default function KokoroWriterPage() {
         {mode === 'trip' && !hasTripCache && (
           <div style={{ marginBottom: 16, ...mono, fontSize: 9, color: '#9ca3af', lineHeight: 1.6 }}>
             // Tripキャッシュがありません →{' '}
-            <a href="/kokoro-profile" style={{ color: '#e11d48' }}>Profileページ</a>でScan Tripを実行してください
+            <a href="/kokoro-profile" style={{ color: accentColor }}>Profileページ</a>でScan Tripを実行してください
+          </div>
+        )}
+
+        {/* Sparkモード: 出力形式選択 */}
+        {mode === 'spark' && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ ...mono, fontSize: 9, letterSpacing: '0.14em', color: '#9ca3af', marginBottom: 8 }}>
+              // 出力形式
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {SPARK_FORMATS.map(fmt => {
+                const isActive = sparkFormat === fmt.id;
+                return (
+                  <button
+                    key={fmt.id}
+                    onClick={() => setSparkFormat(fmt.id)}
+                    title={fmt.hint}
+                    style={{
+                      ...mono, fontSize: 10, letterSpacing: '0.08em',
+                      padding: '5px 10px', borderRadius: 3,
+                      border: isActive ? `1px solid ${accentColor}` : '1px solid #e5e7eb',
+                      background: isActive ? 'rgba(124,58,237,0.08)' : 'transparent',
+                      color: isActive ? accentColor : '#6b7280',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {fmt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ ...mono, fontSize: 9, color: '#9ca3af', marginTop: 6 }}>
+              // {SPARK_FORMATS.find(f => f.id === sparkFormat)?.hint}
+            </div>
           </div>
         )}
 

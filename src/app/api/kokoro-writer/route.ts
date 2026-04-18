@@ -100,7 +100,24 @@ const CORE_SYSTEM = `あなたはKokoro OSの「Writerエンジン」です。
 改善提案（任意）
 </suggestion>`;
 
-const SPARK_SYSTEM = `あなたはKokoro OSのWriterエンジン（Sparkモード）です。
+type SparkFormat = 'default' | 'poem' | 'story' | 'email_formal' | 'email_casual' | 'sns' | 'pitch_lead' | 'self_intro' | 'speech' | 'ad_copy' | 'review' | 'letter';
+
+const SPARK_FORMAT_INSTRUCTIONS: Record<SparkFormat, string> = {
+  default: '一つの読み物として、自然な長さで展開する。',
+  poem: '詩として展開する。余白と行間に意味を持たせ、リズムを大切にする。装飾を削ぎ落とし、言葉そのものを光らせる。',
+  story: '短いストーリーとして展開する。主人公の一視点で、情景描写と内面の往復で進める。',
+  email_formal: 'ビジネスメールとして展開する。件名・宛名・本文・結び・署名の構造を持たせ、敬語で簡潔に。タイトル（h1 class="wt"）は件名、段落で宛名・本文・結びを分ける。',
+  email_casual: 'カジュアルなメール・メッセージとして展開する。親しみのある文体、でも気遣いは残す。',
+  sns: 'SNS 投稿として 140〜280 文字程度に凝縮する。一息で読める短さに、核となる一言を込める。',
+  pitch_lead: '企画書のリード文として展開する。コンセプトを簡潔に伝え、読み手の関心を引く。タイトル + リード段落 + 3 つの要点の構造。',
+  self_intro: '自己紹介文として展開する。読み手に伝わる温度で、経歴の羅列ではなく「何を大事にしているか」が見える文章に。',
+  speech: 'プレゼン台本として展開する。話し言葉で、聞き手の注意を引く掴み → 本題 → 結びの流れで。句読点は話すリズムに合わせる。',
+  ad_copy: '広告コピーとして展開する。短く強い言葉で心を動かす。キャッチコピー（h1）+ ボディコピー（リード）+ タグライン（右寄せ）の構造。',
+  review: '感想文として展開する。主観的な視点で率直に。「私にとって」を軸にした温度のある文章に。',
+  letter: '手紙として展開する。受け手への敬意を込めた文体で、季節の挨拶 → 本文 → 結びの伝統的構造で。',
+};
+
+const SPARK_SYSTEM_BASE = `あなたはKokoro OSのWriterエンジン（Sparkモード）です。
 入力されたキーワード・断片・メモを、一つの文章として展開してください。
 
 【ルール】
@@ -265,16 +282,26 @@ async function loadDriveContext(accessToken: string): Promise<{ context: string;
   return { context: driveContext, files: loadedFiles };
 }
 
-function buildSystem(mode: string): string {
+function buildSparkSystem(format: SparkFormat): string {
+  const instruction = SPARK_FORMAT_INSTRUCTIONS[format] ?? SPARK_FORMAT_INSTRUCTIONS.default;
+  return SPARK_SYSTEM_BASE + `\n\n【今回の出力形式】\n${instruction}`;
+}
+
+function buildSystem(mode: string, sparkFormat?: SparkFormat): string {
   if (mode === 'deep') return CORE_SYSTEM;
-  if (mode === 'spark') return SPARK_SYSTEM;
+  if (mode === 'spark') return buildSparkSystem(sparkFormat ?? 'default');
   if (mode === 'core') return CORE_SYSTEM;
   if (mode === 'lite') return LITE_SYSTEM;
   return LITE_SYSTEM;
 }
 
 export async function POST(req: NextRequest) {
-  const { text, mode, accessToken } = await req.json();
+  const { text, mode, accessToken, sparkFormat } = await req.json() as {
+    text: string;
+    mode: string;
+    accessToken?: string;
+    sparkFormat?: SparkFormat;
+  };
 
   // Michiモード: Gemini + Drive（キャッシュ優先）
   if (mode === 'michi') {
@@ -425,7 +452,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 既存モード (lite / spark)
-  const baseSystem = buildSystem(mode);
+  const baseSystem = buildSystem(mode, sparkFormat);
   const useValueEngine = mode === 'spark';
   const valueInject = useValueEngine ? KokoroValueEngine.forWriterCore() : '';
   const system = (valueInject ? valueInject + '\n\n' : '') + baseSystem;
