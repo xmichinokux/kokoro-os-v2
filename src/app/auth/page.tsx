@@ -174,7 +174,7 @@ export default function AuthPage() {
 
         {/* メッセージ表示 */}
         {error && (
-          <div style={{ marginTop: 14, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.6 }}>
+          <div style={{ marginTop: 14, ...mono, fontSize: 11, color: '#f97316', lineHeight: 1.6 }}>
             // {error}
           </div>
         )}

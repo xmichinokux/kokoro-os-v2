@@ -438,8 +438,8 @@ export default function KokoroMessagesPage() {
             }}>
               {sendError && (
                 <div style={{
-                  ...mono, fontSize: 10, color: '#dc2626', padding: '6px 10px',
-                  background: '#fef2f2', borderRadius: 4, marginBottom: 8,
+                  ...mono, fontSize: 10, color: '#f97316', padding: '6px 10px',
+                  background: '#fff7ed', borderRadius: 4, marginBottom: 8,
                 }}>
                   {sendError}
                 </div>

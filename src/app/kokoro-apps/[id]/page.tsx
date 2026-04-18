@@ -228,7 +228,7 @@ export default function KokoroAppRuntimePage({ params }: { params: Promise<{ id:
   if (error || !app) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{ ...mono, fontSize: 12, color: '#ef4444', marginBottom: 16 }}>
+        <div style={{ ...mono, fontSize: 12, color: '#f97316', marginBottom: 16 }}>
           {error || 'アプリを読み込めませんでした'}
         </div>
         <button onClick={() => router.push('/kokoro-apps')} style={{

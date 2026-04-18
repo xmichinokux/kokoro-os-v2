@@ -300,7 +300,7 @@ export default function KokoroBuddyPage() {
 
         {/* エラー */}
         {error && (
-          <div style={{ marginBottom: 12, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8 }}>
+          <div style={{ marginBottom: 12, ...mono, fontSize: 11, color: '#f97316', lineHeight: 1.8 }}>
             // エラー: {error}
           </div>
         )}

@@ -329,7 +329,7 @@ export default function KokoroCouplePage() {
             </div>
 
             {pairError && (
-              <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#ef4444', textAlign: 'center' }}>
+              <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#f97316', textAlign: 'center' }}>
                 // {pairError}
               </div>
             )}
@@ -429,7 +429,7 @@ export default function KokoroCouplePage() {
 
             {/* エラー */}
             {error && (
-              <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8 }}>
+              <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#f97316', lineHeight: 1.8 }}>
                 // エラー: {error}
               </div>
             )}

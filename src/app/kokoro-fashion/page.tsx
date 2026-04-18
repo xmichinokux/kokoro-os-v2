@@ -919,7 +919,7 @@ export default function KokoroFashion() {
         )}
 
         {error && (
-          <div style={{ marginTop: 16, color: '#ef4444', fontSize: 12, textAlign: 'center' }}>{error}</div>
+          <div style={{ marginTop: 16, color: '#f97316', fontSize: 12, textAlign: 'center' }}>{error}</div>
         )}
       </div>
     </div>

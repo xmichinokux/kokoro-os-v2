@@ -1413,7 +1413,7 @@ export default function KokoroCreativePage() {
         {/* エラー表示 */}
         {error && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ ...mono, fontSize: 10, color: '#ef4444', lineHeight: 1.6, marginBottom: 12 }}>// エラー: {error}</div>
+            <div style={{ ...mono, fontSize: 10, color: '#f97316', lineHeight: 1.6, marginBottom: 12 }}>// エラー: {error}</div>
           </div>
         )}
       </div>

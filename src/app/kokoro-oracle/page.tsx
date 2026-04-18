@@ -423,8 +423,8 @@ export default function KokoroOraclePage() {
 
             {error && (
               <div style={{
-                ...mono, fontSize: 11, color: '#dc2626', padding: '10px 14px',
-                background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6,
+                ...mono, fontSize: 11, color: '#f97316', padding: '10px 14px',
+                background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6,
                 marginTop: 12,
               }}>
                 // エラー: {error}
@@ -662,8 +662,8 @@ export default function KokoroOraclePage() {
 
             {error && (
               <div style={{
-                ...mono, fontSize: 11, color: '#dc2626', padding: '10px 14px',
-                background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6,
+                ...mono, fontSize: 11, color: '#f97316', padding: '10px 14px',
+                background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6,
                 marginTop: 12,
               }}>
                 // エラー: {error}

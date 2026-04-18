@@ -522,7 +522,7 @@ export default function KokoroKamiPage() {
             {isLoading && <PersonaLoading />}
 
             {error && (
-              <div style={{ ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8, marginBottom: 16 }}>
+              <div style={{ ...mono, fontSize: 11, color: '#f97316', lineHeight: 1.8, marginBottom: 16 }}>
                 // エラー: {error}
               </div>
             )}

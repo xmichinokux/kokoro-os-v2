@@ -308,7 +308,7 @@ export default function KokoroAppsListPage() {
         )}
 
         {error && (
-          <div style={{ ...mono, fontSize: 10, color: '#ef4444', marginBottom: 16 }}>エラー: {error}</div>
+          <div style={{ ...mono, fontSize: 10, color: '#f97316', marginBottom: 16 }}>エラー: {error}</div>
         )}
 
         {loading ? (

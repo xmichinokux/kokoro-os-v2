@@ -885,8 +885,8 @@ export default function KokoroBrowserPage() {
         {/* Web error */}
         {webError && (
           <div style={{
-            ...mono, fontSize: 10, color: '#ef4444', marginBottom: 16,
-            padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6,
+            ...mono, fontSize: 10, color: '#f97316', marginBottom: 16,
+            padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6,
           }}>
             // Web検索エラー: {webError}
           </div>

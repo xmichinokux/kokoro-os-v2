@@ -165,7 +165,7 @@ export default function KokoroPlanPage() {
         {/* エラー */}
         {error && (
           <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-            <div style={{ ...mono, fontSize: 11, color: '#ef4444', marginBottom: 20, lineHeight: 1.8 }}>
+            <div style={{ ...mono, fontSize: 11, color: '#f97316', marginBottom: 20, lineHeight: 1.8 }}>
               // エラー: {error}
             </div>
           </div>

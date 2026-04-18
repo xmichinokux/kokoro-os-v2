@@ -249,7 +249,7 @@ export default function KokoroZen() {
 
         {/* エラー */}
         {error && (
-          <div style={{ color:'#ef4444', fontSize:12, marginBottom:16 }}>{error}</div>
+          <div style={{ color:'#f97316', fontSize:12, marginBottom:16 }}>{error}</div>
         )}
 
         {/* ローディング */}

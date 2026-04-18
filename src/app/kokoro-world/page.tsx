@@ -327,7 +327,7 @@ export default function KokoroWorldPage() {
         )}
 
         {error && (
-          <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#ef4444', lineHeight: 1.8 }}>
+          <div style={{ marginTop: 12, ...mono, fontSize: 11, color: '#f97316', lineHeight: 1.8 }}>
             // エラー: {error}
           </div>
         )}
