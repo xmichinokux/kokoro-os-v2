@@ -15,7 +15,7 @@ import {
 import LoginBanner from '@/components/LoginBanner';
 
 const mono = { fontFamily: "'Space Mono', monospace" };
-const accentColor = '#ec4899';
+const accentColor = '#7c3aed';
 
 const INTENSITY_ORDER: Record<WishIntensity, number> = { now: 0, soon: 1, someday: 2 };
 const INTENSITY_COLORS: Record<WishIntensity, { bg: string; text: string; border: string }> = {

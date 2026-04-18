@@ -45,7 +45,7 @@ const BUDGET_OPTIONS = [
 
 export default function KokoroCouplePage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#ec4899';
+  const accentColor = '#7c3aed';
 
   /* ─── ペアリング状態 ─── */
   const [pairStatus, setPairStatus] = useState<PairStatus>('loading');

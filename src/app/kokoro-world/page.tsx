@@ -19,7 +19,7 @@ type DemoTypeKey = typeof DEMO_TYPES[number]['key'];
 
 export default function KokoroWorldPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#10b981';
+  const accentColor = '#7c3aed';
 
   const [directText, setDirectText] = useState('');
   const [demoType, setDemoType] = useState<DemoTypeKey>('auto');

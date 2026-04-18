@@ -18,7 +18,7 @@ const IDEA_CHIPS = [
 export default function KokoroBuddyPage() {
   const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#6366f1';
+  const accentColor = '#7c3aed';
 
   const [mode, setMode] = useState<BuddyMode>('normal');
   const [hasCache, setHasCache] = useState(false);

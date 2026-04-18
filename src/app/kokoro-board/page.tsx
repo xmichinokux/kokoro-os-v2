@@ -24,7 +24,7 @@ const PERSONA_MAP: Record<string, { name: string; icon: string; color: string }>
 
 export default function KokoroBoardPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#0ea5e9';
+  const accentColor = '#7c3aed';
 
   const [agenda, setAgenda] = useState('');
   const [result, setResult] = useState<BoardResult | null>(null);

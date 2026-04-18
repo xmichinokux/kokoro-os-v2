@@ -42,7 +42,7 @@ const PERSONA_DEFS = [
 export default function KokoroPhiloPage() {
   const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#78716c';
+  const accentColor = '#7c3aed';
 
   const [question, setQuestion] = useState('');
   const [mode, setMode] = useState<PhilMode>('multi');

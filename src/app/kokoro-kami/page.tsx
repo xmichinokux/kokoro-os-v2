@@ -11,7 +11,7 @@ import {
 import type { KamiSheet, KamiColumn } from '@/types/kami';
 
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
-const accentColor = '#3b82f6';
+const accentColor = '#7c3aed';
 
 type View = 'list' | 'editor';
 

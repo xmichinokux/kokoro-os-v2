@@ -41,7 +41,7 @@ const AREA_RANGE_OPTIONS = [
   { value: 'country', label: '全国' },
 ];
 
-const accentColor = '#6366f1';
+const accentColor = '#7c3aed';
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
 
 const LABELS: Record<ProfileKey, string> = {

@@ -7,7 +7,7 @@ import { getAllNotes } from '@/lib/kokoro/noteStorage';
 import type { KokoroNote } from '@/types/note';
 
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
-const accentColor = '#6366f1';
+const accentColor = '#7c3aed';
 
 type HistoryEntry = {
   question: string;

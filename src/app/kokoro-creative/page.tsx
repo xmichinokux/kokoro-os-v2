@@ -10,7 +10,7 @@ import {
 } from '@/lib/imageEffects';
 
 const mono = { fontFamily: "'Space Mono', monospace" } as const;
-const accentColor = '#e11d48';
+const accentColor = '#7c3aed';
 
 type Mode = 'generate' | 'process' | 'vector';
 type VecEditEntry = { instruction: string; svg: string };

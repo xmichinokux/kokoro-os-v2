@@ -16,7 +16,7 @@ type PonchiResult = { slides: Slide[] };
 
 export default function KokoroPonchiPage() {
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#8b5cf6';
+  const accentColor = '#7c3aed';
 
   const [inputText, setInputText] = useState('');
   const [slides, setSlides] = useState<Slide[]>([]);

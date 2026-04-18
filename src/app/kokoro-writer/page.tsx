@@ -327,7 +327,7 @@ export default function KokoroWriterPage() {
     }, 300);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const accentColor = '#a855f7';
+  const accentColor = '#7c3aed';
 
   return (
     <div style={{ minHeight: '100vh', background: '#ffffff', color: '#374151' }}>

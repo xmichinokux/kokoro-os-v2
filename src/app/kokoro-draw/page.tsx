@@ -20,7 +20,7 @@ const STYLES: { key: DrawStyle; label: string; emoji: string }[] = [
 export default function KokoroDrawPage() {
   const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#ec4899';
+  const accentColor = '#7c3aed';
 
   const [inputText, setInputText] = useState('');
   const [style, setStyle] = useState<DrawStyle>('auto');

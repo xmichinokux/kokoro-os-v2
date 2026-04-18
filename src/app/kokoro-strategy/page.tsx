@@ -39,7 +39,7 @@ function parseEditedHtml(raw: string): { html: string; plain: string } {
 export default function KokoroStrategyPage() {
   const router = useRouter();
   const mono = { fontFamily: "'Space Mono', monospace" };
-  const accentColor = '#f59e0b';
+  const accentColor = '#7c3aed';
 
   const [directInput, setDirectInput] = useState('');
   const [outputType, setOutputType] = useState<OutputTypeKey>('free');
