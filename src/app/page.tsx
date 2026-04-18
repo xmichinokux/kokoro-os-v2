@@ -13,215 +13,82 @@ type App = {
   ready: boolean;
 };
 
-const APPS: App[] = [
+type Category = {
+  id: string;
+  emoji: string;
+  label: string;
+  tagline: string;
+  apps: App[];
+};
+
+const CATEGORIES: Category[] = [
   {
-    icon: "💬",
-    name: "Talk",
-    desc: "静かに寄り添い、明るく話す。",
-    href: "/kokoro-chat",
-    ready: true,
+    id: 'self',
+    emoji: '🧘',
+    label: 'こころ',
+    tagline: '自分と向き合う時間',
+    apps: [
+      { icon: '💬', name: 'Talk', desc: '静かに寄り添い、明るく話す。', href: '/kokoro-chat', ready: true },
+      { icon: '🧘', name: 'Zen', desc: '自分の内側を、深く掘る。', href: '/kokoro-zen', ready: true },
+      { icon: '🧠', name: 'Philo', desc: '世界への問いを、照らす。', href: '/kokoro-philo', ready: true },
+      { icon: '🐾', name: 'Animal', desc: '動物の視線から、本能を聴く。', href: '/kokoro-animal', ready: true },
+      { icon: '👔', name: 'Fashion', desc: '装いから、内面を読む。', href: '/kokoro-fashion', ready: true },
+      { icon: '📓', name: 'Note', desc: '気づきを、静かに溜めていく。', href: '/kokoro-note', ready: true },
+      { icon: '👤', name: 'Profile', desc: 'あなたを、静かに覚えておく。', href: '/kokoro-profile', ready: true },
+    ],
   },
   {
-    icon: "🧘",
-    name: "Zen",
-    desc: "自分の内側を、深く掘る。",
-    href: "/kokoro-zen",
-    ready: true,
+    id: 'life',
+    emoji: '🏡',
+    label: 'くらし',
+    tagline: '日々を整える',
+    apps: [
+      { icon: '📋', name: 'Plan', desc: 'やることと、やらないことを、設計する。', href: '/kokoro-plan', ready: true },
+      { icon: '🍳', name: 'Recipe', desc: '七日ぶんの食卓を、立てる。', href: '/kokoro-recipe', ready: true },
+      { icon: '⭐', name: 'Wishlist', desc: '欲しいを、静かに貯める。', href: '/kokoro-wishlist', ready: true },
+      { icon: '❤️', name: 'Couple', desc: '愛する人との距離を、整える。', href: '/kokoro-couple', ready: true },
+      { icon: '💬', name: 'Messages', desc: 'AI 越しに、言葉を届ける。', href: '/kokoro-messages', ready: true },
+    ],
   },
   {
-    icon: "👔",
-    name: "Fashion",
-    desc: "装いから、内面を読む。",
-    href: "/kokoro-fashion",
-    ready: true,
+    id: 'create',
+    emoji: '🎨',
+    label: 'つくる',
+    tagline: '言葉を、形に',
+    apps: [
+      { icon: '✍️', name: 'Writer', desc: '言葉を整える、自分の声で。', href: '/kokoro-writer', ready: true },
+      { icon: '📄', name: 'Kami', desc: '言葉から、表を立ち上げる。', href: '/kokoro-kami', ready: true },
+      { icon: '📊', name: 'Slide', desc: 'コンセプトを、六枚で伝える。', href: '/kokoro-ponchi', ready: true },
+      { icon: '🎨', name: 'Creative', desc: '感性を、絵に結晶させる。', href: '/kokoro-creative', ready: true },
+      { icon: '🔒', name: 'Gatekeeper', desc: '言葉の奥から、仕様を見出す。', href: '/kokoro-gatekeeper', ready: true },
+      { icon: '⚡', name: 'Strategy', desc: '散らばった欠片を、企画に束ねる。', href: '/kokoro-strategy', ready: true },
+      { icon: '🔨', name: 'Builder', desc: '言葉から、動くものを作る。', href: '/kokoro-builder', ready: true },
+      { icon: '🌍', name: 'World', desc: '企画を、動く体験に変える。', href: '/kokoro-world', ready: true },
+      { icon: '🎛️', name: 'Tuner', desc: '作ったものの気配を、整える。', href: '/kokoro-tuner', ready: true },
+      { icon: '📦', name: 'Apps', desc: 'あなたの作品を、起動する。', href: '/kokoro-apps', ready: true },
+    ],
   },
   {
-    icon: "📋",
-    name: "Plan",
-    desc: "やることと、やらないことを、設計する。",
-    href: "/kokoro-plan",
-    ready: true,
-  },
-  {
-    icon: "✍️",
-    name: "Writer",
-    desc: "言葉を整える、自分の声で。",
-    href: "/kokoro-writer",
-    ready: true,
-  },
-  {
-    icon: "🔍",
-    name: "Insight",
-    desc: "レビューから、作品を読み解く。",
-    href: "/kokoro-insight",
-    ready: true,
-  },
-  {
-    icon: "📓",
-    name: "Note",
-    desc: "気づきを、静かに溜めていく。",
-    href: "/kokoro-note",
-    ready: true,
-  },
-  {
-    icon: "📚",
-    name: "Browser",
-    desc: "みんなの声を、静かに眺める。",
-    href: "/kokoro-browser",
-    ready: true,
-  },
-  {
-    icon: "❤️",
-    name: "Couple",
-    desc: "愛する人との距離を、整える。",
-    href: "/kokoro-couple",
-    ready: true,
-  },
-  {
-    icon: "🎧",
-    name: "Buddy",
-    desc: "思考を、ディグと広げる。",
-    href: "/kokoro-buddy",
-    ready: true,
-  },
-  {
-    icon: "🧠",
-    name: "Philo",
-    desc: "世界への問いを、照らす。",
-    href: "/kokoro-philo",
-    ready: true,
-  },
-  {
-    icon: "👥",
-    name: "Board",
-    desc: "会議を、台本に仕立てる。",
-    href: "/kokoro-board",
-    ready: true,
-  },
-  {
-    icon: "📄",
-    name: "Kami",
-    desc: "言葉から、表を立ち上げる。",
-    href: "/kokoro-kami",
-    ready: true,
-  },
-  {
-    icon: "📊",
-    name: "Slide",
-    desc: "コンセプトを、六枚で伝える。",
-    href: "/kokoro-ponchi",
-    ready: true,
-  },
-  {
-    icon: "⚡",
-    name: "Strategy",
-    desc: "散らばった欠片を、企画に束ねる。",
-    href: "/kokoro-strategy",
-    ready: true,
-  },
-  {
-    icon: "🔒",
-    name: "Gatekeeper",
-    desc: "言葉の奥から、仕様を見出す。",
-    href: "/kokoro-gatekeeper",
-    ready: true,
-  },
-  {
-    icon: "🔨",
-    name: "Builder",
-    desc: "言葉から、動くものを作る。",
-    href: "/kokoro-builder",
-    ready: true,
-  },
-  {
-    icon: "📦",
-    name: "Apps",
-    desc: "あなたの作品を、起動する。",
-    href: "/kokoro-apps",
-    ready: true,
-  },
-  {
-    icon: "🎛️",
-    name: "Tuner",
-    desc: "作ったものの気配を、整える。",
-    href: "/kokoro-tuner",
-    ready: true,
-  },
-  {
-    icon: "🎨",
-    name: "Creative",
-    desc: "感性を、絵に結晶させる。",
-    href: "/kokoro-creative",
-    ready: true,
-  },
-  {
-    icon: "🌍",
-    name: "World",
-    desc: "企画を、動く体験に変える。",
-    href: "/kokoro-world",
-    ready: true,
-  },
-  {
-    icon: "🍳",
-    name: "Recipe",
-    desc: "七日ぶんの食卓を、立てる。",
-    href: "/kokoro-recipe",
-    ready: true,
-  },
-  {
-    icon: "🐾",
-    name: "Animal",
-    desc: "動物の視線から、本能を聴く。",
-    href: "/kokoro-animal",
-    ready: true,
-  },
-  {
-    icon: "👤",
-    name: "Profile",
-    desc: "あなたを、静かに覚えておく。",
-    href: "/kokoro-profile",
-    ready: true,
-  },
-  {
-    icon: "⭐",
-    name: "Wishlist",
-    desc: "欲しいを、静かに貯める。",
-    href: "/kokoro-wishlist",
-    ready: true,
-  },
-  {
-    icon: "🎮",
-    name: "Play",
-    desc: "スクロールと、駆け引きする。",
-    href: "/kokoro-play",
-    ready: true,
-  },
-  {
-    icon: "💬",
-    name: "Messages",
-    desc: "AI 越しに、言葉を届ける。",
-    href: "/kokoro-messages",
-    ready: true,
-  },
-  {
-    icon: "🎵",
-    name: "Resonance",
-    desc: "好きなものの、系譜を辿る。",
-    href: "/kokoro-resonance",
-    ready: true,
-  },
-  {
-    icon: "🔮",
-    name: "Oracle",
-    desc: "大きな問いを、深く掘る。",
-    href: "/kokoro-oracle",
-    ready: true,
+    id: 'explore',
+    emoji: '🔮',
+    label: 'さがす',
+    tagline: '発見と遊びの場',
+    apps: [
+      { icon: '🔮', name: 'Oracle', desc: '大きな問いを、深く掘る。', href: '/kokoro-oracle', ready: true },
+      { icon: '🎵', name: 'Resonance', desc: '好きなものの、系譜を辿る。', href: '/kokoro-resonance', ready: true },
+      { icon: '🔍', name: 'Insight', desc: 'レビューから、作品を読み解く。', href: '/kokoro-insight', ready: true },
+      { icon: '🎧', name: 'Buddy', desc: '思考を、ディグと広げる。', href: '/kokoro-buddy', ready: true },
+      { icon: '👥', name: 'Board', desc: '会議を、台本に仕立てる。', href: '/kokoro-board', ready: true },
+      { icon: '📚', name: 'Browser', desc: 'みんなの声を、静かに眺める。', href: '/kokoro-browser', ready: true },
+      { icon: '🎮', name: 'Play', desc: 'スクロールと、駆け引きする。', href: '/kokoro-play', ready: true },
+    ],
   },
 ];
 
 export default function Home() {
   const [hasHonneLogs, setHasHonneLogs] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [activeCategoryId, setActiveCategoryId] = useState<string>('self');
 
   useEffect(() => {
     try {
@@ -240,6 +107,8 @@ export default function Home() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  const activeCategory = CATEGORIES.find(c => c.id === activeCategoryId) ?? CATEGORIES[0];
 
   return (
     <div
@@ -300,11 +169,67 @@ export default function Home() {
         </p>
       </section>
 
+      {/* Category tabs */}
+      <div className="px-8 mb-6">
+        <div className="max-w-2xl mx-auto flex flex-wrap justify-center gap-2">
+          {CATEGORIES.map(cat => {
+            const isActive = activeCategoryId === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategoryId(cat.id)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full transition-colors"
+                style={{
+                  background: isActive ? '#ede9fe' : 'transparent',
+                  border: `1px solid ${isActive ? '#7c3aed' : '#e5e7eb'}`,
+                  color: isActive ? '#7c3aed' : '#6b7280',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{cat.emoji}</span>
+                <span
+                  className="text-sm"
+                  style={{
+                    fontFamily: "var(--font-noto-serif-jp), serif",
+                    fontWeight: isActive ? 600 : 400,
+                  }}
+                >
+                  {cat.label}
+                </span>
+                <span
+                  className="text-xs"
+                  style={{
+                    color: isActive ? '#7c3aed' : '#9ca3af',
+                    opacity: 0.7,
+                  }}
+                >
+                  {cat.apps.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Category tagline */}
+        <div className="text-center mt-4">
+          <span
+            className="text-xs"
+            style={{
+              color: '#9ca3af',
+              fontFamily: "var(--font-noto-serif-jp), serif",
+              fontStyle: 'italic',
+            }}
+          >
+            — {activeCategory.tagline} —
+          </span>
+        </div>
+      </div>
+
       {/* App grid */}
       <main className="flex-1 px-8 pb-16">
         <div className="max-w-2xl mx-auto grid grid-cols-2 gap-4">
-          {/* 最近の状態カード */}
-          {hasHonneLogs && (
+          {/* 最近の状態カード（こころカテゴリの時のみ表示） */}
+          {hasHonneLogs && activeCategoryId === 'self' && (
             <div
               className="border rounded-2xl p-5 flex flex-col gap-3 col-span-2"
               style={{ borderColor: '#bbf7d0', background: '#f0fdf4' }}
@@ -330,7 +255,7 @@ export default function Home() {
               </Link>
             </div>
           )}
-          {APPS.map((app) => (
+          {activeCategory.apps.map((app) => (
             <div
               key={app.href}
               className="border rounded-2xl p-5 flex flex-col gap-3"
