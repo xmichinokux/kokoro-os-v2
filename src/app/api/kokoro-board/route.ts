@@ -77,7 +77,9 @@ function buildTeidanSystem(advisorIds: string[]): string {
     .map(id => ADVISORS[id] ? { id, ...ADVISORS[id] } : null)
     .filter(Boolean) as Array<{ id: string; name: string; domain: string; voice: string }>;
 
-  const roster = chosen.map(a => `- ${a.name}（${a.id} / ${a.domain}）: ${a.voice}`).join('\n');
+  const roster = chosen.map(a => `- ${a.name}（${a.domain}）: ${a.voice}`).join('\n');
+  const idMap = chosen.map(a => `  * ${a.name} → "${a.id}"`).join('\n');
+  const nameList = chosen.map(a => `「${a.name}」`).join('、');
 
   return `あなたはKokoro OSのBoard「鼎談モード」です。3人の賢人がユーザーの問いについて弁証法的に助言します。
 
@@ -99,14 +101,22 @@ ${roster}
 - 結論は「答え」ではなく「ユーザーが持ち帰る視点」として書く
 - 資料が添付された場合、3人ともそれを読んだ前提で語る
 
+【呼び方のルール（厳守）】
+- 他の賢人に触れる・呼びかける時は、必ず日本語/カタカナの表記名（${nameList}）を使うこと
+- 英字ID（ives, machishita 等）は発言文中には絶対に出さない
+- 「〜さん」「〜氏」を添えるのは自由
+
 【注意】
 - 賢人は実在人物ではない架空のキャラクターです
 - 「〇〇さんが言っていた」のような外部引用は禁止
 
+【JSON出力の persona フィールドに使う id（発言文中には出さない）】
+${idMap}
+
 以下のJSONのみを返してください：
 {
   "discussion": [
-    {"persona": "賢人のid", "text": "発言内容"}
+    {"persona": "上記のid", "text": "発言内容（他者に触れる時は日本語名で）"}
   ],
   "action_items": [
     {"task": "ユーザーが持ち帰る問い・視点", "persona": "発案した賢人のid"}
