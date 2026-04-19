@@ -55,6 +55,38 @@ export default function NoteHarvestPage() {
     })();
   }, []);
 
+  /* ─── Shelf からの受信: 即エッセイ生成 ─── */
+  useEffect(() => {
+    if (!notesLoaded) return;
+    const raw = sessionStorage.getItem('harvestFromShelf');
+    if (!raw) return;
+    sessionStorage.removeItem('harvestFromShelf');
+    try {
+      const payload = JSON.parse(raw) as {
+        themeTitle: string;
+        themeSummary: string;
+        noteIds: string[];
+      };
+      const targetNotes = allNotes.filter(n => payload.noteIds.includes(n.id));
+      if (targetNotes.length < 2) return;
+
+      // 合成クラスタとして扱い、そのままエッセイへ
+      const synthetic: Cluster = {
+        id: 'from_shelf',
+        title: payload.themeTitle,
+        emoji: '📚',
+        summary: payload.themeSummary,
+        noteIds: payload.noteIds,
+        themes: [],
+      };
+      handleOpenCluster(synthetic);
+    } catch {
+      /* ignore */
+    }
+    // allNotes が揃ってから走らせたいので依存は notesLoaded のみ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notesLoaded]);
+
   const scopedNotes = useMemo(() => {
     if (scope === 'all') return allNotes;
     const days = scope === 'recent3' ? 90 : 365;

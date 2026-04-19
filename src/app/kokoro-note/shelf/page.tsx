@@ -354,8 +354,38 @@ export default function NoteShelfPage() {
 
               {/* Column 3: Notes */}
               <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-                <div style={{ ...mono, fontSize: 8, color: '#9ca3af', marginBottom: 10, letterSpacing: '.14em' }}>
-                  // {itemsForColumn3.length} 件
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  marginBottom: 10,
+                }}>
+                  <div style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>
+                    // {itemsForColumn3.length} 件
+                  </div>
+                  {selectedMajor && itemsForColumn3.length >= 2 && (
+                    <button
+                      onClick={() => {
+                        const themeTitle = selectedMinor || selectedMajor;
+                        const themeSummary = selectedMinor
+                          ? `「${selectedMajor}」のなかの「${selectedMinor}」について、あなたが書いてきたこと。`
+                          : `「${selectedMajor}」について、あなたが書いてきたこと。`;
+                        const payload = {
+                          themeTitle,
+                          themeSummary,
+                          noteIds: itemsForColumn3.map(e => e.noteId),
+                        };
+                        sessionStorage.setItem('harvestFromShelf', JSON.stringify(payload));
+                        window.location.href = '/kokoro-note/harvest';
+                      }}
+                      style={{
+                        ...mono, fontSize: 9, letterSpacing: '.1em',
+                        color: accent, background: '#ede9fe',
+                        border: 'none', borderRadius: 4, padding: '5px 12px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      📚 このテーマをまとめる
+                    </button>
+                  )}
                 </div>
                 {itemsForColumn3.length === 0 ? (
                   <div style={{ ...mono, fontSize: 10, color: '#d1d5db', padding: '20px 0', textAlign: 'center' }}>
