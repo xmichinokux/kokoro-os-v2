@@ -1544,6 +1544,12 @@ export default function KokoroNotePage() {
           {view === 'list' && (
             <>
               <a
+                href="/kokoro-note/shelf"
+                style={{ fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:600, padding:'6px 12px', borderRadius:4, background:'transparent', color:'#7c3aed', border:'1px solid #7c3aed', cursor:'pointer', textDecoration:'none' }}
+              >
+                🗂 棚
+              </a>
+              <a
                 href="/kokoro-note/harvest"
                 style={{ fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:600, padding:'6px 12px', borderRadius:4, background:'transparent', color:'#7c3aed', border:'1px solid #7c3aed', cursor:'pointer', textDecoration:'none' }}
               >
