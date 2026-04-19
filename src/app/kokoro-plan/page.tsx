@@ -134,7 +134,17 @@ export default function KokoroPlanPage() {
             <span style={{ ...mono, fontSize: 8, color: '#9ca3af', letterSpacing: '.14em' }}>タスク分解エンジン</span>
           </div>
         </div>
-        <div />
+        <a
+          href="/kokoro-plan/checklist"
+          style={{
+            ...mono, fontSize: 9, letterSpacing: '.1em',
+            color: '#10b981', background: 'transparent',
+            border: '1px solid #10b981',
+            padding: '6px 12px', borderRadius: 4, textDecoration: 'none',
+          }}
+        >
+          ✓ 忘れ物チェック
+        </a>
       </header>
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '56px 28px 100px' }}>
