@@ -8,9 +8,22 @@ function safeParseJSON(raw: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const { goal, heat, grain } = await req.json();
+  const { goal, heat, grain, motive, notDoList } = await req.json() as {
+    goal: string;
+    heat: number;
+    grain: number;
+    motive?: string;
+    notDoList?: string;
+  };
 
   const valueInject = KokoroValueEngine.forPlan();
+
+  const motiveBlock = motive && motive.trim()
+    ? `\n【動機（このゴールを選んだ理由）】\n${motive.trim()}\n→ タスクはこの動機を裏切らないように設計する`
+    : '';
+  const notDoBlock = notDoList && notDoList.trim()
+    ? `\n【やらないと決めていること】\n${notDoList.trim()}\n→ これらを含むタスクは絶対に生成しない`
+    : '';
 
   const system = `あなたはKokoro OSのPlanアシスタントです。
 ユーザーの目標を実行可能なタスクに分解してください。
@@ -18,6 +31,7 @@ export async function POST(req: NextRequest) {
 設定：
 ・熱量レベル: ${heat}/5（高いほど野心的なタスク量）
 ・粒度レベル: ${grain}/5（高いほど細かいタスク）
+${motiveBlock}${notDoBlock}
 ${valueInject ? '\n' + valueInject + '\n' : ''}
 タスク数の目安：熱量${heat}×粒度${grain}に応じて5〜15個
 

@@ -30,6 +30,13 @@ export default function KokoroPlanPage() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
+  // 3 本柱
+  const [motive, setMotive] = useState('');
+  const [notDoList, setNotDoList] = useState('');
+  const [reflection, setReflection] = useState('');
+  const [showMotive, setShowMotive] = useState(false);
+  const [showNotDo, setShowNotDo] = useState(false);
+
   const canSubmit = goal.trim().length > 0 && !isLoading;
 
   const handleGenerate = useCallback(async (goalText?: string) => {
@@ -44,7 +51,7 @@ export default function KokoroPlanPage() {
       const res = await fetch('/api/kokoro-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goal: g, heat, grain }),
+        body: JSON.stringify({ goal: g, heat, grain, motive, notDoList }),
       });
       if (!res.ok) throw new Error('タスク生成に失敗しました');
       const data = await res.json();
@@ -55,7 +62,7 @@ export default function KokoroPlanPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [goal, heat, grain]);
+  }, [goal, heat, grain, motive, notDoList]);
 
   const toggleTask = (idx: number) => {
     setTasks(prev => prev.map((t, i) => i === idx ? { ...t, done: !t.done } : t));
@@ -63,7 +70,11 @@ export default function KokoroPlanPage() {
 
   const handleSaveToNote = async () => {
     if (!goal.trim() || tasks.length === 0) return;
-    const body = `Goal: ${goal}\n\n${tasks.map(t => `${t.done ? '✓' : '□'} ${t.text}${t.estimate ? ` (${t.estimate})` : ''}`).join('\n')}`;
+    let body = `Goal: ${goal}\n`;
+    if (motive.trim()) body += `\n[動機] ${motive.trim()}\n`;
+    if (notDoList.trim()) body += `\n[やらないこと]\n${notDoList.trim()}\n`;
+    body += `\n[タスク]\n${tasks.map(t => `${t.done ? '✓' : '□'} ${t.text}${t.estimate ? ` (${t.estimate})` : ''}`).join('\n')}`;
+    if (reflection.trim()) body += `\n\n[内省] ${reflection.trim()}`;
     await saveToNote(body, 'Plan');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -141,6 +152,84 @@ export default function KokoroPlanPage() {
           onFocus={e => e.currentTarget.style.borderLeftColor = '#10b981'}
           onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
         />
+
+        {/* 3 本柱の入口（折り畳み） */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowMotive(!showMotive)}
+            style={{
+              ...mono, fontSize: 9, letterSpacing: '.08em',
+              color: showMotive || motive.trim() ? '#10b981' : '#9ca3af',
+              background: 'transparent',
+              border: `1px solid ${showMotive || motive.trim() ? '#10b981' : '#e5e7eb'}`,
+              padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
+            }}
+          >
+            なぜ？{motive.trim() && ' ●'}
+          </button>
+          <button
+            onClick={() => setShowNotDo(!showNotDo)}
+            style={{
+              ...mono, fontSize: 9, letterSpacing: '.08em',
+              color: showNotDo || notDoList.trim() ? '#10b981' : '#9ca3af',
+              background: 'transparent',
+              border: `1px solid ${showNotDo || notDoList.trim() ? '#10b981' : '#e5e7eb'}`,
+              padding: '4px 10px', borderRadius: 12, cursor: 'pointer',
+            }}
+          >
+            やらないこと{notDoList.trim() && ' ●'}
+          </button>
+        </div>
+
+        {/* 動機の問い */}
+        {showMotive && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: '#9ca3af', display: 'block', marginBottom: 6 }}>
+              // 動機の問い — なぜこれをやりたい？
+            </label>
+            <input
+              type="text"
+              value={motive}
+              onChange={e => setMotive(e.target.value)}
+              placeholder="一言でいい。書かなくてもいい。"
+              style={{
+                width: '100%', background: '#f8f9fa',
+                border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
+                borderRadius: '0 4px 4px 0',
+                padding: '10px 14px', fontSize: 13, color: '#111827',
+                outline: 'none', fontFamily: "'Noto Serif JP', serif",
+                boxSizing: 'border-box',
+              }}
+              onFocus={e => e.currentTarget.style.borderLeftColor = '#10b981'}
+              onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
+            />
+          </div>
+        )}
+
+        {/* やらないリスト */}
+        {showNotDo && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: '#9ca3af', display: 'block', marginBottom: 6 }}>
+              // やらないリスト — このゴールのために手を出さないこと
+            </label>
+            <textarea
+              value={notDoList}
+              onChange={e => setNotDoList(e.target.value)}
+              placeholder="例：完璧を目指さない / SNS で進捗自慢しない / 睡眠を削らない"
+              style={{
+                width: '100%', background: '#f8f9fa',
+                border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
+                borderRadius: '0 4px 4px 0',
+                padding: '10px 14px', fontSize: 13, color: '#111827',
+                resize: 'vertical', outline: 'none', minHeight: 60,
+                fontFamily: "'Noto Serif JP', serif", lineHeight: 1.7,
+                boxSizing: 'border-box',
+              }}
+              onFocus={e => e.currentTarget.style.borderLeftColor = '#10b981'}
+              onBlur={e => e.currentTarget.style.borderLeftColor = '#d1d5db'}
+            />
+          </div>
+        )}
 
         {/* 実行ボタン */}
         <button
@@ -224,6 +313,26 @@ export default function KokoroPlanPage() {
                   }} />
                 </div>
               ))}
+            </div>
+
+            {/* 1 行内省 */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px dashed #e5e7eb' }}>
+              <label style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: '#9ca3af', display: 'block', marginBottom: 6 }}>
+                // 1 行内省 — 今の気持ちを一言で
+              </label>
+              <input
+                type="text"
+                value={reflection}
+                onChange={e => setReflection(e.target.value)}
+                placeholder="書かなくてもいい。書いた一言は Note に残る。"
+                style={{
+                  width: '100%', background: '#fafafa',
+                  border: '1px solid #e5e7eb', borderRadius: 4,
+                  padding: '10px 14px', fontSize: 13, color: '#111827',
+                  outline: 'none', fontFamily: "'Noto Serif JP', serif",
+                  boxSizing: 'border-box',
+                }}
+              />
             </div>
 
             {/* Note保存ボタン */}
