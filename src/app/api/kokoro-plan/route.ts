@@ -35,8 +35,18 @@ ${motiveBlock}${notDoBlock}
 ${valueInject ? '\n' + valueInject + '\n' : ''}
 タスク数の目安：熱量${heat}×粒度${grain}に応じて5〜15個
 
+【やらないことの候補（avoid_candidates）について】
+このゴールを目指す人が「つい手を出しがち」だが、**達成を遠ざける罠**になる行為を 3〜5 個挙げてください。
+- 完璧主義・過剰準備・比較・自己消耗・人間関係の消費 等
+- 「〜しない」「〜に手を出さない」という禁止形で、10〜20 字程度の短文
+- 抽象論ではなく、このゴール固有の具体的な罠
+${notDoList && notDoList.trim() ? 'すでにユーザーが挙げている「やらないこと」と重複しない、新しい角度の候補を出すこと。' : ''}
+
 必ず以下のJSON形式のみを返してください。説明文や前置きは一切含めないでください：
-{"tasks":[{"text":"タスク内容","estimate":"所要時間の目安","priority":"high/mid/low"},...]}`;
+{
+  "tasks":[{"text":"タスク内容","estimate":"所要時間の目安","priority":"high/mid/low"}],
+  "avoid_candidates":["やらないことの候補1","やらないことの候補2","..."]
+}`;
 
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -68,7 +78,10 @@ ${valueInject ? '\n' + valueInject + '\n' : ''}
     const raw = data.content[0].text as string;
     const parsed = safeParseJSON(raw);
 
-    return NextResponse.json({ tasks: parsed.tasks ?? [] });
+    return NextResponse.json({
+      tasks: parsed.tasks ?? [],
+      avoidCandidates: parsed.avoid_candidates ?? [],
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -36,6 +36,8 @@ export default function KokoroPlanPage() {
   const [reflection, setReflection] = useState('');
   const [showMotive, setShowMotive] = useState(false);
   const [showNotDo, setShowNotDo] = useState(false);
+  const [avoidCandidates, setAvoidCandidates] = useState<string[]>([]);
+  const [adoptedAvoids, setAdoptedAvoids] = useState<Set<string>>(new Set());
 
   const canSubmit = goal.trim().length > 0 && !isLoading;
 
@@ -57,6 +59,7 @@ export default function KokoroPlanPage() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setTasks((data.tasks ?? []).map((t: Omit<Task, 'done'>) => ({ ...t, done: false })));
+      setAvoidCandidates(data.avoidCandidates ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました');
     } finally {
@@ -215,7 +218,7 @@ export default function KokoroPlanPage() {
             <textarea
               value={notDoList}
               onChange={e => setNotDoList(e.target.value)}
-              placeholder="例：完璧を目指さない / SNS で進捗自慢しない / 睡眠を削らない"
+              placeholder="（書かなくてもいい。生成後に AI が候補を出します）"
               style={{
                 width: '100%', background: '#f8f9fa',
                 border: '1px solid #d1d5db', borderLeft: '2px solid #d1d5db',
@@ -314,6 +317,65 @@ export default function KokoroPlanPage() {
                 </div>
               ))}
             </div>
+
+            {/* やらないことの候補（AI 提案） */}
+            {avoidCandidates.length > 0 && (
+              <div style={{ marginTop: 20, padding: '14px 16px', background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+                <div style={{ ...mono, fontSize: 8, letterSpacing: '.14em', color: '#9ca3af', marginBottom: 8 }}>
+                  // こういうことには手を出さない方がいい
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: adoptedAvoids.size > 0 ? 10 : 0 }}>
+                  {avoidCandidates.map((c, i) => {
+                    const adopted = adoptedAvoids.has(c);
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setAdoptedAvoids(prev => {
+                            const next = new Set(prev);
+                            if (next.has(c)) next.delete(c);
+                            else next.add(c);
+                            return next;
+                          });
+                          // notDoList にも反映（改行区切り）
+                          setNotDoList(prev => {
+                            const lines = new Set(prev.split('\n').map(s => s.trim()).filter(Boolean));
+                            if (lines.has(c)) lines.delete(c);
+                            else lines.add(c);
+                            return Array.from(lines).join('\n');
+                          });
+                        }}
+                        style={{
+                          fontSize: 12, letterSpacing: '.02em',
+                          color: adopted ? '#fff' : '#6b7280',
+                          background: adopted ? '#10b981' : '#fff',
+                          border: `1px solid ${adopted ? '#10b981' : '#e5e7eb'}`,
+                          padding: '5px 12px', borderRadius: 14, cursor: 'pointer',
+                          fontFamily: "'Noto Serif JP', serif",
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        {adopted ? '✓ ' : ''}{c}
+                      </button>
+                    );
+                  })}
+                </div>
+                {adoptedAvoids.size > 0 && (
+                  <button
+                    onClick={() => handleGenerate()}
+                    disabled={isLoading}
+                    style={{
+                      ...mono, fontSize: 9, letterSpacing: '.1em',
+                      color: '#10b981', background: 'transparent',
+                      border: '1px solid #10b981',
+                      padding: '6px 14px', borderRadius: 3, cursor: 'pointer',
+                    }}
+                  >
+                    これを踏まえてタスクを作り直す
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* 1 行内省 */}
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px dashed #e5e7eb' }}>
