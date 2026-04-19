@@ -1542,12 +1542,20 @@ export default function KokoroNotePage() {
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           {view === 'list' && (
-            <button
-              onClick={openNew}
-              style={{ fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700, padding:'6px 12px', borderRadius:4, background:'#7c3aed', color:'#fff', border:'none', cursor:'pointer' }}
-            >
-              + 新規 Note
-            </button>
+            <>
+              <a
+                href="/kokoro-note/harvest"
+                style={{ fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:600, padding:'6px 12px', borderRadius:4, background:'transparent', color:'#7c3aed', border:'1px solid #7c3aed', cursor:'pointer', textDecoration:'none' }}
+              >
+                📚 まとめる
+              </a>
+              <button
+                onClick={openNew}
+                style={{ fontFamily:"'Space Mono', monospace", fontSize:10, fontWeight:700, padding:'6px 12px', borderRadius:4, background:'#7c3aed', color:'#fff', border:'none', cursor:'pointer' }}
+              >
+                + 新規 Note
+              </button>
+            </>
           )}
           <div />
         </div>
